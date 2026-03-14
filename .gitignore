@@ -7,7 +7,6 @@
 /storage/*.key
 /storage/pail
 /vendor
-.env
 .env.backup
 .env.production
 .phpactor.json
@@ -24,9 +23,6 @@ yarn-error.log
 /.zed
 
 /imagePick
-/dbdump
-/dbdump/**
-
 /afohs_database
 finance_invoices (1).sql
 .DS_Store
