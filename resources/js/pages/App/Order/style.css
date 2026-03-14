@@ -1,0 +1,43 @@
+.slide-panel {
+  position: fixed;
+  top: 0;
+  right: -900px;
+  /* Start hidden */
+  width: 900px;
+  height: 100%;
+  background-color: white;
+  box-shadow: -5px 0 10px rgba(0, 0, 0, 0.2);
+  transition: right 0.3s ease-in-out;
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  /* overflow-y: auto; */
+}
+
+.slide-panel.open {
+  right: 0;
+  /* Slide in */
+}
+
+.slide-panel-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  /* padding: 20px; */
+}
+
+.close-btn {
+  position: absolute;
+  /* top: -5px; */
+  left: -5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  /* Dark gray */
+  display: flex;
+  align-items: center;
+}
+
+.close-btn:hover {
+  color: red;
+}

@@ -1,0 +1,34 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('employees', function (Blueprint $table) {
+            $table->bigInteger('old_employee_id')->nullable()->after('id')->index();
+            $table->bigInteger('total_addon_charges')->nullable();
+            $table->bigInteger('total_salary')->nullable();
+            $table->bigInteger('days')->nullable();
+            $table->bigInteger('hours')->nullable();
+            $table->bigInteger('total_deduction_charges')->nullable();
+            $table->string('old_department')->nullable();
+            $table->string('old_subdepartment')->nullable();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('employees', function (Blueprint $table) {
+            //
+        });
+    }
+};

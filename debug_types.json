@@ -1,0 +1,63 @@
+{
+    "": [
+        "ID: 20 | Name: Advance Payment Method"
+    ],
+    "1": [
+        "ID: 1 | Name: Room Booking",
+        "ID: 2 | Name: Events Management",
+        "ID: 3 | Name: Membership Fee",
+        "ID: 4 | Name: Monthly Maintenance Fee",
+        "ID: 5 | Name: Food and Beverage",
+        "ID: 6 | Name: Cake Bookings",
+        "ID: 7 | Name: Store Purchases",
+        "ID: 8 | Name: Store Sales",
+        "ID: 9 | Name: Salary"
+    ],
+    "2": [
+        "ID: 10 | Name: Supplementary Card Charges",
+        "ID: 49 | Name: Reinstating Fee",
+        "ID: 50 | Name: New Year Eve (Member)",
+        "ID: 53 | Name: New Year Eve (Guest)"
+    ],
+    "3": [
+        "ID: 11 | Name: GYM Subscription",
+        "ID: 12 | Name: Swimming Pool Subscription",
+        "ID: 13 | Name: Billiard",
+        "ID: 14 | Name: Gaming Zone",
+        "ID: 15 | Name: Sauna \/ Steam",
+        "ID: 16 | Name: Squash Court Subscription",
+        "ID: 17 | Name: GYM Personal Training",
+        "ID: 19 | Name: Table Tennis",
+        "ID: 21 | Name: Swimming Pool Coaching",
+        "ID: 30 | Name: Squash Court Coaching",
+        "ID: 31 | Name: GYM (Guest)",
+        "ID: 32 | Name: Swimming Pool (Guest)",
+        "ID: 34 | Name: Squash Court (Guest)",
+        "ID: 45 | Name: GYM Member Per Day",
+        "ID: 46 | Name: Swimming Pool Member Per Day",
+        "ID: 47 | Name: Squash Court Member Per Day"
+    ],
+    "4": [
+        "ID: 18 | Name: JV",
+        "ID: 26 | Name: Advance Receipts",
+        "ID: 27 | Name: Advance Payment",
+        "ID: 28 | Name: Discount Voucher Receipt",
+        "ID: 29 | Name: AFOHS Credit",
+        "ID: 48 | Name: Opening Balance"
+    ],
+    "6": [
+        "ID: 36 | Name: Coffee Shop POS",
+        "ID: 37 | Name: Bakery POS",
+        "ID: 38 | Name: Outside Lawn POS",
+        "ID: 39 | Name: SOFRA POS",
+        "ID: 40 | Name: CHAYE DHABA POS",
+        "ID: 41 | Name: SUNDAY BRUNCH",
+        "ID: 51 | Name: Rooftop"
+    ],
+    "7": [
+        "ID: 22 | Name: Cash",
+        "ID: 23 | Name: Cheque",
+        "ID: 24 | Name: Credit",
+        "ID: 25 | Name: Online"
+    ]
+}

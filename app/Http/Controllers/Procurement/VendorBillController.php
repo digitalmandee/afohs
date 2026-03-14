@@ -1,0 +1,349 @@
+<?php
+
+namespace App\Http\Controllers\Procurement;
+
+use App\Http\Controllers\Controller;
+use App\Models\ApprovalAction;
+use App\Models\AccountingRule;
+use App\Models\GoodsReceipt;
+use App\Models\JournalEntry;
+use App\Models\Vendor;
+use App\Models\VendorBill;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use App\Services\Accounting\PostingService;
+
+class VendorBillController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = VendorBill::with('vendor');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('bill_no', 'like', "%{$search}%")
+                    ->orWhereHas('vendor', function ($vendor) use ($search) {
+                        $vendor->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('status') && in_array($request->status, ['draft', 'posted', 'partially_paid', 'paid', 'void'], true)) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('vendor_id')) {
+            $query->where('vendor_id', $request->vendor_id);
+        }
+
+        if ($request->filled('from') && $request->filled('to')) {
+            $query->whereBetween('bill_date', [$request->from, $request->to]);
+        }
+
+        $summary = [
+            'count' => (int) (clone $query)->count(),
+            'total_value' => (float) ((clone $query)->sum('grand_total') ?? 0),
+            'outstanding' => (float) ((clone $query)->select(DB::raw('SUM(grand_total - paid_amount) as balance'))->value('balance') ?? 0),
+            'posted' => (int) ((clone $query)->where('status', 'posted')->count()),
+        ];
+
+        $bills = $query->orderByDesc('bill_date')->paginate(25)->withQueryString();
+        $latestActions = ApprovalAction::query()
+            ->where('document_type', 'vendor_bill')
+            ->whereIn('document_id', $bills->getCollection()->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->unique('document_id')
+            ->keyBy('document_id');
+        $postedIds = JournalEntry::query()
+            ->where('module_type', 'vendor_bill')
+            ->whereIn('module_id', $bills->getCollection()->pluck('id'))
+            ->pluck('module_id')
+            ->all();
+        $postedLookup = array_fill_keys($postedIds, true);
+
+        $bills->getCollection()->transform(function ($bill) use ($latestActions, $postedLookup) {
+            $action = $latestActions->get($bill->id);
+            $bill->gl_posted = (bool) ($postedLookup[$bill->id] ?? false);
+            $bill->latest_approval_action = $action ? [
+                'action' => $action->action,
+                'remarks' => $action->remarks,
+                'created_at' => $action->created_at,
+            ] : null;
+            return $bill;
+        });
+
+        return Inertia::render('App/Admin/Procurement/VendorBills/Index', [
+            'bills' => $bills,
+            'summary' => $summary,
+            'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'status', 'vendor_id', 'from', 'to']),
+        ]);
+    }
+
+    public function create(Request $request)
+    {
+        $receipt = null;
+        if ($request->filled('goods_receipt_id')) {
+            $receipt = GoodsReceipt::with('items.product')->find($request->goods_receipt_id);
+        }
+
+        $vendors = Vendor::orderBy('name')->get(['id', 'name']);
+        $receipts = GoodsReceipt::with(['vendor:id,name', 'items.product:id,name'])
+            ->orderByDesc('received_date')
+            ->limit(200)
+            ->get(['id', 'grn_no', 'vendor_id', 'received_date', 'status']);
+
+        return Inertia::render('App/Admin/Procurement/VendorBills/Create', [
+            'receipt' => $receipt,
+            'vendors' => $vendors,
+            'receipts' => $receipts,
+        ]);
+    }
+
+    public function edit(VendorBill $vendorBill)
+    {
+        $bill = $vendorBill->load('items');
+
+        if ($bill->status !== 'draft') {
+            return redirect()->route('procurement.vendor-bills.index')->with('error', 'Only draft bills can be edited.');
+        }
+
+        $vendors = Vendor::orderBy('name')->get(['id', 'name']);
+        $receipts = GoodsReceipt::with(['vendor:id,name', 'items.product:id,name'])
+            ->orderByDesc('received_date')
+            ->limit(200)
+            ->get(['id', 'grn_no', 'vendor_id', 'received_date', 'status']);
+
+        return Inertia::render('App/Admin/Procurement/VendorBills/Edit', [
+            'bill' => $bill,
+            'vendors' => $vendors,
+            'receipts' => $receipts,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'vendor_id' => 'required|exists:vendors,id',
+            'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
+            'bill_date' => 'required|date',
+            'due_date' => 'nullable|date|after_or_equal:bill_date',
+            'remarks' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.description' => 'nullable|string',
+            'items.*.qty' => 'required|numeric|min:0.001',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        if (!empty($data['goods_receipt_id'])) {
+            $receiptVendorId = GoodsReceipt::query()
+                ->whereKey($data['goods_receipt_id'])
+                ->value('vendor_id');
+
+            if ((int) $receiptVendorId !== (int) $data['vendor_id']) {
+                return redirect()->back()->withErrors([
+                    'vendor_id' => 'Selected vendor must match the linked goods receipt vendor.',
+                ])->withInput();
+            }
+        }
+
+        $bill = VendorBill::create([
+            'bill_no' => 'BILL-' . now()->format('YmdHis'),
+            'vendor_id' => $data['vendor_id'],
+            'goods_receipt_id' => $data['goods_receipt_id'] ?? null,
+            'bill_date' => $data['bill_date'],
+            'due_date' => $data['due_date'] ?? null,
+            'status' => 'draft',
+            'currency' => 'PKR',
+            'remarks' => $data['remarks'] ?? null,
+            'created_by' => $request->user()?->id,
+        ]);
+
+        $subTotal = 0;
+        foreach ($data['items'] as $item) {
+            $lineTotal = $item['qty'] * $item['unit_cost'];
+            $subTotal += $lineTotal;
+            $bill->items()->create([
+                'description' => $item['description'] ?? null,
+                'qty' => $item['qty'],
+                'unit_cost' => $item['unit_cost'],
+                'line_total' => $lineTotal,
+            ]);
+        }
+
+        $bill->update([
+            'sub_total' => $subTotal,
+            'grand_total' => $subTotal,
+        ]);
+
+        ApprovalAction::create([
+            'document_type' => 'vendor_bill',
+            'document_id' => $bill->id,
+            'action' => 'submitted',
+            'remarks' => 'Vendor bill created and submitted.',
+            'action_by' => $request->user()?->id,
+        ]);
+
+        $rule = AccountingRule::where('code', 'vendor_bill')->where('is_active', true)->first();
+        if ($rule) {
+            $lines = [];
+            foreach ($rule->lines as $line) {
+                $amount = $subTotal * ($line['ratio'] ?? 1);
+                $lines[] = [
+                    'account_id' => $line['account_id'],
+                    'debit' => ($line['side'] ?? 'debit') === 'debit' ? $amount : 0,
+                    'credit' => ($line['side'] ?? 'debit') === 'credit' ? $amount : 0,
+                    'vendor_id' => $data['vendor_id'],
+                    'reference_type' => VendorBill::class,
+                    'reference_id' => $bill->id,
+                ];
+            }
+
+            app(PostingService::class)->post(
+                'vendor_bill',
+                $bill->id,
+                $data['bill_date'],
+                'Vendor Bill ' . $bill->bill_no,
+                $lines,
+                $request->user()?->id
+            );
+        }
+
+        return redirect()->route('procurement.vendor-bills.index')->with('success', 'Vendor bill created.');
+    }
+
+    public function update(Request $request, VendorBill $vendorBill)
+    {
+        if ($vendorBill->status !== 'draft') {
+            return redirect()->back()->with('error', 'Only draft bills can be updated.');
+        }
+
+        $data = $request->validate([
+            'vendor_id' => 'required|exists:vendors,id',
+            'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
+            'bill_date' => 'required|date',
+            'due_date' => 'nullable|date|after_or_equal:bill_date',
+            'remarks' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.description' => 'nullable|string',
+            'items.*.qty' => 'required|numeric|min:0.001',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        if (!empty($data['goods_receipt_id'])) {
+            $receiptVendorId = GoodsReceipt::query()
+                ->whereKey($data['goods_receipt_id'])
+                ->value('vendor_id');
+
+            if ((int) $receiptVendorId !== (int) $data['vendor_id']) {
+                return redirect()->back()->withErrors([
+                    'vendor_id' => 'Selected vendor must match the linked goods receipt vendor.',
+                ])->withInput();
+            }
+        }
+
+        DB::transaction(function () use ($vendorBill, $data, $request) {
+            $subTotal = 0;
+            $items = [];
+
+            foreach ($data['items'] as $item) {
+                $lineTotal = $item['qty'] * $item['unit_cost'];
+                $subTotal += $lineTotal;
+                $items[] = [
+                    'description' => $item['description'] ?? null,
+                    'qty' => $item['qty'],
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                ];
+            }
+
+            $vendorBill->update([
+                'vendor_id' => $data['vendor_id'],
+                'goods_receipt_id' => $data['goods_receipt_id'] ?? null,
+                'bill_date' => $data['bill_date'],
+                'due_date' => $data['due_date'] ?? null,
+                'remarks' => $data['remarks'] ?? null,
+                'sub_total' => $subTotal,
+                'grand_total' => $subTotal,
+                'updated_at' => now(),
+            ]);
+
+            $vendorBill->items()->delete();
+            $vendorBill->items()->createMany($items);
+
+            ApprovalAction::create([
+                'document_type' => 'vendor_bill',
+                'document_id' => $vendorBill->id,
+                'action' => 'updated',
+                'remarks' => 'Vendor bill updated.',
+                'action_by' => $request->user()?->id,
+            ]);
+        });
+
+        return redirect()->route('procurement.vendor-bills.index')->with('success', 'Vendor bill updated.');
+    }
+
+    public function submit(Request $request, VendorBill $vendorBill)
+    {
+        if ($vendorBill->status !== 'draft') {
+            return redirect()->back()->with('error', 'Only draft bills can be submitted.');
+        }
+
+        ApprovalAction::create([
+            'document_type' => 'vendor_bill',
+            'document_id' => $vendorBill->id,
+            'action' => 'submitted',
+            'remarks' => 'Vendor bill submitted for approval.',
+            'action_by' => $request->user()?->id,
+        ]);
+
+        return redirect()->back()->with('success', 'Vendor bill submitted.');
+    }
+
+    public function approve(Request $request, VendorBill $vendorBill)
+    {
+        if ($vendorBill->status !== 'draft') {
+            return redirect()->back()->with('error', 'Only draft bills can be approved.');
+        }
+
+        $vendorBill->update([
+            'status' => 'posted',
+            'posted_by' => $request->user()?->id,
+            'posted_at' => now(),
+        ]);
+
+        ApprovalAction::create([
+            'document_type' => 'vendor_bill',
+            'document_id' => $vendorBill->id,
+            'action' => 'approved',
+            'remarks' => 'Vendor bill approved/posted.',
+            'action_by' => $request->user()?->id,
+        ]);
+
+        return redirect()->back()->with('success', 'Vendor bill approved.');
+    }
+
+    public function reject(Request $request, VendorBill $vendorBill)
+    {
+        if ($vendorBill->status === 'void') {
+            return redirect()->back()->with('error', 'Vendor bill is already void.');
+        }
+
+        $vendorBill->update([
+            'status' => 'void',
+        ]);
+
+        ApprovalAction::create([
+            'document_type' => 'vendor_bill',
+            'document_id' => $vendorBill->id,
+            'action' => 'rejected',
+            'remarks' => 'Vendor bill rejected/voided.',
+            'action_by' => $request->user()?->id,
+        ]);
+
+        return redirect()->back()->with('success', 'Vendor bill rejected.');
+    }
+}

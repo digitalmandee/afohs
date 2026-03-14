@@ -1,0 +1,112 @@
+<?php
+
+namespace App\Services\Accounting\Adapters;
+
+use App\Models\AccountingEventQueue;
+use App\Models\AccountingRule;
+use App\Models\FinancialInvoice;
+use App\Models\FinancialReceipt;
+use App\Models\JournalEntry;
+use App\Services\Accounting\Contracts\PostingAdapter;
+use App\Services\Accounting\PostingService;
+
+class FinancialReceiptPostingAdapter implements PostingAdapter
+{
+    public function __construct(private readonly PostingService $postingService)
+    {
+    }
+
+    public function supports(AccountingEventQueue $event): bool
+    {
+        return $event->source_type === FinancialReceipt::class && $event->event_type === 'receipt_created';
+    }
+
+    public function post(AccountingEventQueue $event): ?JournalEntry
+    {
+        $receipt = FinancialReceipt::with(['links.invoice', 'paymentAccount'])->find($event->source_id);
+        if (!$receipt) {
+            throw new \RuntimeException('Financial receipt not found for posting.');
+        }
+
+        $amount = (float) ($receipt->amount ?? 0);
+        if ($amount <= 0) {
+            throw new \RuntimeException('Receipt amount is zero; posting aborted.');
+        }
+
+        $invoiceTypes = $receipt->links
+            ->pluck('invoice')
+            ->filter()
+            ->map(function ($invoice) {
+                $type = strtolower((string) ($invoice->invoice_type ?? ''));
+                $subscription = !empty($invoice->subscription_type_id) || !empty($invoice->subscription_category_id) || $type === 'subscription';
+
+                if ($subscription) {
+                    return 'subscription';
+                }
+
+                return $type ?: 'generic';
+            })
+            ->values();
+
+        $ruleCode = 'receipt_generic';
+        if ($invoiceTypes->contains('food_order')) {
+            $ruleCode = 'pos_receipt';
+        } elseif ($invoiceTypes->contains('room_booking')) {
+            $ruleCode = 'room_receipt';
+        } elseif ($invoiceTypes->contains('event_booking')) {
+            $ruleCode = 'event_receipt';
+        } elseif ($invoiceTypes->contains('subscription')) {
+            $ruleCode = 'subscription_receipt';
+        } elseif ($invoiceTypes->contains('membership')) {
+            $ruleCode = 'membership_receipt';
+        }
+
+        $existingEntry = JournalEntry::whereIn('module_type', ['financial_receipt', $ruleCode])
+            ->where('module_id', $receipt->id)
+            ->first();
+
+        if ($existingEntry) {
+            return $existingEntry;
+        }
+
+        $rule = AccountingRule::where('code', $ruleCode)->where('is_active', true)->first();
+        if (!$rule) {
+            throw new \RuntimeException("Accounting rule '{$ruleCode}' is missing or inactive.");
+        }
+
+        $linkedMemberId = $receipt->links
+            ->pluck('invoice')
+            ->filter()
+            ->pluck('member_id')
+            ->first();
+
+        $lines = [];
+        foreach ((array) $rule->lines as $line) {
+            $lineAmount = $amount * (float) ($line['ratio'] ?? 1);
+            $side = $line['side'] ?? 'debit';
+            $accountId = $line['account_id'] ?? null;
+
+            if (!empty($line['use_payment_account']) && !empty($receipt->paymentAccount?->coa_account_id)) {
+                $accountId = $receipt->paymentAccount->coa_account_id;
+            }
+
+            $lines[] = [
+                'account_id' => $accountId,
+                'debit' => $side === 'debit' ? $lineAmount : 0,
+                'credit' => $side === 'credit' ? $lineAmount : 0,
+                'member_id' => $linkedMemberId,
+                'reference_type' => FinancialReceipt::class,
+                'reference_id' => $receipt->id,
+            ];
+        }
+
+        return $this->postingService->post(
+            $ruleCode,
+            $receipt->id,
+            optional($receipt->receipt_date)->toDateString() ?? now()->toDateString(),
+            'Financial Receipt ' . $receipt->receipt_no,
+            $lines,
+            $receipt->created_by
+        );
+    }
+}

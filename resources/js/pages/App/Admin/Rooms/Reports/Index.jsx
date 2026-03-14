@@ -1,0 +1,119 @@
+import { useState } from 'react';
+import { router } from '@inertiajs/react';
+import { route } from 'ziggy-js';
+import AdminLayout from '@/layouts/AdminLayout';
+import { Box, Card, CardContent, Typography, Grid, IconButton, Chip } from '@mui/material';
+import { ArrowBack as ArrowBackIcon, Today as TodayIcon, History as HistoryIcon, BookOnline as BookOnlineIcon, Cancel as CancelIcon, Login as LoginIcon, Logout as LogoutIcon, Person as PersonIcon, Kitchen as KitchenIcon, CardGiftcard as CardGiftcardIcon, Event as EventIcon } from '@mui/icons-material';
+
+const iconMap = {
+    Today: TodayIcon,
+    History: HistoryIcon,
+    BookOnline: BookOnlineIcon,
+    Cancel: CancelIcon,
+    Login: LoginIcon,
+    Logout: LogoutIcon,
+    Person: PersonIcon,
+    Kitchen: KitchenIcon,
+    CardGiftcard: CardGiftcardIcon,
+    Event: EventIcon,
+};
+
+const RoomReportsIndex = ({ reports = [] }) => {
+    const handleReportClick = (reportRoute) => {
+        try {
+            router.visit(route(reportRoute));
+        } catch (e) {
+            console.error('Route not found:', reportRoute);
+        }
+    };
+
+    return (
+        <AdminLayout>
+            <Box sx={{ bgcolor: '#f5f5f5', minHeight: '100vh', p: 3 }}>
+                {/* Header */}
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+                    {/* <IconButton onClick={() => window.history.back()} sx={{ mr: 2 }}>
+                        <ArrowBackIcon sx={{ color: '#063455' }} />
+                    </IconButton> */}
+                    <Typography variant="h4" sx={{ color: '#063455', fontWeight: 700 }}>
+                        Room Reports
+                    </Typography>
+                </Box>
+
+                {/* Reports Grid */}
+                <Grid container spacing={3}>
+                    {reports.map((report) => {
+                        const IconComponent = iconMap[report.icon] || TodayIcon;
+                        return (
+                            <Grid item xs={12} sm={6} md={4} lg={3} key={report.id}>
+                                <Card
+                                    sx={{
+                                        cursor: 'pointer',
+                                        transition: 'all 0.3s ease',
+                                        height: '100%',
+                                        borderRadius: '16px',
+                                        // bgcolor:'#063455'
+                                        '&:hover': {
+                                            transform: 'translateY(-4px)',
+                                            boxShadow: '0 8px 24px rgba(6, 52, 85, 0.15)',
+                                        },
+                                    }}
+                                    onClick={() => handleReportClick(report.route)}
+                                >
+                                    <CardContent sx={{ p: 3 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                                            <Box
+                                                sx={{
+                                                    width: 56,
+                                                    height: 56,
+                                                    borderRadius: '12px',
+                                                    backgroundColor: report.color || '#063455',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <IconComponent sx={{ color: '#fff', fontSize: 28 }} />
+                                            </Box>
+                                            <Chip
+                                                label={report.stats}
+                                                size="small"
+                                                sx={{
+                                                    backgroundColor: '#E8F4FD',
+                                                    color: '#063455',
+                                                    fontWeight: 500,
+                                                }}
+                                            />
+                                        </Box>
+                                        <Typography
+                                            variant="h6"
+                                            sx={{
+                                                color: '#063455',
+                                                fontWeight: 600,
+                                                mb: 1,
+                                                fontSize: '1rem',
+                                            }}
+                                        >
+                                            {report.title}
+                                        </Typography>
+                                        <Typography
+                                            variant="body2"
+                                            sx={{
+                                                color: '#666',
+                                                lineHeight: 1.5,
+                                            }}
+                                        >
+                                            {report.description}
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        );
+                    })}
+                </Grid>
+            </Box>
+        </AdminLayout>
+    );
+};
+
+export default RoomReportsIndex;
