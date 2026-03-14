@@ -343,6 +343,22 @@ class CorporateMembershipController extends Controller
             $perPage = 25;
         }
 
+        Log::info('corporate-membership.members.filters.received', [
+            'membership_no' => $request->input('membership_no'),
+            'name' => $request->input('name'),
+            'barcode' => $request->input('barcode'),
+            'cnic' => $request->input('cnic'),
+            'contact' => $request->input('contact'),
+            'city' => $request->input('city'),
+            'status' => $request->input('status'),
+            'card_status' => $request->input('card_status'),
+            'member_category' => $request->input('member_category'),
+            'duration' => $request->input('duration'),
+            'selected_member_id' => $request->input('selected_member_id'),
+            'page' => $request->input('page'),
+            'per_page' => $perPage,
+        ]);
+
         $query = CorporateMember::whereNull('parent_id')
             ->with([
                 'profilePhoto:id,mediable_id,mediable_type,file_path',
@@ -351,6 +367,10 @@ class CorporateMembershipController extends Controller
                 'membershipInvoice:id,corporate_member_id,invoice_no,status,total_price'
             ])
             ->withCount('familyMembers');
+
+        if ($request->filled('selected_member_id')) {
+            $query->where('id', $request->integer('selected_member_id'));
+        }
 
         // Filter: Membership Number
         if ($request->filled('membership_no')) {
@@ -430,13 +450,34 @@ class CorporateMembershipController extends Controller
         }
 
         $members = $query->paginate($perPage)->withQueryString();
+        Log::info('corporate-membership.members.filters.result', [
+            'total' => $members->total(),
+            'current_page' => $members->currentPage(),
+            'per_page' => $members->perPage(),
+            'returned_ids' => $members->getCollection()->pluck('id')->take(10)->values()->all(),
+        ]);
 
         // Get Member Categories for filter
         $memberCategories = \App\Models\MemberCategory::select('id', 'name')->get();
+        $cities = CorporateMember::query()
+            ->whereNull('parent_id')
+            ->select('current_city', 'permanent_city')
+            ->get()
+            ->flatMap(function ($member) {
+                return [
+                    trim((string) $member->current_city),
+                    trim((string) $member->permanent_city),
+                ];
+            })
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
 
         return Inertia::render('App/Admin/CorporateMembership/CorporateMembers', [
             'members' => $members,
             'memberCategories' => $memberCategories,
+            'cities' => $cities,
             'filters' => $request->all() + ['per_page' => $perPage],
         ]);
     }
@@ -955,10 +996,15 @@ class CorporateMembershipController extends Controller
      */
     public function trashed(Request $request)
     {
+        $perPage = (int) $request->integer('per_page', 25);
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
+
         $query = CorporateMember::onlyTrashed()->whereNull('parent_id');
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
                 $q
                     ->where('full_name', 'like', "%{$search}%")
@@ -966,11 +1012,11 @@ class CorporateMembershipController extends Controller
             });
         }
 
-        $members = $query->orderBy('deleted_at', 'desc')->paginate(10);
+        $members = $query->orderBy('deleted_at', 'desc')->paginate($perPage)->withQueryString();
 
         return Inertia::render('App/Admin/CorporateMembership/TrashedCorporateMembers', [
             'members' => $members,
-            'filters' => $request->only(['search']),
+            'filters' => $request->only(['search', 'per_page']),
         ]);
     }
 

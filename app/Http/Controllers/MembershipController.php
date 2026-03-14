@@ -229,6 +229,24 @@ class MembershipController extends Controller
             $perPage = 25;
         }
 
+        Log::info('membership.members.filters.received', [
+            'membership_no' => $request->input('membership_no'),
+            'name' => $request->input('name'),
+            'barcode' => $request->input('barcode'),
+            'cnic' => $request->input('cnic'),
+            'contact' => $request->input('contact'),
+            'city' => $request->input('city'),
+            'status' => $request->input('status'),
+            'card_status' => $request->input('card_status'),
+            'member_category' => $request->input('member_category'),
+            'member_type' => $request->input('member_type'),
+            'duration' => $request->input('duration'),
+            'kinship_filter' => $request->input('kinship_filter'),
+            'selected_member_id' => $request->input('selected_member_id'),
+            'page' => $request->input('page'),
+            'per_page' => $perPage,
+        ]);
+
         $query = Member::whereNull('parent_id')
             ->with([
                 'memberType:id,name',
@@ -238,6 +256,10 @@ class MembershipController extends Controller
                 'membershipInvoice:id,member_id,invoice_no,status,total_price'  // ✅ Include membership invoice
             ])
             ->withCount('familyMembers');
+
+        if ($request->filled('selected_member_id')) {
+            $query->where('id', $request->integer('selected_member_id'));
+        }
 
         // Filter: Membership Number
         if ($request->filled('membership_no')) {
@@ -333,11 +355,32 @@ class MembershipController extends Controller
         }
 
         $members = $query->paginate($perPage)->withQueryString();
+        Log::info('membership.members.filters.result', [
+            'total' => $members->total(),
+            'current_page' => $members->currentPage(),
+            'per_page' => $members->perPage(),
+            'returned_ids' => $members->getCollection()->pluck('id')->take(10)->values()->all(),
+        ]);
+        $cities = Member::query()
+            ->whereNull('parent_id')
+            ->select('current_city', 'permanent_city')
+            ->get()
+            ->flatMap(function ($member) {
+                return [
+                    trim((string) $member->current_city),
+                    trim((string) $member->permanent_city),
+                ];
+            })
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
 
         return Inertia::render('App/Admin/Membership/Members', [
             'members' => $members,
             'memberTypes' => MemberType::all(['id', 'name']),
             'memberCategories' => MemberCategory::select('id', 'name')->where('status', 'active')->get(),
+            'cities' => $cities,
             'filters' => $request->only([
                 'membership_no',
                 'barcode',
@@ -351,6 +394,7 @@ class MembershipController extends Controller
                 'member_type',
                 'duration',
                 'kinship_filter',
+                'selected_member_id',
                 'sort',
                 'sortBy',
                 'per_page',
@@ -1422,10 +1466,15 @@ class MembershipController extends Controller
      */
     public function trashed(Request $request)
     {
+        $perPage = (int) $request->integer('per_page', 25);
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
+
         $query = Member::onlyTrashed()->with(['memberCategory', 'memberType', 'statusHistories']);
 
-        if ($request->has('search')) {
-            $search = $request->search;
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
                 $q
                     ->where('full_name', 'like', "%{$search}%")
@@ -1435,11 +1484,11 @@ class MembershipController extends Controller
             });
         }
 
-        $members = $query->orderBy('deleted_at', 'desc')->paginate(10);
+        $members = $query->orderBy('deleted_at', 'desc')->paginate($perPage)->withQueryString();
 
         return Inertia::render('App/Admin/Membership/TrashedMembers', [
             'members' => $members,
-            'filters' => $request->only(['search']),
+            'filters' => $request->only(['search', 'per_page']),
         ]);
     }
 

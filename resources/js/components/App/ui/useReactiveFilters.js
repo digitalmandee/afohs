@@ -31,58 +31,115 @@ export default function useReactiveFilters({ routeName, initialFilters = {}, deb
     const [filters, setFilters] = React.useState(() =>
         Object.fromEntries(Object.entries(parsedInitialFilters).map(([key, value]) => [key, normalizeValue(value)])),
     );
+    const filtersRef = React.useRef(filters);
 
-    const targetUrl = React.useMemo(() => route(routeName), [routeName]);
+    const resolveTargetUrl = React.useCallback(() => {
+        try {
+            const namedRoute = route(routeName);
+
+            if (namedRoute && namedRoute !== 'undefined') {
+                return namedRoute;
+            }
+        } catch (error) {
+            if (typeof window !== 'undefined') {
+                console.warn('[ReactiveFilters] named route lookup failed, falling back to current path', {
+                    routeName,
+                    error: error?.message,
+                });
+            }
+        }
+
+        if (typeof window !== 'undefined') {
+            return window.location.pathname;
+        }
+
+        return '';
+    }, [routeName]);
+
+    const performVisit = React.useCallback(
+        (nextFilters) => {
+            const targetUrl = resolveTargetUrl();
+
+            if (typeof window !== 'undefined') {
+                console.debug('[ReactiveFilters] visit', {
+                    routeName,
+                    targetUrl,
+                    filters: cleanFilters(nextFilters),
+                });
+            }
+
+            router.get(targetUrl, cleanFilters(nextFilters), {
+                preserveState: false,
+                preserveScroll: true,
+                replace: true,
+                only,
+            });
+        },
+        [only, resolveTargetUrl, routeName],
+    );
 
     const visit = React.useMemo(
         () =>
             debounce((nextFilters) => {
-                router.get(targetUrl, cleanFilters(nextFilters), {
-                    preserveState: false,
-                    preserveScroll: true,
-                    replace: true,
-                    only,
-                });
+                performVisit(nextFilters);
             }, debounceMs),
-        [debounceMs, only, targetUrl],
+        [debounceMs, performVisit],
     );
 
     React.useEffect(() => () => visit.cancel(), [visit]);
 
     React.useEffect(() => {
-        setFilters(Object.fromEntries(Object.entries(parsedInitialFilters).map(([key, value]) => [key, normalizeValue(value)])));
+        const nextFilters = Object.fromEntries(Object.entries(parsedInitialFilters).map(([key, value]) => [key, normalizeValue(value)]));
+        filtersRef.current = nextFilters;
+        setFilters(nextFilters);
     }, [parsedInitialFilters]);
+
+    const buildNextFilters = React.useCallback((name, value) => {
+        const nextFilters = {
+            ...filtersRef.current,
+            [name]: normalizeValue(value),
+        };
+
+        if (name !== 'page') {
+            nextFilters.page = 1;
+        }
+
+        return nextFilters;
+    }, []);
+
+    const buildNextFiltersFromObject = React.useCallback((partialFilters) => {
+        const normalizedPartial = Object.fromEntries(
+            Object.entries(partialFilters).map(([key, value]) => [key, normalizeValue(value)]),
+        );
+
+        const nextFilters = {
+            ...filtersRef.current,
+            ...normalizedPartial,
+        };
+
+        if (!Object.prototype.hasOwnProperty.call(normalizedPartial, 'page')) {
+            nextFilters.page = 1;
+        }
+
+        return nextFilters;
+    }, []);
 
     const updateFilter = React.useCallback(
         (name, value, options = {}) => {
             const { immediate = false } = options;
+            const nextFilters = buildNextFilters(name, value);
 
-            setFilters((current) => {
-                const nextFilters = {
-                    ...current,
-                    [name]: normalizeValue(value),
-                };
+            filtersRef.current = nextFilters;
+            setFilters(nextFilters);
 
-                if (name !== 'page') {
-                    nextFilters.page = 1;
-                }
-
-                if (immediate) {
-                    visit.cancel();
-                    router.get(targetUrl, cleanFilters(nextFilters), {
-                        preserveState: false,
-                        preserveScroll: true,
-                        replace: true,
-                        only,
-                    });
-                } else {
-                    visit(nextFilters);
-                }
-
-                return nextFilters;
-            });
+            if (immediate) {
+                visit.cancel();
+                performVisit(nextFilters);
+            } else {
+                visit(nextFilters);
+            }
         },
-        [only, routeName, visit],
+        [buildNextFilters, performVisit, visit],
     );
 
     const resetFilters = React.useCallback(() => {
@@ -101,18 +158,34 @@ export default function useReactiveFilters({ routeName, initialFilters = {}, deb
             }),
         );
 
+        filtersRef.current = nextFilters;
         setFilters(nextFilters);
-        router.get(targetUrl, cleanFilters(nextFilters), {
-            preserveState: false,
-            preserveScroll: true,
-            replace: true,
-            only,
-        });
-    }, [filters, only, targetUrl, visit]);
+        performVisit(nextFilters);
+    }, [filters, performVisit, visit]);
+
+    const updateFilters = React.useCallback(
+        (partialFilters, options = {}) => {
+            const { immediate = false } = options;
+            const nextFilters = buildNextFiltersFromObject(partialFilters);
+
+            filtersRef.current = nextFilters;
+            setFilters(nextFilters);
+
+            if (immediate) {
+                visit.cancel();
+                performVisit(nextFilters);
+            } else {
+                visit(nextFilters);
+            }
+        },
+        [buildNextFiltersFromObject, performVisit, visit],
+    );
 
     return {
         filters,
         updateFilter,
+        updateFilters,
+        applyFilters: performVisit,
         resetFilters,
     };
 }

@@ -15,6 +15,22 @@ import './echo';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    console.error('[AppError]', {
+      message: event.message,
+      source: event.filename,
+      line: event.lineno,
+      column: event.colno,
+      error: event.error,
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[UnhandledPromiseRejection]', event.reason);
+  });
+}
+
 // createInertiaApp({
 //   title: (title) => `${title} - ${appName}`,
 //   resolve: (name) =>

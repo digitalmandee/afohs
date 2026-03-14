@@ -8,6 +8,7 @@ import { router, usePage } from '@inertiajs/react';
 import { useSnackbar } from 'notistack';
 import { FaEdit } from 'react-icons/fa';
 import dayjs from 'dayjs';
+import debounce from 'lodash.debounce';
 import MembershipCardComponent from '../Membership/UserCard';
 import MembershipSuspensionDialog from '../Membership/Modal';
 import MembershipPauseDialog from '../Membership/MembershipPauseDialog';
@@ -22,10 +23,29 @@ import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import Pagination from '@/components/Pagination';
-import useReactiveFilters from '@/components/App/ui/useReactiveFilters';
-const CorporateMembers = ({ members, memberCategories = [] }) => {
+const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
     const props = usePage().props;
     const { enqueueSnackbar } = useSnackbar();
+    const buildInitialFilters = React.useCallback(
+        () => ({
+            membership_no: props.filters?.membership_no || '',
+            barcode: props.filters?.barcode || '',
+            name: props.filters?.name || '',
+            cnic: props.filters?.cnic || '',
+            contact: props.filters?.contact || '',
+            city: props.filters?.city || '',
+            duration: props.filters?.duration || 'all',
+            card_status: props.filters?.card_status || 'all',
+            status: props.filters?.status || 'all',
+            member_category: props.filters?.member_category || 'all',
+            selected_member_id: props.filters?.selected_member_id || '',
+            sort: props.filters?.sort || 'desc',
+            sortBy: props.filters?.sortBy || 'id',
+            per_page: props.filters?.per_page || members?.per_page || 25,
+            page: 1,
+        }),
+        [members?.per_page, props.filters],
+    );
 
     const [anchorEl, setAnchorEl] = useState(null);
     const open = Boolean(anchorEl);
@@ -41,6 +61,8 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
     const [membershipNoOptions, setMembershipNoOptions] = useState([]);
     const [loadingMemberNames, setLoadingMemberNames] = useState(false);
     const [loadingMembershipNos, setLoadingMembershipNos] = useState(false);
+    const [filters, setFilters] = useState(buildInitialFilters);
+    const filtersRef = React.useRef(filters);
 
     // Status Dialog States
     const [suspendOpen, setSuspendOpen] = useState(false);
@@ -75,27 +97,109 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
         }
     };
 
-    const { filters: liveFilters, updateFilter, resetFilters } = useReactiveFilters({
-        routeName: 'corporate-membership.members',
-        initialFilters: {
-            membership_no: props.filters?.membership_no || '',
-            barcode: props.filters?.barcode || '',
-            name: props.filters?.name || '',
-            cnic: props.filters?.cnic || '',
-            contact: props.filters?.contact || '',
-            city: props.filters?.city || '',
-            duration: props.filters?.duration || 'all',
-            card_status: props.filters?.card_status || 'all',
-            status: props.filters?.status || 'all',
-            member_category: props.filters?.member_category || 'all',
-            sort: props.filters?.sort || 'desc',
-            sortBy: props.filters?.sortBy || 'id',
-            per_page: props.filters?.per_page || members?.per_page || 25,
+    const cleanFilters = React.useCallback((nextFilters) => {
+        const cleanedEntries = Object.entries(nextFilters).filter(([key, value]) => {
+            if (key === 'per_page') {
+                return true;
+            }
+
+            if (value === '' || value === null || value === undefined) {
+                return false;
+            }
+
+            if (['status', 'card_status', 'member_category', 'duration'].includes(key) && value === 'all') {
+                return false;
+            }
+
+            if (key === 'page' && Number(value) === 1) {
+                return false;
+            }
+
+            return true;
+        });
+
+        return Object.fromEntries(cleanedEntries);
+    }, []);
+
+    const submitFilters = React.useCallback(
+        (nextFilters) => {
+            const cleanedFilters = cleanFilters(nextFilters);
+            router.get(route('corporate-membership.members'), cleanedFilters, {
+                preserveScroll: true,
+                preserveState: false,
+                replace: true,
+            });
         },
-    });
+        [cleanFilters],
+    );
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
 
     useEffect(() => {
-        if (!liveFilters.name || liveFilters.name.trim().length < 2) {
+        const nextFilters = buildInitialFilters();
+        filtersRef.current = nextFilters;
+        setFilters(nextFilters);
+    }, [buildInitialFilters]);
+
+    const updateFilters = React.useCallback(
+        (partialFilters, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partialFilters,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partialFilters, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+            setFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const updateFilter = React.useCallback(
+        (name, value, options = {}) => {
+            updateFilters({ [name]: value }, options);
+        },
+        [updateFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        debouncedSubmit.cancel();
+        const nextFilters = {
+            ...buildInitialFilters(),
+            membership_no: '',
+            barcode: '',
+            name: '',
+            cnic: '',
+            contact: '',
+            city: '',
+            duration: 'all',
+            card_status: 'all',
+            status: 'all',
+            member_category: 'all',
+            selected_member_id: '',
+            page: 1,
+        };
+
+        filtersRef.current = nextFilters;
+        setFilters(nextFilters);
+        submitFilters(nextFilters);
+    }, [buildInitialFilters, debouncedSubmit, submitFilters]);
+
+    useEffect(() => {
+        if (!filters.name || filters.name.trim().length < 2) {
             setMemberNameOptions([]);
             return;
         }
@@ -104,7 +208,7 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
             setLoadingMemberNames(true);
             try {
                 const response = await axios.get(route('api.corporate-members.search'), {
-                    params: { query: liveFilters.name },
+                    params: { query: filters.name },
                 });
                 setMemberNameOptions(response.data.members || []);
             } catch (error) {
@@ -115,10 +219,10 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
         }, 350);
 
         return () => clearTimeout(timer);
-    }, [liveFilters.name]);
+    }, [filters.name]);
 
     useEffect(() => {
-        if (!liveFilters.membership_no || liveFilters.membership_no.trim().length < 2) {
+        if (!filters.membership_no || filters.membership_no.trim().length < 2) {
             setMembershipNoOptions([]);
             return;
         }
@@ -127,7 +231,7 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
             setLoadingMembershipNos(true);
             try {
                 const response = await axios.get(route('api.corporate-members.search'), {
-                    params: { query: liveFilters.membership_no },
+                    params: { query: filters.membership_no },
                 });
                 setMembershipNoOptions(response.data.members || []);
             } catch (error) {
@@ -138,7 +242,33 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
         }, 350);
 
         return () => clearTimeout(timer);
-    }, [liveFilters.membership_no]);
+    }, [filters.membership_no]);
+
+    const handleAutocompleteSelect = (filterName, selectedValue, valueKey) => {
+        if (typeof selectedValue === 'string') {
+            updateFilters(
+                {
+                    [filterName]: selectedValue,
+                    selected_member_id: '',
+                },
+                { immediate: true },
+            );
+            return;
+        }
+
+        updateFilters(
+            {
+                [filterName]: selectedValue?.[valueKey] || '',
+                selected_member_id: selectedValue?.id || '',
+            },
+            { immediate: true },
+        );
+    };
+
+    const handleApplyFilters = () => {
+        debouncedSubmit.cancel();
+        submitFilters(filtersRef.current);
+    };
 
     const visibleMembers = members.data.filter((member) => !deletedMemberIds.includes(member.id));
 
@@ -182,22 +312,30 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
                     ]}
                 >
                     <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search or change any corporate member filter.">
-                        <FilterToolbar onReset={resetFilters}>
+                        <FilterToolbar
+                            onReset={resetFilters}
+                            actions={
+                                <Button variant="contained" onClick={handleApplyFilters} sx={{ borderRadius: '14px', textTransform: 'none', backgroundColor: '#063455', '&:hover': { backgroundColor: '#052a42' } }}>
+                                    Search
+                                </Button>
+                            }
+                        >
                             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
                                 <Autocomplete
                                     freeSolo
                                     options={membershipNoOptions}
                                     filterOptions={(options) => options}
                                     getOptionLabel={(option) => (typeof option === 'string' ? option : option.membership_no || '')}
-                                    inputValue={liveFilters.membership_no}
+                                    inputValue={filters.membership_no}
                                     onInputChange={(event, newInputValue, reason) => {
                                         if (reason === 'input' || reason === 'clear') {
-                                            updateFilter('membership_no', newInputValue);
+                                            updateFilters({
+                                                membership_no: newInputValue,
+                                                selected_member_id: '',
+                                            });
                                         }
                                     }}
-                                    onChange={(event, newValue) =>
-                                        updateFilter('membership_no', typeof newValue === 'string' ? newValue : newValue?.membership_no || '', { immediate: true })
-                                    }
+                                    onChange={(event, newValue) => handleAutocompleteSelect('membership_no', newValue, 'membership_no')}
                                     renderInput={(params) => (
                                         <TextField
                                             {...params}
@@ -246,15 +384,16 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
                                     options={memberNameOptions}
                                     filterOptions={(options) => options}
                                     getOptionLabel={(option) => (typeof option === 'string' ? option : option.full_name || '')}
-                                    inputValue={liveFilters.name}
+                                    inputValue={filters.name}
                                     onInputChange={(event, newInputValue, reason) => {
                                         if (reason === 'input' || reason === 'clear') {
-                                            updateFilter('name', newInputValue);
+                                            updateFilters({
+                                                name: newInputValue,
+                                                selected_member_id: '',
+                                            });
                                         }
                                     }}
-                                    onChange={(event, newValue) =>
-                                        updateFilter('name', typeof newValue === 'string' ? newValue : newValue?.full_name || '', { immediate: true })
-                                    }
+                                    onChange={(event, newValue) => handleAutocompleteSelect('name', newValue, 'full_name')}
                                     renderInput={(params) => (
                                         <TextField
                                             {...params}
@@ -298,18 +437,30 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
                                         </li>
                                     )}
                                 />
-                                <TextField label="Barcode" value={liveFilters.barcode} onChange={(e) => updateFilter('barcode', e.target.value)} fullWidth />
-                                <TextField label="CNIC" value={liveFilters.cnic} onChange={(e) => updateFilter('cnic', e.target.value)} fullWidth />
-                                <TextField label="Contact" value={liveFilters.contact} onChange={(e) => updateFilter('contact', e.target.value)} fullWidth />
-                                <TextField label="City" value={liveFilters.city} onChange={(e) => updateFilter('city', e.target.value)} fullWidth />
-                                <TextField select label="Status" value={liveFilters.status} onChange={(e) => updateFilter('status', e.target.value, { immediate: true })} fullWidth>
+                                <TextField label="Barcode" value={filters.barcode} onChange={(e) => updateFilter('barcode', e.target.value)} fullWidth />
+                                <TextField label="CNIC" value={filters.cnic} onChange={(e) => updateFilter('cnic', e.target.value)} fullWidth />
+                                <TextField label="Contact" value={filters.contact} onChange={(e) => updateFilter('contact', e.target.value)} fullWidth />
+                                <Autocomplete
+                                    freeSolo
+                                    options={cities}
+                                    filterOptions={(options) => options}
+                                    inputValue={filters.city}
+                                    onInputChange={(event, newInputValue, reason) => {
+                                        if (reason === 'input' || reason === 'clear') {
+                                            updateFilter('city', newInputValue);
+                                        }
+                                    }}
+                                    onChange={(event, newValue) => handleAutocompleteSelect('city', newValue, 'label')}
+                                    renderInput={(params) => <TextField {...params} label="City" fullWidth />}
+                                />
+                                <TextField select label="Status" value={filters.status} onChange={(e) => updateFilter('status', e.target.value, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All statuses</MenuItem>
                                     <MenuItem value="active">Active</MenuItem>
                                     <MenuItem value="suspended">Suspended</MenuItem>
                                     <MenuItem value="cancelled">Cancelled</MenuItem>
                                     <MenuItem value="absent">Absent</MenuItem>
                                 </TextField>
-                                <TextField select label="Member Category" value={liveFilters.member_category} onChange={(e) => updateFilter('member_category', e.target.value, { immediate: true })} fullWidth>
+                                <TextField select label="Member Category" value={filters.member_category} onChange={(e) => updateFilter('member_category', e.target.value, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All categories</MenuItem>
                                     {memberCategories.map((category) => (
                                         <MenuItem key={category.id} value={category.id}>
@@ -317,13 +468,13 @@ const CorporateMembers = ({ members, memberCategories = [] }) => {
                                         </MenuItem>
                                     ))}
                                 </TextField>
-                                <TextField select label="Card Status" value={liveFilters.card_status} onChange={(e) => updateFilter('card_status', e.target.value, { immediate: true })} fullWidth>
+                                <TextField select label="Card Status" value={filters.card_status} onChange={(e) => updateFilter('card_status', e.target.value, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All card statuses</MenuItem>
                                     <MenuItem value="Active">Active</MenuItem>
                                     <MenuItem value="Expired">Expired</MenuItem>
                                     <MenuItem value="Suspend">Suspend</MenuItem>
                                 </TextField>
-                                <TextField select label="Duration" value={liveFilters.duration} onChange={(e) => updateFilter('duration', e.target.value, { immediate: true })} fullWidth>
+                                <TextField select label="Duration" value={filters.duration} onChange={(e) => updateFilter('duration', e.target.value, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All durations</MenuItem>
                                     <MenuItem value="lt1y">Less than 1 year</MenuItem>
                                     <MenuItem value="1to3y">1 to 3 years</MenuItem>
