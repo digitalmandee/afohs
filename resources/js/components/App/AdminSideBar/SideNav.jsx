@@ -629,19 +629,12 @@ export default function SideNav({ open, setOpen }) {
     const permissions = Array.isArray(auth.permissions) ? auth.permissions : [];
     const menuItems = React.useMemo(() => topLevelMenu(permissions), [permissions]);
     const defaultModule = React.useMemo(() => findFirstActiveModule(menuItems, url), [menuItems, url]);
-    const [activeModuleKey, setActiveModuleKey] = useRemember(defaultModule?.text || 'Dashboard', 'sidebarActiveModule');
-    const [openGroups, setOpenGroups] = useRemember({}, 'sidebarPanelGroups');
+    const [expandedModuleKey, setExpandedModuleKey] = useRemember(defaultModule?.text || '', 'sidebarExpandedModuleV2');
+    const [openGroups, setOpenGroups] = useRemember({}, 'sidebarPanelGroupsV2');
     const groupedMenuItems = React.useMemo(() => groupMenuItems(menuItems), [menuItems]);
 
-    React.useEffect(() => {
-        const currentActive = findFirstActiveModule(menuItems, url);
-        if (currentActive?.text) {
-            setActiveModuleKey(currentActive.text);
-        }
-    }, [menuItems, setActiveModuleKey, url]);
-
-    const activeModule = menuItems.find((item) => item.text === activeModuleKey) || defaultModule;
-    const panelSections = buildPanelSections(activeModule);
+    const expandedModule = menuItems.find((item) => item.text === expandedModuleKey) || null;
+    const panelSections = buildPanelSections(expandedModule);
 
     const handlePrimaryAction = (item) => {
         if (item.text === 'Logout') {
@@ -650,7 +643,7 @@ export default function SideNav({ open, setOpen }) {
         }
 
         if (item.children?.length) {
-            setActiveModuleKey(item.text);
+            setExpandedModuleKey((prev) => (prev === item.text ? '' : item.text));
             if (!open) {
                 setOpen(true);
             }
@@ -797,20 +790,20 @@ export default function SideNav({ open, setOpen }) {
                                     <List disablePadding sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
                                         {group.items.map((item) => {
                                             const itemActive = isItemActive(item, url);
-                                            const expanded = open && activeModule?.text === item.text && item.children?.length;
+                                            const expanded = open && expandedModule?.text === item.text && item.children?.length;
 
                                             return (
                                                 <Box key={item.text}>
                                                     <RailItem
                                                         item={item}
                                                         open={open}
-                                                        active={itemActive || activeModule?.text === item.text}
+                                                        active={itemActive || expandedModule?.text === item.text}
                                                         expanded={expanded}
                                                         onClick={() => {
                                                             if (!open) {
                                                                 setOpen(true);
                                                                 if (item.children?.length) {
-                                                                    setActiveModuleKey(item.text);
+                                                                    setExpandedModuleKey(item.text);
                                                                     return;
                                                                 }
                                                             }
@@ -825,7 +818,7 @@ export default function SideNav({ open, setOpen }) {
                                                                     key={section.key}
                                                                     section={section}
                                                                     activePath={url}
-                                                                    rememberedKey={`${activeModule.text}:${section.key}`}
+                                                                    rememberedKey={`${expandedModule.text}:${section.key}`}
                                                                     openGroups={openGroups}
                                                                     setOpenGroups={setOpenGroups}
                                                                 />
@@ -856,7 +849,7 @@ export default function SideNav({ open, setOpen }) {
                                     onClick={() => {
                                         if (!open && item.children?.length) {
                                             setOpen(true);
-                                            setActiveModuleKey(item.text);
+                                            setExpandedModuleKey(item.text);
                                             return;
                                         }
                                         handlePrimaryAction(item);

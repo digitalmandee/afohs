@@ -18,25 +18,115 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import Pagination from '@/components/Pagination';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
-import useReactiveFilters from '@/components/App/ui/useReactiveFilters';
 
 export default function Index({ entries, filters, summary, templatesEnabled, templates = [], recurringProfiles = [], approvalPolicy }) {
   const data = entries?.data || [];
-  const { filters: liveFilters, updateFilter, resetFilters } = useReactiveFilters({
-    routeName: 'accounting.journals.index',
-    initialFilters: {
+  const [localFilters, setLocalFilters] = React.useState({
+    search: filters?.search || '',
+    status: filters?.status || '',
+    from: filters?.from || '',
+    to: filters?.to || '',
+    per_page: filters?.per_page || entries?.per_page || 25,
+    page: 1,
+  });
+  const filtersRef = React.useRef(localFilters);
+
+  const submitFilters = React.useCallback((nextFilters) => {
+    const payload = {};
+
+    if (nextFilters.search?.trim()) {
+      payload.search = nextFilters.search.trim();
+    }
+    if (nextFilters.status) {
+      payload.status = nextFilters.status;
+    }
+    if (nextFilters.from) {
+      payload.from = nextFilters.from;
+    }
+    if (nextFilters.to) {
+      payload.to = nextFilters.to;
+    }
+    payload.per_page = nextFilters.per_page || 25;
+    if (Number(nextFilters.page) > 1) {
+      payload.page = Number(nextFilters.page);
+    }
+
+    router.get(route('accounting.journals.index'), payload, {
+      preserveState: false,
+      preserveScroll: true,
+      replace: true,
+    });
+  }, []);
+
+  const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+  React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+  React.useEffect(() => {
+    const next = {
       search: filters?.search || '',
       status: filters?.status || '',
       from: filters?.from || '',
       to: filters?.to || '',
       per_page: filters?.per_page || entries?.per_page || 25,
+      page: 1,
+    };
+    filtersRef.current = next;
+    setLocalFilters(next);
+  }, [entries?.per_page, filters?.from, filters?.per_page, filters?.search, filters?.status, filters?.to]);
+
+  const updateFilters = React.useCallback(
+    (partial, { immediate = false } = {}) => {
+      const nextFilters = {
+        ...filtersRef.current,
+        ...partial,
+      };
+
+      if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+        nextFilters.page = 1;
+      }
+
+      filtersRef.current = nextFilters;
+      setLocalFilters(nextFilters);
+
+      if (immediate) {
+        debouncedSubmit.cancel();
+        submitFilters(nextFilters);
+        return;
+      }
+
+      debouncedSubmit(nextFilters);
     },
-  });
+    [debouncedSubmit, submitFilters],
+  );
+
+  const updateFilter = React.useCallback(
+    (name, value, options = {}) => {
+      updateFilters({ [name]: value }, options);
+    },
+    [updateFilters],
+  );
+
+  const resetFilters = React.useCallback(() => {
+    const next = {
+      search: '',
+      status: '',
+      from: '',
+      to: '',
+      per_page: localFilters.per_page || 25,
+      page: 1,
+    };
+    debouncedSubmit.cancel();
+    filtersRef.current = next;
+    setLocalFilters(next);
+    submitFilters(next);
+  }, [debouncedSubmit, localFilters.per_page, submitFilters]);
   const [openApply, setOpenApply] = React.useState(false);
   const [openRecurring, setOpenRecurring] = React.useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState('');
@@ -268,7 +358,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Search entry or description"
-                  value={liveFilters.search}
+                  value={localFilters.search}
                   onChange={(e) => updateFilter('search', e.target.value)}
                   fullWidth
                 />
@@ -277,7 +367,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                 <TextField
                   select
                   label="Status"
-                  value={liveFilters.status}
+                  value={localFilters.status}
                   onChange={(e) => updateFilter('status', e.target.value, { immediate: true })}
                   fullWidth
                 >
@@ -291,7 +381,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                 <TextField
                   label="From"
                   type="date"
-                  value={liveFilters.from}
+                  value={localFilters.from}
                   onChange={(e) => updateFilter('from', e.target.value, { immediate: true })}
                   InputLabelProps={{ shrink: true }}
                   fullWidth
@@ -301,7 +391,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                 <TextField
                   label="To"
                   type="date"
-                  value={liveFilters.to}
+                  value={localFilters.to}
                   onChange={(e) => updateFilter('to', e.target.value, { immediate: true })}
                   InputLabelProps={{ shrink: true }}
                   fullWidth

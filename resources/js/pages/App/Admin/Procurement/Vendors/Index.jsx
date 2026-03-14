@@ -19,12 +19,12 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
+import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import Pagination from '@/components/Pagination';
-import useReactiveFilters from '@/components/App/ui/useReactiveFilters';
 
 const tableHeadSx = {
     '& .MuiTableCell-head': {
@@ -45,14 +45,94 @@ const tableHeadSx = {
 
 export default function Index({ vendors, filters, summary = {} }) {
     const [openModal, setOpenModal] = React.useState(false);
-    const { filters: liveFilters, updateFilter, resetFilters } = useReactiveFilters({
-        routeName: 'procurement.vendors.index',
-        initialFilters: {
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        status: filters?.status || '',
+        per_page: filters?.per_page || vendors?.per_page || 25,
+        page: 1,
+    });
+    const filtersRef = React.useRef(localFilters);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
+
+        if (nextFilters.search?.trim()) {
+            payload.search = nextFilters.search.trim();
+        }
+        if (nextFilters.status) {
+            payload.status = nextFilters.status;
+        }
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) {
+            payload.page = Number(nextFilters.page);
+        }
+
+        router.get(route('procurement.vendors.index'), payload, {
+            preserveState: false,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
             search: filters?.search || '',
             status: filters?.status || '',
             per_page: filters?.per_page || vendors?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters?.per_page, filters?.search, filters?.status, vendors?.per_page]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+            setLocalFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
         },
-    });
+        [debouncedSubmit, submitFilters],
+    );
+
+    const updateFilter = React.useCallback(
+        (name, value, options = {}) => {
+            updateFilters({ [name]: value }, options);
+        },
+        [updateFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const next = {
+            search: '',
+            status: '',
+            per_page: localFilters.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setLocalFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, localFilters.per_page, submitFilters]);
     const { data, setData, post, processing, errors, reset } = useForm({
         code: '',
         name: '',
@@ -110,19 +190,19 @@ export default function Index({ vendors, filters, summary = {} }) {
                             <TextField
                                 label="Search vendor"
                                 placeholder="Search by code, name, or email"
-                                value={liveFilters.search}
+                                value={localFilters.search}
                                 onChange={(e) => updateFilter('search', e.target.value)}
                                 fullWidth
                             />
                         </Grid>
                         <Grid item xs={12} md={4}>
-                            <TextField
-                                select
-                                label="Status"
-                                value={liveFilters.status}
-                                onChange={(e) => updateFilter('status', e.target.value, { immediate: true })}
-                                fullWidth
-                            >
+                                <TextField
+                                    select
+                                    label="Status"
+                                    value={localFilters.status}
+                                    onChange={(e) => updateFilter('status', e.target.value, { immediate: true })}
+                                    fullWidth
+                                >
                                 <MenuItem value="">All</MenuItem>
                                 <MenuItem value="active">Active</MenuItem>
                                 <MenuItem value="inactive">Inactive</MenuItem>

@@ -18,6 +18,11 @@ class VendorBillController extends Controller
 {
     public function index(Request $request)
     {
+        $perPage = (int) $request->integer('per_page', 25);
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
+
         $query = VendorBill::with('vendor');
 
         if ($request->filled('search')) {
@@ -49,7 +54,7 @@ class VendorBillController extends Controller
             'posted' => (int) ((clone $query)->where('status', 'posted')->count()),
         ];
 
-        $bills = $query->orderByDesc('bill_date')->paginate(25)->withQueryString();
+        $bills = $query->orderByDesc('bill_date')->paginate($perPage)->withQueryString();
         $latestActions = ApprovalAction::query()
             ->where('document_type', 'vendor_bill')
             ->whereIn('document_id', $bills->getCollection()->pluck('id'))
@@ -79,7 +84,7 @@ class VendorBillController extends Controller
             'bills' => $bills,
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'vendor_id', 'from', 'to']),
+            'filters' => $request->only(['search', 'status', 'vendor_id', 'from', 'to', 'per_page']),
         ]);
     }
 

@@ -1,19 +1,53 @@
 import React from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
+import debounce from 'lodash.debounce';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import Pagination from '@/components/Pagination';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
-import useReactiveFilters from '@/components/App/ui/useReactiveFilters';
 
 export default function Index({ orders, filters, summary = {}, vendors = [], warehouses = [] }) {
     const data = orders?.data || [];
-    const { filters: liveFilters, updateFilter, resetFilters } = useReactiveFilters({
-        routeName: 'procurement.purchase-orders.index',
-        initialFilters: {
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        status: filters?.status || '',
+        vendor_id: filters?.vendor_id || '',
+        warehouse_id: filters?.warehouse_id || '',
+        from: filters?.from || '',
+        to: filters?.to || '',
+        per_page: filters?.per_page || orders?.per_page || 25,
+        page: 1,
+    });
+    const filtersRef = React.useRef(localFilters);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
+
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.status) payload.status = nextFilters.status;
+        if (nextFilters.vendor_id) payload.vendor_id = nextFilters.vendor_id;
+        if (nextFilters.warehouse_id) payload.warehouse_id = nextFilters.warehouse_id;
+        if (nextFilters.from) payload.from = nextFilters.from;
+        if (nextFilters.to) payload.to = nextFilters.to;
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
+
+        router.get(route('procurement.purchase-orders.index'), payload, {
+            preserveState: false,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
             search: filters?.search || '',
             status: filters?.status || '',
             vendor_id: filters?.vendor_id || '',
@@ -21,8 +55,55 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             from: filters?.from || '',
             to: filters?.to || '',
             per_page: filters?.per_page || orders?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters?.from, filters?.per_page, filters?.search, filters?.status, filters?.to, filters?.vendor_id, filters?.warehouse_id, orders?.per_page]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+            setLocalFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
         },
-    });
+        [debouncedSubmit, submitFilters],
+    );
+
+    const updateFilter = React.useCallback((name, value, options = {}) => updateFilters({ [name]: value }, options), [updateFilters]);
+
+    const resetFilters = React.useCallback(() => {
+        const next = {
+            search: '',
+            status: '',
+            vendor_id: '',
+            warehouse_id: '',
+            from: '',
+            to: '',
+            per_page: localFilters.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setLocalFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, localFilters.per_page, submitFilters]);
     const [historyOpen, setHistoryOpen] = React.useState(false);
     const [historyRows, setHistoryRows] = React.useState([]);
     const [historyTitle, setHistoryTitle] = React.useState('');
@@ -75,7 +156,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             <Grid item xs={12} md={3}>
                                 <TextField
                                     label="Search PO or vendor"
-                                    value={liveFilters.search}
+                                    value={localFilters.search}
                                     onChange={(e) => updateFilter('search', e.target.value)}
                                     fullWidth
                                 />
@@ -84,7 +165,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                 <TextField
                                     select
                                     label="Status"
-                                    value={liveFilters.status}
+                                    value={localFilters.status}
                                     onChange={(e) => updateFilter('status', e.target.value, { immediate: true })}
                                     fullWidth
                                 >
@@ -100,7 +181,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                 <TextField
                                     select
                                     label="Vendor"
-                                    value={liveFilters.vendor_id}
+                                    value={localFilters.vendor_id}
                                     onChange={(e) => updateFilter('vendor_id', e.target.value, { immediate: true })}
                                     fullWidth
                                 >
@@ -114,7 +195,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                 <TextField
                                     select
                                     label="Warehouse"
-                                    value={liveFilters.warehouse_id}
+                                    value={localFilters.warehouse_id}
                                     onChange={(e) => updateFilter('warehouse_id', e.target.value, { immediate: true })}
                                     fullWidth
                                 >
@@ -128,7 +209,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                 <TextField
                                     label="From"
                                     type="date"
-                                    value={liveFilters.from}
+                                    value={localFilters.from}
                                     onChange={(e) => updateFilter('from', e.target.value, { immediate: true })}
                                     InputLabelProps={{ shrink: true }}
                                     fullWidth
@@ -138,7 +219,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                 <TextField
                                     label="To"
                                     type="date"
-                                    value={liveFilters.to}
+                                    value={localFilters.to}
                                     onChange={(e) => updateFilter('to', e.target.value, { immediate: true })}
                                     InputLabelProps={{ shrink: true }}
                                     fullWidth

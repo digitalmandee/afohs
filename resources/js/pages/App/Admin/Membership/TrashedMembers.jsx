@@ -1,25 +1,124 @@
-import React, { useState } from 'react';
-import { Typography, Button, TextField, Table, TableContainer, TableHead, TableRow, TableCell, TableBody, Paper, IconButton, Avatar, Box, InputAdornment } from '@mui/material';
-import { Search, RestoreFromTrash, ArrowBack } from '@mui/icons-material';
-import { router, usePage } from '@inertiajs/react';
+import React from 'react';
+import { router } from '@inertiajs/react';
+import {
+    Avatar,
+    Box,
+    Button,
+    Grid,
+    InputAdornment,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    TextField,
+    Typography,
+} from '@mui/material';
+import { ArrowBack, RestoreFromTrash, Search } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
+import debounce from 'lodash.debounce';
 import dayjs from 'dayjs';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import Pagination from '@/components/Pagination';
 
-const TrashedMembers = ({ members, filters: initialFilters }) => {
+const tableHeadSx = {
+    '& .MuiTableCell-head': {
+        bgcolor: '#0a3d62',
+        color: '#f8fafc',
+        borderBottom: 'none',
+        fontSize: '0.74rem',
+        fontWeight: 700,
+        py: 1.35,
+    },
+    '& .MuiTableCell-head:first-of-type': {
+        borderTopLeftRadius: 16,
+    },
+    '& .MuiTableCell-head:last-of-type': {
+        borderTopRightRadius: 16,
+    },
+};
+
+export default function TrashedMembers({ members, filters = {} }) {
     const { enqueueSnackbar } = useSnackbar();
-    const [search, setSearch] = useState(initialFilters?.search || '');
-    const [processingId, setProcessingId] = useState(null);
+    const [processingId, setProcessingId] = React.useState(null);
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters.search || '',
+        per_page: filters.per_page || members?.per_page || 25,
+        page: 1,
+    });
+    const filtersRef = React.useRef(localFilters);
 
-    const handleSearch = () => {
-        router.get(
-            route('membership.trashed'),
-            { search },
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
+
+        if (nextFilters.search?.trim()) {
+            payload.search = nextFilters.search.trim();
+        }
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) {
+            payload.page = Number(nextFilters.page);
+        }
+
+        router.get(route('membership.trashed'), payload, {
+            preserveScroll: true,
+            preserveState: false,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
+            search: filters.search || '',
+            per_page: filters.per_page || members?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters.per_page, filters.search, members?.per_page]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+            setLocalFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const next = {
+            search: '',
+            per_page: localFilters.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setLocalFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, localFilters.per_page, submitFilters]);
 
     const handleRestore = (id) => {
         setProcessingId(id);
@@ -27,6 +126,7 @@ const TrashedMembers = ({ members, filters: initialFilters }) => {
             route('membership.restore', id),
             {},
             {
+                preserveScroll: true,
                 onSuccess: () => {
                     enqueueSnackbar('Member restored successfully', { variant: 'success' });
                     setProcessingId(null);
@@ -39,97 +139,103 @@ const TrashedMembers = ({ members, filters: initialFilters }) => {
         );
     };
 
-    return (
-        <div className="container-fluid px-4 pt-4" style={{ backgroundColor: '#f5f5f5', minHeight: '100vh', overflowX: 'hidden' }}>
-            <div className="mx-3">
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <IconButton onClick={() => router.get(route('membership.members'))}>
-                            <ArrowBack sx={{ color: '#063455' }} />
-                        </IconButton>
-                        <Typography sx={{ fontWeight: 700, fontSize: '30px', color: '#063455' }}>Deleted Members</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                        <TextField
-                            placeholder="Search..."
-                            size="small"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <Search />
-                                    </InputAdornment>
-                                ),
-                            }}
-                            sx={{
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: '16px',
-                                },
-                            }}
-                        />
-                        <Button variant="contained" 
-                        startIcon={<Search/>}
-                        onClick={handleSearch} sx={{ backgroundColor: '#063455', borderRadius: '16px' }}>
-                            Search
-                        </Button>
-                    </Box>
-                </Box>
+    const rows = members?.data || [];
 
-                <TableContainer component={Paper} style={{ boxShadow: 'none', overflowX: 'auto', borderRadius: '16px' }}>
-                    <Table>
+    return (
+        <AppPage
+            eyebrow="Membership"
+            title="Deleted Members"
+            subtitle="Review soft-deleted members and restore records with consistent filter and table controls."
+            actions={[
+                <Button key="back" variant="outlined" startIcon={<ArrowBack />} onClick={() => router.get(route('membership.members'))}>
+                    Back to Members
+                </Button>,
+            ]}
+        >
+            <SurfaceCard title="Live Filters" subtitle="Search updates automatically while you type.">
+                <FilterToolbar onReset={resetFilters}>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={8}>
+                            <TextField
+                                label="Search deleted member"
+                                placeholder="Membership no, name, CNIC, or email"
+                                value={localFilters.search}
+                                onChange={(e) => updateFilters({ search: e.target.value })}
+                                fullWidth
+                                InputProps={{
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <Search fontSize="small" />
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                        </Grid>
+                    </Grid>
+                </FilterToolbar>
+            </SurfaceCard>
+
+            <SurfaceCard title="Deleted Register" subtitle="Standardized table with compact rows and consistent pagination behavior.">
+                <TableContainer className="premium-scroll">
+                    <Table size="small">
                         <TableHead>
-                            <TableRow style={{ backgroundColor: '#063455' }}>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Membership No</TableCell>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Member</TableCell>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>CNIC</TableCell>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Email</TableCell>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Deleted At</TableCell>
-                                <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Actions</TableCell>
+                            <TableRow sx={tableHeadSx}>
+                                <TableCell>Membership No</TableCell>
+                                <TableCell>Member</TableCell>
+                                <TableCell>CNIC</TableCell>
+                                <TableCell>Email</TableCell>
+                                <TableCell>Deleted At</TableCell>
+                                <TableCell align="right">Action</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {members.data.length > 0 ? (
-                                members.data.map((member) => (
-                                    <TableRow key={member.id} style={{ borderBottom: '1px solid #eee' }}>
-                                        <TableCell sx={{ color: '#7F7F7F' }}>{member.membership_no || 'N/A'}</TableCell>
-                                        <TableCell>
-                                            <div className="d-flex align-items-center">
-                                                <Avatar src={member.profile_photo?.file_path || '/placeholder.svg'} style={{ marginRight: '10px' }} />
-                                                <Typography sx={{ color: '#7F7F7F' }}>{member.full_name}</Typography>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell sx={{ color: '#7F7F7F' }}>{member.cnic_no || 'N/A'}</TableCell>
-                                        <TableCell sx={{ color: '#7F7F7F' }}>{member.personal_email || 'N/A'}</TableCell>
-                                        <TableCell sx={{ color: '#7F7F7F' }}>{dayjs(member.deleted_at).format('DD-MM-YYYY HH:mm')}</TableCell>
-                                        <TableCell>
-                                            <Button 
-                                            variant="outlined" 
-                                            color="primary" 
-                                            startIcon={<RestoreFromTrash />} 
-                                            onClick={() => 
-                                            handleRestore(member.id)} 
-                                            disabled={processingId === member.id}
-                                            sx={{textTransform:'none'}}>
-                                                {processingId === member.id ? 'Restoring...' : 'Restore'}
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
+                            {rows.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                                    <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
                                         No deleted members found.
                                     </TableCell>
                                 </TableRow>
                             )}
+
+                            {rows.map((member) => (
+                                <TableRow
+                                    key={member.id}
+                                    hover
+                                    sx={{
+                                        '& .MuiTableCell-body': {
+                                            py: 1.5,
+                                            borderBottomColor: '#edf2f7',
+                                        },
+                                    }}
+                                >
+                                    <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{member.membership_no || 'N/A'}</TableCell>
+                                    <TableCell>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                                            <Avatar src={member.profile_photo?.file_path || '/placeholder.svg'} alt={member.full_name} />
+                                            <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>{member.full_name || 'N/A'}</Typography>
+                                        </Box>
+                                    </TableCell>
+                                    <TableCell>{member.cnic_no || 'N/A'}</TableCell>
+                                    <TableCell>{member.personal_email || 'N/A'}</TableCell>
+                                    <TableCell>{member.deleted_at ? dayjs(member.deleted_at).format('DD-MM-YYYY HH:mm') : 'N/A'}</TableCell>
+                                    <TableCell align="right">
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<RestoreFromTrash />}
+                                            onClick={() => handleRestore(member.id)}
+                                            disabled={processingId === member.id}
+                                        >
+                                            {processingId === member.id ? 'Restoring...' : 'Restore'}
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
                         </TableBody>
                     </Table>
                 </TableContainer>
-            </div>
-        </div>
+                <Pagination data={members} />
+            </SurfaceCard>
+        </AppPage>
     );
-};
-
-export default TrashedMembers;
+}

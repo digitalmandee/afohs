@@ -18,6 +18,11 @@ class VendorPaymentController extends Controller
 {
     public function index(Request $request)
     {
+        $perPage = (int) $request->integer('per_page', 25);
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
+
         $query = VendorPayment::with('vendor', 'paymentAccount');
 
         if ($request->filled('search')) {
@@ -57,7 +62,7 @@ class VendorPaymentController extends Controller
             'void' => (int) ((clone $query)->where('status', 'void')->count()),
         ];
 
-        $payments = $query->orderByDesc('payment_date')->paginate(25)->withQueryString();
+        $payments = $query->orderByDesc('payment_date')->paginate($perPage)->withQueryString();
         $latestActions = ApprovalAction::query()
             ->where('document_type', 'vendor_payment')
             ->whereIn('document_id', $payments->getCollection()->pluck('id'))
@@ -88,7 +93,7 @@ class VendorPaymentController extends Controller
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'paymentAccounts' => PaymentAccount::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'method', 'vendor_id', 'payment_account_id', 'from', 'to']),
+            'filters' => $request->only(['search', 'status', 'method', 'vendor_id', 'payment_account_id', 'from', 'to', 'per_page']),
         ]);
     }
 
