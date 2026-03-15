@@ -7,6 +7,7 @@ use App\Models\ApprovalAction;
 use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class PurchaseOrderController extends Controller
             $perPage = 25;
         }
 
-        $query = PurchaseOrder::with('vendor', 'warehouse');
+        $query = PurchaseOrder::with('vendor', 'warehouse', 'tenant');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -44,6 +45,10 @@ class PurchaseOrderController extends Controller
 
         if ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('tenant_id')) {
+            $query->where('tenant_id', $request->tenant_id);
         }
 
         if ($request->filled('from') && $request->filled('to')) {
@@ -96,7 +101,8 @@ class PurchaseOrderController extends Controller
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'vendor_id', 'warehouse_id', 'from', 'to', 'per_page']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'status', 'vendor_id', 'warehouse_id', 'tenant_id', 'from', 'to', 'per_page']),
         ]);
     }
 
@@ -104,7 +110,7 @@ class PurchaseOrderController extends Controller
     {
         return Inertia::render('App/Admin/Procurement/PurchaseOrders/Create', [
             'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
-            'warehouses' => Warehouse::orderBy('name')->get(['id', 'name']),
+            'warehouses' => Warehouse::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id']),
             'products' => Product::orderBy('name')->get(['id', 'name', 'price']),
         ]);
     }
@@ -124,9 +130,12 @@ class PurchaseOrderController extends Controller
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
 
+        $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
+
         $order = PurchaseOrder::create([
             'po_no' => 'PO-' . now()->format('YmdHis'),
             'vendor_id' => $data['vendor_id'],
+            'tenant_id' => $warehouse->tenant_id,
             'warehouse_id' => $data['warehouse_id'],
             'order_date' => $data['order_date'],
             'expected_date' => $data['expected_date'] ?? null,

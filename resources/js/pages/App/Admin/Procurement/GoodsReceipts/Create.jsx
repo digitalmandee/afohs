@@ -1,6 +1,8 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import { Button, Card, CardContent, Chip, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
 export default function Create({ purchaseOrder, purchaseOrders }) {
   const selectedOrder = purchaseOrder || null;
@@ -16,6 +18,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
 
   const { data, setData, post, processing, errors } = useForm({
     purchase_order_id: purchaseOrder?.id || '',
+    warehouse_location_id: '',
     received_date: new Date().toISOString().slice(0, 10),
     remarks: '',
     items: defaultItems,
@@ -26,6 +29,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     () => orders.find((order) => String(order.id) === String(data.purchase_order_id)),
     [orders, data.purchase_order_id]
   );
+  const currentLocations = currentOrder?.warehouse?.locations || [];
 
   const handleOrderChange = (value) => {
     const nextOrder = orders.find((order) => String(order.id) === String(value));
@@ -40,6 +44,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     }));
 
     setData('purchase_order_id', value);
+    setData('warehouse_location_id', nextOrder?.warehouse?.locations?.find((location) => location.is_primary)?.id || '');
     setData('items', nextItems);
   };
 
@@ -60,10 +65,8 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>Create Goods Receipt</Typography>
-      <Card>
-        <CardContent>
+    <AppPage eyebrow="Procurement" title="Create Goods Receipt" subtitle="Receive stock into a restaurant warehouse and internal location while preserving procurement and accounting linkage.">
+      <SurfaceCard title="Receipt Details" subtitle="Select the purchase order, warehouse location, and actual received quantities.">
           <form onSubmit={submit}>
             <Grid container spacing={2}>
               <Grid item xs={12} md={7}>
@@ -95,6 +98,24 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
                   fullWidth
                 />
               </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  select
+                  label="Warehouse Location"
+                  value={data.warehouse_location_id}
+                  onChange={(e) => setData('warehouse_location_id', e.target.value)}
+                  error={!!errors.warehouse_location_id}
+                  helperText={errors.warehouse_location_id || 'Choose the internal location that will receive the stock.'}
+                  fullWidth
+                >
+                  <MenuItem value="">No specific location</MenuItem>
+                  {currentLocations.map((location) => (
+                    <MenuItem key={location.id} value={location.id}>
+                      {location.code} - {location.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
               <Grid item xs={12} md={2}>
                 <TextField
                   label="Status"
@@ -119,8 +140,22 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
               <Card sx={{ mt: 2, border: '1px solid', borderColor: 'divider' }}>
                 <CardContent sx={{ py: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Vendor: {currentOrder.vendor?.name || '-'} | Warehouse: {currentOrder.warehouse?.name || '-'} | PO Date: {currentOrder.order_date || '-'}
+                    Vendor: {currentOrder.vendor?.name || '-'} | Warehouse: {currentOrder.warehouse?.name || '-'} | Restaurant: {currentOrder.tenant?.name || currentOrder.warehouse?.tenant?.name || '-'} | PO Date: {currentOrder.order_date || '-'}
                   </Typography>
+                  {currentLocations.length > 0 && (
+                    <Grid container spacing={1} sx={{ mt: 1 }}>
+                      {currentLocations.map((location) => (
+                        <Grid item key={location.id}>
+                          <Chip
+                            size="small"
+                            label={`${location.code} · ${location.name}`}
+                            color={location.is_primary ? 'primary' : 'default'}
+                            variant={location.is_primary ? 'filled' : 'outlined'}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -199,8 +234,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
               </Button>
             </Box>
           </form>
-        </CardContent>
-      </Card>
-    </Box>
+      </SurfaceCard>
+    </AppPage>
   );
 }

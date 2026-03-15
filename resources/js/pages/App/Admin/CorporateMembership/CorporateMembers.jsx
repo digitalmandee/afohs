@@ -20,6 +20,7 @@ import CorporateMembershipDashboardFilter from './CorporateMembershipDashboardFi
 import InvoiceSlip from '../Membership/Invoice';
 import { Description as ReceiptIcon } from '@mui/icons-material';
 import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import Pagination from '@/components/Pagination';
@@ -271,6 +272,19 @@ const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
     };
 
     const visibleMembers = members.data.filter((member) => !deletedMemberIds.includes(member.id));
+    const corporateColumns = [
+        { key: 'membership_no', label: 'Membership No', minWidth: 150 },
+        { key: 'member', label: 'Member', minWidth: 260 },
+        { key: 'category', label: 'Category', minWidth: 180 },
+        { key: 'type', label: 'Type', minWidth: 120 },
+        { key: 'cnic', label: 'CNIC', minWidth: 170 },
+        { key: 'contact', label: 'Contact', minWidth: 150 },
+        { key: 'membership_date', label: 'Membership Date', minWidth: 150 },
+        { key: 'card_status', label: 'Card Status', minWidth: 130 },
+        { key: 'status', label: 'Status', minWidth: 170 },
+        { key: 'card', label: 'Card', minWidth: 100, align: 'center' },
+        { key: 'action', label: 'Action', minWidth: 160, align: 'center' },
+    ];
 
     return (
         <>
@@ -486,244 +500,172 @@ const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
                     </SurfaceCard>
 
                     <SurfaceCard title="Corporate Member Register" subtitle="Standardized corporate membership table with current status controls and adjustable page size.">
-                        <TableContainer component={Paper} className="premium-scroll" style={{ boxShadow: 'none', overflowX: 'auto', borderRadius: '12px' }}>
-                            <Table>
-                                <TableHead>
-                                    <TableRow style={{ backgroundColor: '#063455' }}>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Membership No</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Member</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Category</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Type</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>CNIC</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Contact</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Membership Date</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Card Status</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Status</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Card</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontWeight: 600 }}>Action</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {visibleMembers.map((user) => (
-                                        <TableRow key={user.id} style={{ borderBottom: '1px solid #eee' }}>
-                                            <TableCell
-                                                onClick={() => router.visit(route('corporate-membership.profile', user.id))}
-                                                sx={{
-                                                    color: '#000',
-                                                    fontWeight: 600,
-                                                    fontSize: '14px',
-                                                    cursor: 'pointer',
-                                                    '&:hover': { color: '#7f7f7f', fontWeight: 600 },
-                                                }}
-                                            >
-                                                {user.membership_no || 'N/A'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="d-flex align-items-center">
-                                                    <Avatar src={user.profile_photo?.file_path || '/placeholder.svg?height=40&width=40'} alt={user.full_name} style={{ marginRight: '10px' }} />
-                                                    <div>
-                                                        <Typography sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '120px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                            <Tooltip title={user.full_name} arrow>
-                                                                <span>{user.full_name}</span>
-                                                            </Tooltip>
-                                                        </Typography>
-                                                        <Typography sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '120px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                            <Tooltip title={user.personal_email} arrow>
-                                                                <span>{user.personal_email}</span>
-                                                            </Tooltip>
-                                                        </Typography>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{user.member_category?.description || 'N/A'}</TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>
-                                                <Chip label="Corporate" size="small" sx={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 600, fontSize: '11px' }} />
-                                            </TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{user.cnic_no || 'N/A'}</TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '100px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                                <Tooltip title={user.mobile_number_a || 'N/A'} arrow>
-                                                    <span>{user.mobile_number_a || 'N/A'}</span>
-                                                </Tooltip>
-                                            </TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{user.membership_date ? dayjs(user.membership_date).format('DD-MM-YYYY') : 'N/A'}</TableCell>
-                                            <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{user.card_status || 'N/A'}</TableCell>
-                                            <TableCell>
-                                                <PopupState variant="popover" popupId={`status-menu-${user.id}`}>
-                                                    {(popupState) => (
-                                                        <>
-                                                            <div
-                                                                {...bindTrigger(popupState)}
-                                                                style={{
-                                                                    cursor: 'pointer',
-                                                                    display: 'inline-block',
-                                                                }}
-                                                            >
-                                                                <Chip
-                                                                    label={user.status || 'N/A'}
-                                                                    size="small"
-                                                                    sx={{
-                                                                        backgroundColor: 'transparent',
-                                                                        color: user.status === 'active' ? '#2E7D32' : user.status === 'suspended' ? '#e65100' : user.status === 'absent' ? '#fbc02d' : '#D32F2F',
-                                                                        fontWeight: 'medium',
-                                                                        textTransform: 'capitalize',
-                                                                        whiteSpace: 'nowrap',
-                                                                    }}
-                                                                />
-                                                                <MdModeEdit size={18} style={{ marginLeft: '5px', color: '#2E7D32' }} />
-                                                            </div>
-                                                            <Menu {...bindMenu(popupState)}>
-                                                                <MenuItem
-                                                                    onClick={() => {
-                                                                        popupState.close();
-                                                                        setSelectedMember(user);
-                                                                        setSuspendOpen(true);
-                                                                    }}
-                                                                >
-                                                                    Suspend
-                                                                </MenuItem>
-                                                                <MenuItem
-                                                                    onClick={() => {
-                                                                        popupState.close();
-                                                                        setSelectedMember(user);
-                                                                        setPauseOpen(true);
-                                                                    }}
-                                                                >
-                                                                    Absent
-                                                                </MenuItem>
-                                                                <MenuItem
-                                                                    onClick={() => {
-                                                                        popupState.close();
-                                                                        setSelectedMember(user);
-                                                                        setCancelOpen(true);
-                                                                    }}
-                                                                >
-                                                                    Cancel Membership
-                                                                </MenuItem>
-                                                                <MenuItem
-                                                                    onClick={() => {
-                                                                        popupState.close();
-                                                                        setSelectedMember(user);
-                                                                        setActivateOpen(true);
-                                                                    }}
-                                                                >
-                                                                    Activate
-                                                                </MenuItem>
-                                                            </Menu>
-                                                        </>
-                                                    )}
-                                                </PopupState>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    variant="outlined"
-                                                    size="small"
-                                                    color="#063455"
-                                                    style={{
-                                                        color: '#063455',
-                                                        // border:'1px solid #063455',
-                                                        // textDecoration: 'underline',
-                                                        textTransform: 'none',
-                                                    }}
-                                                    onClick={() => {
-                                                        setCardMember({ ...user, is_corporate: true });
-                                                        setOpenCardModal(true);
-                                                    }}
-                                                >
-                                                    View
-                                                </Button>
-                                            </TableCell>
-                                            {/*<TableCell align="center">
-                                            <IconButton
-                                                onClick={(e) => {
-                                                    setAnchorEl(e.currentTarget);
-                                                    setSelectedMember(user);
-                                                }}
-                                                sx={{ color: '#063455' }}
-                                            >
-                                                <MoreVertIcon />
-                                            </IconButton>
-                                            <Menu anchorEl={anchorEl} open={open && selectedMember?.id === user.id} onClose={() => setAnchorEl(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        router.visit(route('corporate-membership.profile', user.id));
-                                                        setAnchorEl(null);
-                                                    }}
-                                                >
-                                                    <Visibility size={18} style={{ marginRight: 10, color: '#063455' }} />
-                                                    View Profile
-                                                </MenuItem>
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        router.visit(route('corporate-membership.edit', user.id));
-                                                        setAnchorEl(null);
-                                                    }}
-                                                >
-                                                    <FaEdit size={18} style={{ marginRight: 10, color: '#f57c00' }} />
-                                                    Edit Member
-                                                </MenuItem>
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        handleDeleteClick(user);
-                                                        setAnchorEl(null);
-                                                    }}
-                                                    sx={{ color: '#d32f2f' }}
-                                                >
-                                                    <Delete size={18} style={{ marginRight: 10 }} />
-                                                    Delete Member
-                                                </MenuItem>
-                                            </Menu>
-                                        </TableCell> */}
-                                            <TableCell align="center">
-                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                    {/* View Profile */}
-                                                    <Tooltip title="View Profile">
-                                                        <IconButton size="small" onClick={() => router.visit(route('corporate-membership.profile', user.id))} sx={{ color: '#063455' }}>
-                                                            <Visibility size={18} />
-                                                        </IconButton>
+                        <AdminDataTable
+                            columns={corporateColumns}
+                            rows={visibleMembers}
+                            pagination={members}
+                            emptyMessage="No corporate members found."
+                            tableMinWidth={1460}
+                            renderRow={(user) => (
+                                <TableRow key={user.id} hover sx={{ '& .MuiTableCell-body': { borderBottomColor: '#edf2f7' } }}>
+                                    <TableCell
+                                        onClick={() => router.visit(route('corporate-membership.profile', user.id))}
+                                        sx={{
+                                            color: '#000',
+                                            fontWeight: 600,
+                                            fontSize: '14px',
+                                            cursor: 'pointer',
+                                            '&:hover': { color: '#7f7f7f', fontWeight: 600 },
+                                        }}
+                                    >
+                                        {user.membership_no || 'N/A'}
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="d-flex align-items-center">
+                                            <Avatar src={user.profile_photo?.file_path || '/placeholder.svg?height=40&width=40'} alt={user.full_name} style={{ marginRight: '10px' }} />
+                                            <div>
+                                                <Typography sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '120px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                    <Tooltip title={user.full_name} arrow>
+                                                        <span>{user.full_name}</span>
                                                     </Tooltip>
-
-                                                    {/* Edit */}
-                                                    <Tooltip title="Edit Member">
-                                                        <IconButton size="small" onClick={() => router.visit(route('corporate-membership.edit', user.id))} sx={{ color: '#f57c00' }}>
-                                                            <FaEdit size={18} />
-                                                        </IconButton>
+                                                </Typography>
+                                                <Typography sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '120px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                                    <Tooltip title={user.personal_email} arrow>
+                                                        <span>{user.personal_email}</span>
                                                     </Tooltip>
-
-                                                    {/* View Invoice */}
-                                                    <Tooltip title="View Invoice">
-                                                        <IconButton
+                                                </Typography>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{user.member_category?.description || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>
+                                        <Chip label="Corporate" size="small" sx={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 600, fontSize: '11px' }} />
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{user.cnic_no || 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', maxWidth: '100px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                        <Tooltip title={user.mobile_number_a || 'N/A'} arrow>
+                                            <span>{user.mobile_number_a || 'N/A'}</span>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{user.membership_date ? dayjs(user.membership_date).format('DD-MM-YYYY') : 'N/A'}</TableCell>
+                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{user.card_status || 'N/A'}</TableCell>
+                                    <TableCell>
+                                        <PopupState variant="popover" popupId={`status-menu-${user.id}`}>
+                                            {(popupState) => (
+                                                <>
+                                                    <div
+                                                        {...bindTrigger(popupState)}
+                                                        style={{
+                                                            cursor: 'pointer',
+                                                            display: 'inline-block',
+                                                        }}
+                                                    >
+                                                        <Chip
+                                                            label={user.status || 'N/A'}
                                                             size="small"
-                                                            onClick={() => {
-                                                                setInvoiceMember(user);
-                                                                setOpenInvoiceModal(true);
+                                                            sx={{
+                                                                backgroundColor: 'transparent',
+                                                                color: user.status === 'active' ? '#2E7D32' : user.status === 'suspended' ? '#e65100' : user.status === 'absent' ? '#fbc02d' : '#D32F2F',
+                                                                fontWeight: 'medium',
+                                                                textTransform: 'capitalize',
+                                                                whiteSpace: 'nowrap',
                                                             }}
-                                                            sx={{ color: '#2e7d32' }}
+                                                        />
+                                                        <MdModeEdit size={18} style={{ marginLeft: '5px', color: '#2E7D32' }} />
+                                                    </div>
+                                                    <Menu {...bindMenu(popupState)}>
+                                                        <MenuItem
+                                                            onClick={() => {
+                                                                popupState.close();
+                                                                setSelectedMember(user);
+                                                                setSuspendOpen(true);
+                                                            }}
                                                         >
-                                                            <ReceiptIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
-
-                                                    {/* Delete */}
-                                                    <Tooltip title="Delete Member">
-                                                        <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: '#d32f2f' }}>
-                                                            <Delete size={18} />
-                                                        </IconButton>
-                                                    </Tooltip>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                    {visibleMembers.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                                                No corporate members found.
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                        <Pagination data={members} />
+                                                            Suspend
+                                                        </MenuItem>
+                                                        <MenuItem
+                                                            onClick={() => {
+                                                                popupState.close();
+                                                                setSelectedMember(user);
+                                                                setPauseOpen(true);
+                                                            }}
+                                                        >
+                                                            Absent
+                                                        </MenuItem>
+                                                        <MenuItem
+                                                            onClick={() => {
+                                                                popupState.close();
+                                                                setSelectedMember(user);
+                                                                setCancelOpen(true);
+                                                            }}
+                                                        >
+                                                            Cancel Membership
+                                                        </MenuItem>
+                                                        <MenuItem
+                                                            onClick={() => {
+                                                                popupState.close();
+                                                                setSelectedMember(user);
+                                                                setActivateOpen(true);
+                                                            }}
+                                                        >
+                                                            Activate
+                                                        </MenuItem>
+                                                    </Menu>
+                                                </>
+                                            )}
+                                        </PopupState>
+                                    </TableCell>
+                                    <TableCell align="center">
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            color="#063455"
+                                            style={{
+                                                color: '#063455',
+                                                textTransform: 'none',
+                                            }}
+                                            onClick={() => {
+                                                setCardMember({ ...user, is_corporate: true });
+                                                setOpenCardModal(true);
+                                            }}
+                                        >
+                                            View
+                                        </Button>
+                                    </TableCell>
+                                    <TableCell align="center">
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <Tooltip title="View Profile">
+                                                <IconButton size="small" onClick={() => router.visit(route('corporate-membership.profile', user.id))} sx={{ color: '#063455' }}>
+                                                    <Visibility size={18} />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Edit Member">
+                                                <IconButton size="small" onClick={() => router.visit(route('corporate-membership.edit', user.id))} sx={{ color: '#f57c00' }}>
+                                                    <FaEdit size={18} />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="View Invoice">
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => {
+                                                        setInvoiceMember(user);
+                                                        setOpenInvoiceModal(true);
+                                                    }}
+                                                    sx={{ color: '#2e7d32' }}
+                                                >
+                                                    <ReceiptIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Delete Member">
+                                                <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: '#d32f2f' }}>
+                                                    <Delete size={18} />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        />
                     </SurfaceCard>
                 </AppPage>
                 {/* Delete Confirmation Dialog */}

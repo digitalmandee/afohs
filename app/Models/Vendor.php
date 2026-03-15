@@ -16,9 +16,15 @@ class Vendor extends Model
         'phone',
         'email',
         'address',
+        'tenant_id',
         'payment_terms_days',
         'currency',
         'opening_balance',
+        'payable_account_id',
+        'advance_account_id',
+        'default_payment_account_id',
+        'tax_treatment',
+        'approval_status',
         'status',
         'metadata',
         'created_by',
@@ -29,6 +35,26 @@ class Vendor extends Model
         'opening_balance' => 'decimal:2',
         'metadata' => 'array',
     ];
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
+    public function payableAccount()
+    {
+        return $this->belongsTo(CoaAccount::class, 'payable_account_id');
+    }
+
+    public function advanceAccount()
+    {
+        return $this->belongsTo(CoaAccount::class, 'advance_account_id');
+    }
+
+    public function defaultPaymentAccount()
+    {
+        return $this->belongsTo(PaymentAccount::class, 'default_payment_account_id');
+    }
 
     public function contacts()
     {

@@ -2,20 +2,31 @@ import React from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
-import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import Pagination from '@/components/Pagination';
+import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
 
-export default function Index({ orders, filters, summary = {}, vendors = [], warehouses = [] }) {
+export default function Index({ orders, filters, summary = {}, vendors = [], warehouses = [], tenants = [] }) {
     const data = orders?.data || [];
+    const columns = [
+        { key: 'po_no', label: 'PO No' },
+        { key: 'vendor', label: 'Vendor', sx: { minWidth: 220 } },
+        { key: 'warehouse', label: 'Warehouse', sx: { minWidth: 180 } },
+        { key: 'status', label: 'Status' },
+        { key: 'approval', label: 'Approval' },
+        { key: 'gl', label: 'GL' },
+        { key: 'total', label: 'Total', align: 'right' },
+        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 240 } },
+    ];
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
         status: filters?.status || '',
         vendor_id: filters?.vendor_id || '',
         warehouse_id: filters?.warehouse_id || '',
+        tenant_id: filters?.tenant_id || '',
         from: filters?.from || '',
         to: filters?.to || '',
         per_page: filters?.per_page || orders?.per_page || 25,
@@ -30,6 +41,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
         if (nextFilters.status) payload.status = nextFilters.status;
         if (nextFilters.vendor_id) payload.vendor_id = nextFilters.vendor_id;
         if (nextFilters.warehouse_id) payload.warehouse_id = nextFilters.warehouse_id;
+        if (nextFilters.tenant_id) payload.tenant_id = nextFilters.tenant_id;
         if (nextFilters.from) payload.from = nextFilters.from;
         if (nextFilters.to) payload.to = nextFilters.to;
         payload.per_page = nextFilters.per_page || 25;
@@ -52,6 +64,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             status: filters?.status || '',
             vendor_id: filters?.vendor_id || '',
             warehouse_id: filters?.warehouse_id || '',
+            tenant_id: filters?.tenant_id || '',
             from: filters?.from || '',
             to: filters?.to || '',
             per_page: filters?.per_page || orders?.per_page || 25,
@@ -59,7 +72,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
         };
         filtersRef.current = next;
         setLocalFilters(next);
-    }, [filters?.from, filters?.per_page, filters?.search, filters?.status, filters?.to, filters?.vendor_id, filters?.warehouse_id, orders?.per_page]);
+    }, [filters?.from, filters?.per_page, filters?.search, filters?.status, filters?.tenant_id, filters?.to, filters?.vendor_id, filters?.warehouse_id, orders?.per_page]);
 
     const updateFilters = React.useCallback(
         (partial, { immediate = false } = {}) => {
@@ -94,6 +107,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             status: '',
             vendor_id: '',
             warehouse_id: '',
+            tenant_id: '',
             from: '',
             to: '',
             per_page: localFilters.per_page || 25,
@@ -205,6 +219,20 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                     ))}
                                 </TextField>
                             </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    select
+                                    label="Restaurant"
+                                    value={localFilters.tenant_id}
+                                    onChange={(e) => updateFilter('tenant_id', e.target.value, { immediate: true })}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">All Restaurants</MenuItem>
+                                    {tenants.map((tenant) => (
+                                        <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
                             <Grid item xs={12} md={1.5}>
                                 <TextField
                                     label="From"
@@ -231,91 +259,57 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             </SurfaceCard>
 
             <SurfaceCard title="Purchase Order Register" subtitle="Operational view of procurement status, approvals, and posting readiness.">
-                <TableContainer className="premium-scroll">
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow
-                                sx={{
-                                    '& .MuiTableCell-head': {
-                                        bgcolor: '#0a3d62',
-                                        color: '#f8fafc',
-                                        borderBottom: 'none',
-                                        fontSize: '0.74rem',
-                                        fontWeight: 700,
-                                        py: 1.35,
-                                    },
-                                    '& .MuiTableCell-head:first-of-type': {
-                                        borderTopLeftRadius: 16,
-                                    },
-                                    '& .MuiTableCell-head:last-of-type': {
-                                        borderTopRightRadius: 16,
-                                    },
-                                }}
-                            >
-                                <TableCell>PO No</TableCell>
-                                <TableCell>Vendor</TableCell>
-                                <TableCell>Warehouse</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Approval</TableCell>
-                                <TableCell>GL</TableCell>
-                                <TableCell align="right">Total</TableCell>
-                                <TableCell align="right">Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {data.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={8} align="center">No purchase orders.</TableCell>
-                                </TableRow>
-                            )}
-                            {data.map((po) => (
-                                <TableRow
-                                    key={po.id}
-                                    hover
-                                    sx={{
-                                        '& .MuiTableCell-body': {
-                                            py: 1.45,
-                                            borderBottomColor: '#edf2f7',
-                                        },
-                                    }}
-                                >
-                                    <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{po.po_no}</TableCell>
-                                    <TableCell>{po.vendor?.name}</TableCell>
-                                    <TableCell>{po.warehouse?.name}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            size="small"
-                                            label={String(po.status || '-').replace(/_/g, ' ')}
-                                            color={po.status === 'approved' || po.status === 'received' ? 'success' : po.status === 'cancelled' ? 'error' : 'default'}
-                                            variant={po.status === 'draft' ? 'outlined' : 'filled'}
-                                        />
-                                    </TableCell>
-                                    <TableCell>{po.latest_approval_action?.action || '-'}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            size="small"
-                                            label={po.gl_posted ? 'Posted' : 'Pending'}
-                                            color={po.gl_posted ? 'success' : 'warning'}
-                                            variant={po.gl_posted ? 'filled' : 'outlined'}
-                                        />
-                                    </TableCell>
-                                    <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(po.grand_total || 0).toFixed(2)}</TableCell>
-                                    <TableCell align="right">
-                                        {po.status === 'draft' && (
-                                            <>
-                                                <Button size="small" onClick={() => router.post(route('procurement.purchase-orders.submit', po.id))}>Submit</Button>
-                                                <Button size="small" color="success" onClick={() => router.post(route('procurement.purchase-orders.approve', po.id))}>Approve</Button>
-                                                <Button size="small" color="error" onClick={() => router.post(route('procurement.purchase-orders.reject', po.id))}>Reject</Button>
-                                            </>
-                                        )}
-                                        <Button size="small" onClick={() => openHistory(po)}>History</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-                <Pagination data={orders} />
+                <AdminDataTable
+                    columns={columns}
+                    rows={data}
+                    pagination={orders}
+                    emptyMessage="No purchase orders."
+                    tableMinWidth={1060}
+                    renderRow={(po) => (
+                        <TableRow
+                            key={po.id}
+                            hover
+                            sx={{
+                                '& .MuiTableCell-body': {
+                                    py: 1.45,
+                                    borderBottomColor: '#edf2f7',
+                                },
+                            }}
+                        >
+                            <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{po.po_no}</TableCell>
+                            <TableCell>{po.vendor?.name}</TableCell>
+                            <TableCell>{po.warehouse?.name}</TableCell>
+                            <TableCell>
+                                <Chip
+                                    size="small"
+                                    label={String(po.status || '-').replace(/_/g, ' ')}
+                                    color={po.status === 'approved' || po.status === 'received' ? 'success' : po.status === 'cancelled' ? 'error' : 'default'}
+                                    variant={po.status === 'draft' ? 'outlined' : 'filled'}
+                                />
+                            </TableCell>
+                            <TableCell>{po.latest_approval_action?.action || '-'}</TableCell>
+                            <TableCell>
+                                <Chip
+                                    size="small"
+                                    label={po.gl_posted ? 'Posted' : 'Pending'}
+                                    color={po.gl_posted ? 'success' : 'warning'}
+                                    variant={po.gl_posted ? 'filled' : 'outlined'}
+                                />
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(po.grand_total || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">
+                                {po.status === 'draft' && (
+                                    <>
+                                        <Button size="small" onClick={() => router.post(route('procurement.purchase-orders.submit', po.id))}>Submit</Button>
+                                        <Button size="small" color="success" onClick={() => router.post(route('procurement.purchase-orders.approve', po.id))}>Approve</Button>
+                                        <Button size="small" color="error" onClick={() => router.post(route('procurement.purchase-orders.reject', po.id))}>Reject</Button>
+                                    </>
+                                )}
+                                <Button size="small" onClick={() => openHistory(po)}>History</Button>
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
             </SurfaceCard>
 
             <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
@@ -323,33 +317,25 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                 <DialogContent>
                     {loadingHistory && <Typography>Loading history...</Typography>}
                     {!loadingHistory && (
-                        <TableContainer>
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Action</TableCell>
-                                        <TableCell>By</TableCell>
-                                        <TableCell>Remarks</TableCell>
-                                        <TableCell>Date</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {historyRows.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={4} align="center">No approval actions yet.</TableCell>
-                                        </TableRow>
-                                    )}
-                                    {historyRows.map((row) => (
-                                        <TableRow key={row.id}>
-                                            <TableCell>{row.action}</TableCell>
-                                            <TableCell>{row.action_by_name || row.action_by || '-'}</TableCell>
-                                            <TableCell>{row.remarks || '-'}</TableCell>
-                                            <TableCell>{row.created_at || '-'}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
+                        <AdminDataTable
+                            columns={[
+                                { key: 'action', label: 'Action' },
+                                { key: 'by', label: 'By' },
+                                { key: 'remarks', label: 'Remarks', sx: { minWidth: 240 } },
+                                { key: 'date', label: 'Date' },
+                            ]}
+                            rows={historyRows}
+                            emptyMessage="No approval actions yet."
+                            tableMinWidth={720}
+                            renderRow={(row) => (
+                                <TableRow key={row.id}>
+                                    <TableCell>{row.action}</TableCell>
+                                    <TableCell>{row.action_by_name || row.action_by || '-'}</TableCell>
+                                    <TableCell>{row.remarks || '-'}</TableCell>
+                                    <TableCell>{row.created_at || '-'}</TableCell>
+                                </TableRow>
+                            )}
+                        />
                     )}
                 </DialogContent>
                 <DialogActions sx={{ p: 2.5 }}>

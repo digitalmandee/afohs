@@ -10,23 +10,31 @@ import {
   DialogTitle,
   Grid,
   MenuItem,
-  Table,
-  TableBody,
   TableCell,
-  TableHead,
   TableRow,
   TextField,
   Typography,
 } from '@mui/material';
 import debounce from 'lodash.debounce';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
-import Pagination from '@/components/Pagination';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
 export default function Index({ entries, filters, summary, templatesEnabled, templates = [], recurringProfiles = [], approvalPolicy }) {
   const data = entries?.data || [];
+  const columns = [
+    { key: 'entry_no', label: 'Entry No' },
+    { key: 'entry_date', label: 'Date' },
+    { key: 'source', label: 'Source', sx: { minWidth: 180 } },
+    { key: 'restaurant', label: 'Restaurant', sx: { minWidth: 160 } },
+    { key: 'status', label: 'Status' },
+    { key: 'description', label: 'Description', sx: { minWidth: 300 } },
+    { key: 'debit', label: 'Debit', align: 'right' },
+    { key: 'credit', label: 'Credit', align: 'right' },
+    { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 220 } },
+  ];
   const [localFilters, setLocalFilters] = React.useState({
     search: filters?.search || '',
     status: filters?.status || '',
@@ -402,82 +410,58 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
       </SurfaceCard>
 
       <SurfaceCard title="Journal Register" subtitle="Operational list of draft, posted, and reversed entries with standardized density and pagination.">
-          <Table size="small">
-            <TableHead>
+          <AdminDataTable
+            columns={columns}
+            rows={data}
+            pagination={entries}
+            emptyMessage="No entries found."
+            tableMinWidth={1040}
+            renderRow={(entry) => (
               <TableRow
+                key={entry.id}
+                hover
                 sx={{
-                  '& .MuiTableCell-head': {
-                    bgcolor: '#0a3d62',
-                    color: '#f8fafc',
-                    borderBottom: 'none',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    py: 1.35,
-                  },
-                  '& .MuiTableCell-head:first-of-type': {
-                    borderTopLeftRadius: 16,
-                  },
-                  '& .MuiTableCell-head:last-of-type': {
-                    borderTopRightRadius: 16,
+                  '& .MuiTableCell-body': {
+                    py: 1.45,
+                    borderBottomColor: '#edf2f7',
                   },
                 }}
               >
-                <TableCell>Entry No</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell align="right">Debit</TableCell>
-                <TableCell align="right">Credit</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
+                <TableCell>{entry.entry_date}</TableCell>
+                <TableCell>
+                  <Chip size="small" label={entry.source_label || 'General'} variant="outlined" />
+                </TableCell>
+                <TableCell>{entry.restaurant_name || '-'}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={entry.status}
+                    size="small"
+                    color={entry.status === 'posted' ? 'success' : entry.status === 'reversed' ? 'warning' : 'default'}
+                    variant="outlined"
+                  />
+                </TableCell>
+                <TableCell>{entry.description || '-'}</TableCell>
+                <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">
+                  <Box sx={{ display: 'inline-flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {entry.document_url ? (
+                      <Button size="small" variant="outlined" onClick={() => router.visit(entry.document_url)}>Open Source</Button>
+                    ) : null}
+                    <Link href={route('accounting.journals.show', entry.id)}>Open</Link>
+                    {entry.status === 'draft' && (
+                      <>
+                        <Button size="small" variant="outlined" onClick={() => router.visit(route('accounting.journals.edit', entry.id))}>Edit</Button>
+                        <Button size="small" variant="outlined" onClick={() => router.post(route('accounting.journals.submit', entry.id))}>Submit</Button>
+                        <Button size="small" color="success" variant="outlined" onClick={() => router.post(route('accounting.journals.approve', entry.id))}>Approve/Post</Button>
+                      </>
+                    )}
+                  </Box>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 5 }}>No entries found.</TableCell>
-                </TableRow>
-              )}
-              {data.map((entry) => (
-                <TableRow
-                  key={entry.id}
-                  hover
-                  sx={{
-                    '& .MuiTableCell-body': {
-                      py: 1.45,
-                      borderBottomColor: '#edf2f7',
-                    },
-                  }}
-                >
-                  <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
-                  <TableCell>{entry.entry_date}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={entry.status}
-                      size="small"
-                      color={entry.status === 'posted' ? 'success' : entry.status === 'reversed' ? 'warning' : 'default'}
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell>{entry.description || '-'}</TableCell>
-                  <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">
-                    <Box sx={{ display: 'inline-flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <Link href={route('accounting.journals.show', entry.id)}>Open</Link>
-                      {entry.status === 'draft' && (
-                        <>
-                          <Button size="small" variant="outlined" onClick={() => router.visit(route('accounting.journals.edit', entry.id))}>Edit</Button>
-                          <Button size="small" variant="outlined" onClick={() => router.post(route('accounting.journals.submit', entry.id))}>Submit</Button>
-                          <Button size="small" color="success" variant="outlined" onClick={() => router.post(route('accounting.journals.approve', entry.id))}>Approve/Post</Button>
-                        </>
-                      )}
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Pagination data={entries} />
+            )}
+          />
       </SurfaceCard>
 
       <Dialog open={openApply} onClose={() => setOpenApply(false)} maxWidth="sm" fullWidth>

@@ -4,14 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Constants\AppConstants;
 use App\Helpers\FileHelper;
+use App\Models\AccountingEventQueue;
 use App\Models\CorporateMember;
 use App\Models\FinancialChargeType;
 use App\Models\FinancialInvoice;
 use App\Models\FinancialInvoiceItem;
+use App\Models\JournalEntry;
 use App\Models\Member;
 use App\Models\Subscription;
 use App\Models\SubscriptionCategory;
 use App\Models\SubscriptionType;
+use App\Models\Tenant;
 use App\Models\TransactionType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -20,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\AccountingSourceResolver;
 
 class MemberTransactionController extends Controller
 {
@@ -29,8 +33,9 @@ class MemberTransactionController extends Controller
         $this->middleware('permission:financial.view')->only('searchMembers', 'getMemberTransactions', 'getAllTransactions');
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $perPage = $this->resolvePerPage($request, 10);
         // Get transaction statistics
         $totalTransactions = FinancialInvoice::whereIn('fee_type', ['membership_fee', 'maintenance_fee', 'subscription_fee', 'reinstating_fee'])->count();
         $totalRevenue = FinancialInvoice::whereIn('fee_type', ['membership_fee', 'maintenance_fee', 'subscription_fee', 'reinstating_fee'])
@@ -57,8 +62,9 @@ class MemberTransactionController extends Controller
         $recentTransactions = FinancialInvoice::whereIn('fee_type', ['membership_fee', 'maintenance_fee', 'subscription_fee', 'reinstating_fee'])
             ->with('member:id,full_name,membership_no')
             ->orderBy('created_at', 'desc')
-            ->limit(10)
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
+        $recentTransactions->setCollection($this->decorateMembershipInvoices($recentTransactions->getCollection()));
 
         return Inertia::render('App/Admin/Membership/Transactions/Dashboard', [
             'statistics' => [
@@ -68,8 +74,11 @@ class MemberTransactionController extends Controller
                 'maintenance_fee_revenue' => $maintenanceFeeRevenue,
                 'subscription_fee_revenue' => $subscriptionFeeRevenue,
                 'reinstating_fee_revenue' => $reinstatingFeeRevenue,
+                'failed_postings' => AccountingEventQueue::query()->where('source_type', FinancialInvoice::class)->where('status', 'failed')->count(),
+                'pending_postings' => AccountingEventQueue::query()->where('source_type', FinancialInvoice::class)->where('status', 'pending')->count(),
             ],
-            'recent_transactions' => $recentTransactions
+            'recent_transactions' => $recentTransactions,
+            'filters' => $request->only(['per_page']),
         ]);
     }
 
@@ -937,6 +946,7 @@ class MemberTransactionController extends Controller
 
     public function getAllTransactions(Request $request)
     {
+        $perPage = $this->resolvePerPage($request, 25);
         $query = FinancialInvoice::whereIn('fee_type', ['membership_fee', 'maintenance_fee'])
             ->with('member:id,full_name,membership_no');
 
@@ -971,13 +981,78 @@ class MemberTransactionController extends Controller
 
         $transactions = $query
             ->orderBy('created_at', 'desc')
-            ->paginate(15)
+            ->paginate($perPage)
             ->withQueryString();
+
+        $transactions->setCollection($this->decorateMembershipInvoices($transactions->getCollection()));
+        $summary = [
+            'count' => $transactions->total(),
+            'total_amount' => (float) $transactions->getCollection()->sum(fn ($invoice) => (float) ($invoice->total_price ?? 0)),
+            'paid_amount' => (float) $transactions->getCollection()->sum(fn ($invoice) => (float) ($invoice->paid_amount ?? 0)),
+            'balance' => (float) $transactions->getCollection()->sum(fn ($invoice) => (float) ($invoice->balance ?? 0)),
+            'failed_postings' => (int) $transactions->getCollection()->where('posting_status', 'failed')->count(),
+            'pending_postings' => (int) $transactions->getCollection()->where('posting_status', 'pending')->count(),
+        ];
 
         return Inertia::render('App/Admin/Membership/Transactions/Index', [
             'transactions' => $transactions,
-            'filters' => $request->only(['search', 'fee_type', 'status', 'date_from', 'date_to'])
+            'summary' => $summary,
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'fee_type', 'status', 'date_from', 'date_to', 'per_page'])
         ]);
+    }
+
+    private function decorateMembershipInvoices($invoices)
+    {
+        $sourceResolver = app(AccountingSourceResolver::class);
+        $collection = collect($invoices);
+
+        if ($collection->isEmpty()) {
+            return $collection;
+        }
+
+        $invoiceIds = $collection->pluck('id')->all();
+        $events = AccountingEventQueue::query()
+            ->with('restaurant:id,name')
+            ->where('source_type', FinancialInvoice::class)
+            ->whereIn('source_id', $invoiceIds)
+            ->latest('updated_at')
+            ->get()
+            ->groupBy('source_id');
+        $journals = JournalEntry::query()
+            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice'])
+            ->whereIn('module_id', $invoiceIds)
+            ->get()
+            ->groupBy('module_id');
+
+        return $collection->map(function ($invoice) use ($events, $journals, $sourceResolver) {
+            $event = $events->get($invoice->id)?->first();
+            $journal = $journals->get($invoice->id)?->first();
+            $paid = (float) ($invoice->paid_amount ?? 0);
+            $source = $sourceResolver->resolveForFinancialInvoice($invoice, $event, $journal);
+            $invoice->balance = max(0, (float) ($invoice->total_price ?? 0) - $paid);
+            $invoice->posting_status = $source['posting_status'];
+            $invoice->journal_entry_id = $source['journal_entry_id'];
+            $invoice->restaurant_id = $source['restaurant_id'];
+            $invoice->restaurant_name = $source['restaurant_name'];
+            $invoice->document_no = $source['document_no'];
+            $invoice->document_url = $source['document_url'];
+            $invoice->source_module = $source['source_module'];
+            $invoice->source_label = $source['source_label'];
+            $invoice->source_type = $source['source_type'];
+            $invoice->source_id = $source['source_id'];
+            $invoice->failure_reason = $source['failure_reason'];
+            $invoice->source_resolution_status = $source['source_resolution_status'];
+
+            return $invoice;
+        });
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25): int
+    {
+        $perPage = (int) $request->input('per_page', $default);
+
+        return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : $default;
     }
 
     /**

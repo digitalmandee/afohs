@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\AccountingSourceResolver;
 
 class JournalEntryController extends Controller
 {
@@ -260,12 +261,13 @@ class JournalEntryController extends Controller
 
     public function index(Request $request)
     {
+        $sourceResolver = app(AccountingSourceResolver::class);
         $perPage = (int) $request->integer('per_page', 25);
         if (!in_array($perPage, [10, 25, 50, 100], true)) {
             $perPage = 25;
         }
 
-        $query = JournalEntry::with('lines');
+        $query = JournalEntry::with('lines', 'tenant');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -285,12 +287,17 @@ class JournalEntryController extends Controller
 
         $entries = $query->orderByDesc('entry_date')->orderByDesc('id')->paginate($perPage)->withQueryString();
         $entries->setCollection(
-            $entries->getCollection()->map(function ($entry) {
+            $entries->getCollection()->map(function ($entry) use ($sourceResolver) {
                 $totalDebit = (float) $entry->lines->sum('debit');
                 $totalCredit = (float) $entry->lines->sum('credit');
+                $source = $sourceResolver->resolveForJournalEntry($entry);
                 $entry->total_debit = $totalDebit;
                 $entry->total_credit = $totalCredit;
                 $entry->amount = max($totalDebit, $totalCredit);
+                $entry->source_label = $source['source_label'];
+                $entry->restaurant_name = $source['restaurant_name'];
+                $entry->document_url = $source['document_url'];
+                $entry->source_resolution_status = $source['source_resolution_status'];
                 return $entry;
             })
         );
@@ -652,15 +659,26 @@ class JournalEntryController extends Controller
     private function baseJournalFormData(): array
     {
         return [
-            'accounts' => CoaAccount::query()
-                ->where('is_active', true)
-                ->orderBy('full_code')
-                ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable']),
+            'accounts' => Schema::hasTable('coa_accounts')
+                ? CoaAccount::query()
+                    ->where('is_active', true)
+                    ->orderBy('full_code')
+                    ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable'])
+                : collect(),
+            'accounts_error' => !Schema::hasTable('coa_accounts')
+                ? 'Chart of Accounts is not configured yet. Journal lines cannot be mapped until coa_accounts is migrated.'
+                : null,
         ];
     }
 
     private function validateJournalPayload(Request $request): array
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            throw ValidationException::withMessages([
+                'lines' => 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.',
+            ]);
+        }
+
         return $request->validate([
             'entry_date' => 'required|date',
             'description' => 'nullable|string|max:255',

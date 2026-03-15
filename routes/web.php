@@ -53,6 +53,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PaymentAccountController;
 use App\Http\Controllers\PayrollApiController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\Inventory\InventoryOperationController;
 use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\Procurement\GoodsReceiptController;
 use App\Http\Controllers\Procurement\ProcurementInsightsController;
@@ -1006,6 +1007,16 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
         Route::post('maintenance-posting', [MaintenanceFeePostingController::class, 'store'])->name('finance.maintenance.store')->middleware('permission:financial.create');
     });
 
+    Route::group(['prefix' => 'admin/membership/transactions'], function () {
+        Route::get('dashboard', [MemberTransactionController::class, 'index'])->name('membership.transactions.dashboard')->middleware('super.admin:financial.dashboard.view');
+        Route::get('manage', [MemberTransactionController::class, 'getAllTransactions'])->name('membership.transactions.index')->middleware('super.admin:financial.view');
+        Route::get('search', [MemberTransactionController::class, 'searchMembers'])->name('membership.transactions.search')->middleware('permission:financial.create');
+        Route::get('member/{memberId}', [MemberTransactionController::class, 'getMemberTransactions'])->name('membership.transactions.member')->middleware('permission:financial.create');
+        Route::get('show/{id}', [MemberTransactionController::class, 'show'])->name('membership.transactions.show')->middleware('super.admin:financial.view');
+        Route::get('bulk-migration', [MemberTransactionController::class, 'bulkMigration'])->name('membership.transactions.bulk-migration')->middleware('permission:financial.create');
+        Route::post('bulk-store', [MemberTransactionController::class, 'bulkStore'])->name('membership.transactions.bulk-store')->middleware('permission:financial.create');
+    });
+
     // Route for business developers, outside the 'admin/finance' group as per user's snippet structure
     Route::get('/employees/business-developers', [EmployeeController::class, 'getBusinessDevelopers'])->name('employees.business-developers')->middleware('permission:financial.edit');
 
@@ -1612,6 +1623,14 @@ Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
     Route::post('warehouses', [WarehouseController::class, 'store'])->name('inventory.warehouses.store');
     Route::put('warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('inventory.warehouses.update');
     Route::delete('warehouses/{warehouse}', [WarehouseController::class, 'destroy'])->name('inventory.warehouses.destroy');
+    Route::post('warehouses/{warehouse}/locations', [WarehouseController::class, 'storeLocation'])->name('inventory.warehouses.locations.store');
+    Route::put('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'updateLocation'])->name('inventory.warehouses.locations.update');
+    Route::delete('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'destroyLocation'])->name('inventory.warehouses.locations.destroy');
+    Route::get('operations', [InventoryOperationController::class, 'index'])->name('inventory.operations.index');
+    Route::post('operations/opening-balances', [InventoryOperationController::class, 'storeOpeningBalance'])->name('inventory.operations.opening-balances.store');
+    Route::post('operations/adjustments', [InventoryOperationController::class, 'storeAdjustment'])->name('inventory.operations.adjustments.store');
+    Route::post('operations/issues', [InventoryOperationController::class, 'storeIssue'])->name('inventory.operations.issues.store');
+    Route::post('operations/transfers', [InventoryOperationController::class, 'storeTransfer'])->name('inventory.operations.transfers.store');
 });
 
 // Central guest-only auth routes

@@ -8,9 +8,17 @@ use Illuminate\Support\Facades\DB;
 
 class PostingService
 {
-    public function post(string $moduleType, int $moduleId, string $entryDate, string $description, array $lines, ?int $createdBy = null): JournalEntry
+    public function post(
+        string $moduleType,
+        int $moduleId,
+        string $entryDate,
+        string $description,
+        array $lines,
+        ?int $createdBy = null,
+        ?int $tenantId = null
+    ): JournalEntry
     {
-        return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy) {
+        return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId) {
             $entry = JournalEntry::create([
                 'entry_no' => 'JE-' . now()->format('YmdHis'),
                 'entry_date' => $entryDate,
@@ -18,6 +26,7 @@ class PostingService
                 'status' => 'posted',
                 'module_type' => $moduleType,
                 'module_id' => $moduleId,
+                'tenant_id' => $tenantId,
                 'created_by' => $createdBy,
                 'posted_by' => $createdBy,
                 'posted_at' => now(),
@@ -35,6 +44,7 @@ class PostingService
                     'employee_id' => $line['employee_id'] ?? null,
                     'product_id' => $line['product_id'] ?? null,
                     'warehouse_id' => $line['warehouse_id'] ?? null,
+                    'warehouse_location_id' => $line['warehouse_location_id'] ?? null,
                     'reference_type' => $line['reference_type'] ?? null,
                     'reference_id' => $line['reference_id'] ?? null,
                 ]);

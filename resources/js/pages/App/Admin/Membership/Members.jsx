@@ -22,6 +22,7 @@ import { JSONParse } from '@/helpers/generateTemplate';
 import dayjs from 'dayjs';
 import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import Pagination from '@/components/Pagination';
@@ -348,6 +349,21 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
     };
 
     const visibleMembers = members.data.filter((member) => !deletedMemberIds.includes(member.id));
+    const memberColumns = [
+        { key: 'membership_no', label: 'Membership No', sx: { minWidth: 150 } },
+        { key: 'member', label: 'Member', sx: { minWidth: 220 } },
+        { key: 'member_category', label: 'Member Category', sx: { minWidth: 160 } },
+        { key: 'type', label: 'Type', sx: { minWidth: 120 } },
+        { key: 'cnic', label: 'CNIC', sx: { minWidth: 150 } },
+        { key: 'contact', label: 'Contact', sx: { minWidth: 150 } },
+        { key: 'membership_date', label: 'Membership Date', sx: { minWidth: 150 } },
+        { key: 'duration', label: 'Duration', sx: { minWidth: 120 } },
+        { key: 'family_members', label: 'Family Members', sx: { minWidth: 130 } },
+        { key: 'card_status', label: 'Card Status', sx: { minWidth: 120 } },
+        { key: 'status', label: 'Status', sx: { minWidth: 150 } },
+        { key: 'files', label: 'Files', sx: { minWidth: 90 } },
+        { key: 'action', label: 'Action', sx: { minWidth: 130 } },
+    ];
 
     return (
         <>
@@ -579,33 +595,14 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
                     </SurfaceCard>
 
                     <SurfaceCard title="Member Register" subtitle="Standardized membership table with current status actions and adjustable page size.">
-                        <TableContainer component={Paper} className="premium-scroll" style={{ boxShadow: 'none', overflowX: 'auto', borderRadius: '12px' }}>
-                            <Table>
-                                <TableHead>
-                                    <TableRow style={{ backgroundColor: '#063455', height: '30px' }}>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Membership No</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Member</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Member Category</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Type</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>CNIC</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Contact</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Membership Date</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Duration</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Family Members</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Card Status</TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Status</TableCell>
-                                        {/* <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Card</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Invoice</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Documents</TableCell> */}
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>
-                                            Files
-                                        </TableCell>
-                                        <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Action</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {visibleMembers.map((user) => (
-                                        <TableRow key={user.id} style={{ borderBottom: '1px solid #eee' }}>
+                        <AdminDataTable
+                            columns={memberColumns}
+                            rows={visibleMembers}
+                            pagination={members}
+                            emptyMessage="No members found."
+                            tableMinWidth={1540}
+                            renderRow={(user) => (
+                                <TableRow key={user.id} hover sx={{ '& .MuiTableCell-body': { borderBottomColor: '#edf2f7' } }}>
                                             <TableCell
                                                 onClick={() => router.visit(route('membership.profile', user.id))}
                                                 sx={{
@@ -875,65 +872,9 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
                                                     </Tooltip>
                                                 </Box>
                                             </TableCell>
-                                            {/* <TableCell align="center">
-                                            <IconButton
-                                                onClick={(e) => setAnchorEl(e.currentTarget)}
-                                                sx={{ color: '#063455' }}
-                                            >
-                                                <MoreVertIcon />
-                                            </IconButton>
-
-                                            <Menu
-                                                anchorEl={anchorEl}
-                                                open={open}
-                                                onClose={() => setAnchorEl(null)}
-                                                anchorOrigin={{
-                                                    vertical: 'bottom',
-                                                    horizontal: 'right',
-                                                }}
-                                                transformOrigin={{
-                                                    vertical: 'top',
-                                                    horizontal: 'right',
-                                                }}
-                                            >
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        router.visit(route('membership.profile', user.id));
-                                                        setAnchorEl(null);
-                                                    }}
-                                                >
-                                                    <Visibility size={18} style={{ marginRight: 10, color: '#063455' }} />
-                                                    View Profile
-                                                </MenuItem>
-
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        router.visit(route('membership.edit', user.id));
-                                                        setAnchorEl(null);
-                                                    }}
-                                                >
-                                                    <FaEdit size={18} style={{ marginRight: 10, color: '#f57c00' }} />
-                                                    Edit Member
-                                                </MenuItem>
-
-                                                <MenuItem
-                                                    onClick={() => {
-                                                        handleDeleteClick(user);
-                                                        setAnchorEl(null);
-                                                    }}
-                                                    sx={{ color: '#d32f2f' }}
-                                                >
-                                                    <Delete size={18} style={{ marginRight: 10 }} />
-                                                    Delete Member
-                                                </MenuItem>
-                                            </Menu>
-                                        </TableCell> */}
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                        <Pagination data={members} />
+                            )}
+                        />
                     </SurfaceCard>
                 </AppPage>
                     

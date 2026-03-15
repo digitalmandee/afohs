@@ -9,6 +9,7 @@ class PurchaseOrder extends Model
     protected $fillable = [
         'po_no',
         'vendor_id',
+        'tenant_id',
         'warehouse_id',
         'order_date',
         'expected_date',
@@ -37,6 +38,11 @@ class PurchaseOrder extends Model
     public function vendor()
     {
         return $this->belongsTo(Vendor::class);
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 
     public function warehouse()

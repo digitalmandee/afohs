@@ -4,15 +4,15 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
-use App\Models\AccountingRule;
 use App\Models\GoodsReceipt;
 use App\Models\JournalEntry;
+use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\VendorBill;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use App\Services\Accounting\PostingService;
+use App\Services\Accounting\AccountingEventDispatcher;
 
 class VendorBillController extends Controller
 {
@@ -23,7 +23,7 @@ class VendorBillController extends Controller
             $perPage = 25;
         }
 
-        $query = VendorBill::with('vendor');
+        $query = VendorBill::with('vendor', 'tenant', 'goodsReceipt');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -41,6 +41,10 @@ class VendorBillController extends Controller
 
         if ($request->filled('vendor_id')) {
             $query->where('vendor_id', $request->vendor_id);
+        }
+
+        if ($request->filled('tenant_id')) {
+            $query->where('tenant_id', $request->tenant_id);
         }
 
         if ($request->filled('from') && $request->filled('to')) {
@@ -84,7 +88,8 @@ class VendorBillController extends Controller
             'bills' => $bills,
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'vendor_id', 'from', 'to', 'per_page']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'status', 'vendor_id', 'tenant_id', 'from', 'to', 'per_page']),
         ]);
     }
 
@@ -95,11 +100,11 @@ class VendorBillController extends Controller
             $receipt = GoodsReceipt::with('items.product')->find($request->goods_receipt_id);
         }
 
-        $vendors = Vendor::orderBy('name')->get(['id', 'name']);
-        $receipts = GoodsReceipt::with(['vendor:id,name', 'items.product:id,name'])
+        $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
+        $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.product:id,name'])
             ->orderByDesc('received_date')
             ->limit(200)
-            ->get(['id', 'grn_no', 'vendor_id', 'received_date', 'status']);
+            ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'received_date', 'status']);
 
         return Inertia::render('App/Admin/Procurement/VendorBills/Create', [
             'receipt' => $receipt,
@@ -116,11 +121,11 @@ class VendorBillController extends Controller
             return redirect()->route('procurement.vendor-bills.index')->with('error', 'Only draft bills can be edited.');
         }
 
-        $vendors = Vendor::orderBy('name')->get(['id', 'name']);
-        $receipts = GoodsReceipt::with(['vendor:id,name', 'items.product:id,name'])
+        $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
+        $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.product:id,name'])
             ->orderByDesc('received_date')
             ->limit(200)
-            ->get(['id', 'grn_no', 'vendor_id', 'received_date', 'status']);
+            ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'received_date', 'status']);
 
         return Inertia::render('App/Admin/Procurement/VendorBills/Edit', [
             'bill' => $bill,
@@ -155,9 +160,13 @@ class VendorBillController extends Controller
             }
         }
 
+        $vendor = Vendor::query()->findOrFail($data['vendor_id']);
+        $receipt = !empty($data['goods_receipt_id']) ? GoodsReceipt::query()->find($data['goods_receipt_id']) : null;
+
         $bill = VendorBill::create([
             'bill_no' => 'BILL-' . now()->format('YmdHis'),
             'vendor_id' => $data['vendor_id'],
+            'tenant_id' => $receipt?->tenant_id ?: $vendor->tenant_id,
             'goods_receipt_id' => $data['goods_receipt_id'] ?? null,
             'bill_date' => $data['bill_date'],
             'due_date' => $data['due_date'] ?? null,
@@ -191,31 +200,6 @@ class VendorBillController extends Controller
             'remarks' => 'Vendor bill created and submitted.',
             'action_by' => $request->user()?->id,
         ]);
-
-        $rule = AccountingRule::where('code', 'vendor_bill')->where('is_active', true)->first();
-        if ($rule) {
-            $lines = [];
-            foreach ($rule->lines as $line) {
-                $amount = $subTotal * ($line['ratio'] ?? 1);
-                $lines[] = [
-                    'account_id' => $line['account_id'],
-                    'debit' => ($line['side'] ?? 'debit') === 'debit' ? $amount : 0,
-                    'credit' => ($line['side'] ?? 'debit') === 'credit' ? $amount : 0,
-                    'vendor_id' => $data['vendor_id'],
-                    'reference_type' => VendorBill::class,
-                    'reference_id' => $bill->id,
-                ];
-            }
-
-            app(PostingService::class)->post(
-                'vendor_bill',
-                $bill->id,
-                $data['bill_date'],
-                'Vendor Bill ' . $bill->bill_no,
-                $lines,
-                $request->user()?->id
-            );
-        }
 
         return redirect()->route('procurement.vendor-bills.index')->with('success', 'Vendor bill created.');
     }
@@ -267,6 +251,8 @@ class VendorBillController extends Controller
 
             $vendorBill->update([
                 'vendor_id' => $data['vendor_id'],
+                'tenant_id' => GoodsReceipt::query()->whereKey($data['goods_receipt_id'] ?? null)->value('tenant_id')
+                    ?: Vendor::query()->whereKey($data['vendor_id'])->value('tenant_id'),
                 'goods_receipt_id' => $data['goods_receipt_id'] ?? null,
                 'bill_date' => $data['bill_date'],
                 'due_date' => $data['due_date'] ?? null,
@@ -319,6 +305,20 @@ class VendorBillController extends Controller
             'posted_by' => $request->user()?->id,
             'posted_at' => now(),
         ]);
+
+        app(AccountingEventDispatcher::class)->dispatch(
+            'vendor_bill_posted',
+            VendorBill::class,
+            (int) $vendorBill->id,
+            [
+                'bill_no' => $vendorBill->bill_no,
+                'vendor_id' => $vendorBill->vendor_id,
+                'grand_total' => $vendorBill->grand_total,
+                'goods_receipt_id' => $vendorBill->goods_receipt_id,
+            ],
+            $request->user()?->id,
+            $vendorBill->tenant_id
+        );
 
         ApprovalAction::create([
             'document_type' => 'vendor_bill',

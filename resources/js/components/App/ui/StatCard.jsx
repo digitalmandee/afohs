@@ -1,18 +1,50 @@
 import React from 'react';
 import { Box, Card, CardContent, Stack, Typography } from '@mui/material';
 
-export default function StatCard({ label, value, caption, icon = null, tone = 'dark' }) {
-    const dark = tone === 'dark';
+const toneStyles = {
+    dark: {
+        border: '1px solid rgba(7, 56, 88, 0.24)',
+        background: 'linear-gradient(135deg, #063455 0%, #0a3d62 58%, #0c67a7 100%)',
+        boxShadow: '0 18px 32px rgba(6, 52, 85, 0.14)',
+        labelColor: 'rgba(255,255,255,0.72)',
+        valueColor: '#ffffff',
+        captionColor: 'rgba(255,255,255,0.68)',
+        iconBg: 'rgba(255,255,255,0.12)',
+        iconColor: '#ffffff',
+    },
+    light: {
+        border: '1px solid #e5e7eb',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249,251,255,0.98) 100%)',
+        boxShadow: 'var(--shadow-card)',
+        labelColor: 'text.secondary',
+        valueColor: 'text.primary',
+        captionColor: 'text.secondary',
+        iconBg: 'rgba(6,52,85,0.06)',
+        iconColor: '#063455',
+    },
+    muted: {
+        border: '1px solid rgba(12, 103, 167, 0.14)',
+        background: 'linear-gradient(180deg, rgba(248,250,253,0.98) 0%, rgba(255,255,255,0.98) 100%)',
+        boxShadow: 'var(--shadow-card)',
+        labelColor: '#52606d',
+        valueColor: '#102a43',
+        captionColor: '#6b7280',
+        iconBg: 'rgba(12,103,167,0.08)',
+        iconColor: '#0c67a7',
+    },
+};
+
+export default function StatCard({ label, value, caption, icon = null, tone = 'dark', accent = false }) {
+    const resolvedTone = accent ? 'dark' : toneStyles[tone] ? tone : 'light';
+    const styles = toneStyles[resolvedTone];
 
     return (
         <Card
             sx={{
                 height: '100%',
-                border: dark ? '1px solid rgba(7, 56, 88, 0.24)' : '1px solid #e5e7eb',
-                background: dark
-                    ? 'linear-gradient(135deg, #063455 0%, #0a3d62 58%, #0c67a7 100%)'
-                    : 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249,251,255,0.98) 100%)',
-                boxShadow: dark ? '0 18px 32px rgba(6, 52, 85, 0.14)' : 'var(--shadow-card)',
+                border: styles.border,
+                background: styles.background,
+                boxShadow: styles.boxShadow,
             }}
         >
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -22,7 +54,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                             <Typography
                                 variant="body2"
                                 sx={{
-                                    color: dark ? 'rgba(255,255,255,0.72)' : 'text.secondary',
+                                    color: styles.labelColor,
                                     fontWeight: 700,
                                     letterSpacing: '0.02em',
                                 }}
@@ -38,8 +70,8 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                                     display: 'grid',
                                     placeItems: 'center',
                                     borderRadius: '14px',
-                                    bgcolor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(6,52,85,0.06)',
-                                    color: dark ? '#ffffff' : '#063455',
+                                    bgcolor: styles.iconBg,
+                                    color: styles.iconColor,
                                     '& svg': { fontSize: '1.25rem' },
                                 }}
                             >
@@ -50,7 +82,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                     <Typography
                         variant="h4"
                         sx={{
-                            color: dark ? '#ffffff' : 'text.primary',
+                            color: styles.valueColor,
                             fontWeight: 800,
                             letterSpacing: '-0.03em',
                             lineHeight: 1.15,
@@ -62,7 +94,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                         <Typography
                             variant="caption"
                             sx={{
-                                color: dark ? 'rgba(255,255,255,0.68)' : 'text.secondary',
+                                color: styles.captionColor,
                                 fontSize: '0.76rem',
                             }}
                         >

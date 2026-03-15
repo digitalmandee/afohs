@@ -17,6 +17,7 @@ class JournalLine extends Model
         'employee_id',
         'product_id',
         'warehouse_id',
+        'warehouse_location_id',
         'reference_type',
         'reference_id',
     ];
@@ -39,5 +40,15 @@ class JournalLine extends Model
     public function vendor()
     {
         return $this->belongsTo(Vendor::class, 'vendor_id');
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function warehouseLocation()
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 }

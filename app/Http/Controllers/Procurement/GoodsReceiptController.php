@@ -3,24 +3,30 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
-use App\Models\AccountingRule;
 use App\Models\GoodsReceipt;
-use App\Models\InventoryTransaction;
 use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
+use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\Warehouse;
+use App\Models\WarehouseLocation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use App\Services\Accounting\PostingService;
+use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Inventory\InventoryMovementService;
 use Illuminate\Validation\ValidationException;
 
 class GoodsReceiptController extends Controller
 {
     public function index(Request $request)
     {
-        $query = GoodsReceipt::with('vendor', 'warehouse', 'purchaseOrder');
+        $perPage = (int) $request->integer('per_page', 25);
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
+
+        $query = GoodsReceipt::with('vendor', 'warehouse', 'warehouseLocation', 'purchaseOrder', 'tenant');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -44,6 +50,10 @@ class GoodsReceiptController extends Controller
             $query->where('warehouse_id', $request->warehouse_id);
         }
 
+        if ($request->filled('tenant_id')) {
+            $query->where('tenant_id', $request->tenant_id);
+        }
+
         if ($request->filled('from') && $request->filled('to')) {
             $query->whereBetween('received_date', [$request->from, $request->to]);
         }
@@ -60,7 +70,7 @@ class GoodsReceiptController extends Controller
             'cancelled' => (int) ($statusBreakdown['cancelled'] ?? 0),
         ];
 
-        $receipts = $query->orderByDesc('received_date')->paginate(25)->withQueryString();
+        $receipts = $query->orderByDesc('received_date')->paginate($perPage)->withQueryString();
         $postedIds = JournalEntry::query()
             ->where('module_type', 'goods_receipt')
             ->whereIn('module_id', $receipts->getCollection()->pluck('id'))
@@ -77,7 +87,9 @@ class GoodsReceiptController extends Controller
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'vendor_id', 'warehouse_id', 'from', 'to']),
+            'warehouseLocations' => WarehouseLocation::query()->orderBy('name')->get(['id', 'warehouse_id', 'name', 'code']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'status', 'vendor_id', 'warehouse_id', 'tenant_id', 'from', 'to', 'per_page']),
         ]);
     }
 
@@ -85,13 +97,13 @@ class GoodsReceiptController extends Controller
     {
         $purchaseOrder = null;
         if ($request->filled('purchase_order_id')) {
-            $purchaseOrder = PurchaseOrder::with('items.product')->find($request->purchase_order_id);
+            $purchaseOrder = PurchaseOrder::with(['items.product', 'warehouse.locations', 'warehouse.tenant', 'tenant', 'vendor'])->find($request->purchase_order_id);
         }
 
-        $purchaseOrders = PurchaseOrder::with(['vendor:id,name', 'warehouse:id,name', 'items.product:id,name'])
+        $purchaseOrders = PurchaseOrder::with(['vendor:id,name', 'warehouse:id,name,tenant_id', 'warehouse.locations:id,warehouse_id,name,code,status,is_primary', 'items.product:id,name', 'tenant:id,name'])
             ->orderByDesc('order_date')
             ->limit(200)
-            ->get(['id', 'po_no', 'vendor_id', 'warehouse_id', 'order_date', 'status']);
+            ->get(['id', 'po_no', 'vendor_id', 'warehouse_id', 'tenant_id', 'order_date', 'status']);
 
         return Inertia::render('App/Admin/Procurement/GoodsReceipts/Create', [
             'purchaseOrder' => $purchaseOrder,
@@ -99,11 +111,12 @@ class GoodsReceiptController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, InventoryMovementService $inventoryMovementService)
     {
         $data = $request->validate([
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'received_date' => 'required|date',
+            'warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
             'remarks' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.purchase_order_item_id' => 'required|exists:purchase_order_items,id',
@@ -114,6 +127,16 @@ class GoodsReceiptController extends Controller
 
         $po = PurchaseOrder::with('vendor', 'warehouse')->findOrFail($data['purchase_order_id']);
         $poItems = $po->items()->get()->keyBy('id');
+        $locationId = !empty($data['warehouse_location_id']) ? (int) $data['warehouse_location_id'] : null;
+
+        if ($locationId) {
+            $location = WarehouseLocation::query()->find($locationId);
+            if (!$location || (int) $location->warehouse_id !== (int) $po->warehouse_id) {
+                throw ValidationException::withMessages([
+                    'warehouse_location_id' => 'Selected warehouse location does not belong to the purchase order warehouse.',
+                ]);
+            }
+        }
 
         $inputItemIds = collect($data['items'])->pluck('purchase_order_item_id')->all();
         $previousReceived = DB::table('goods_receipt_items')
@@ -151,7 +174,9 @@ class GoodsReceiptController extends Controller
             'grn_no' => 'GRN-' . now()->format('YmdHis'),
             'purchase_order_id' => $po->id,
             'vendor_id' => $po->vendor_id,
+            'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
             'warehouse_id' => $po->warehouse_id,
+            'warehouse_location_id' => $locationId,
             'received_date' => $data['received_date'],
             'status' => 'received',
             'remarks' => $data['remarks'] ?? null,
@@ -170,9 +195,11 @@ class GoodsReceiptController extends Controller
                 'line_total' => $lineTotal,
             ]);
 
-            InventoryTransaction::create([
+            $inventoryMovementService->record([
                 'product_id' => $item['product_id'],
+                'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
                 'warehouse_id' => $po->warehouse_id,
+                'warehouse_location_id' => $locationId,
                 'transaction_date' => $data['received_date'],
                 'type' => 'purchase',
                 'qty_in' => $item['qty_received'],
@@ -181,6 +208,8 @@ class GoodsReceiptController extends Controller
                 'total_cost' => $lineTotal,
                 'reference_type' => GoodsReceipt::class,
                 'reference_id' => $receipt->id,
+                'reason' => 'Purchase receipt',
+                'status' => 'posted',
                 'created_by' => $request->user()?->id,
             ]);
 
@@ -195,31 +224,20 @@ class GoodsReceiptController extends Controller
         $po->status = $remaining === 0 ? 'received' : 'partially_received';
         $po->save();
 
-        $rule = AccountingRule::where('code', 'purchase_receipt')->where('is_active', true)->first();
-        if ($rule) {
-            $lines = [];
-            foreach ($rule->lines as $line) {
-                $amount = $total * ($line['ratio'] ?? 1);
-                $lines[] = [
-                    'account_id' => $line['account_id'],
-                    'debit' => ($line['side'] ?? 'debit') === 'debit' ? $amount : 0,
-                    'credit' => ($line['side'] ?? 'debit') === 'credit' ? $amount : 0,
-                    'vendor_id' => $po->vendor_id,
-                    'warehouse_id' => $po->warehouse_id,
-                    'reference_type' => GoodsReceipt::class,
-                    'reference_id' => $receipt->id,
-                ];
-            }
-
-            app(PostingService::class)->post(
-                'goods_receipt',
-                $receipt->id,
-                $data['received_date'],
-                'GRN ' . $receipt->grn_no,
-                $lines,
-                $request->user()?->id
-            );
-        }
+        app(AccountingEventDispatcher::class)->dispatch(
+            'goods_receipt_posted',
+            GoodsReceipt::class,
+            (int) $receipt->id,
+            [
+                'grn_no' => $receipt->grn_no,
+                'warehouse_id' => $receipt->warehouse_id,
+                'warehouse_location_id' => $receipt->warehouse_location_id,
+                'vendor_id' => $receipt->vendor_id,
+                'total_value' => $total,
+            ],
+            $request->user()?->id,
+            $receipt->tenant_id
+        );
 
         return redirect()->route('procurement.goods-receipts.index')->with('success', 'Goods receipt created.');
     }

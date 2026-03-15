@@ -13,6 +13,7 @@ class JournalEntry extends Model
         'status',
         'module_type',
         'module_id',
+        'tenant_id',
         'period_id',
         'created_by',
         'posted_by',
@@ -27,6 +28,11 @@ class JournalEntry extends Model
     public function lines()
     {
         return $this->hasMany(JournalLine::class, 'journal_entry_id');
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 
     public function period()

@@ -1,27 +1,48 @@
-import React, { useState } from "react";
-import SideNav from "@/components/App/SideBar/SideNav";
-
-const drawerWidthOpen = 240;
-const drawerWidthClosed = 110;
+import React, { useState } from 'react';
+import { Box } from '@mui/material';
+import SideNav, {
+    POS_DRAWER_WIDTH_CLOSED,
+    POS_DRAWER_WIDTH_OPEN,
+    POS_TOPBAR_HEIGHT,
+} from '@/components/App/SideBar/SideNav';
 
 export default function POSLayout({ children }) {
-  const [open, setOpen] = useState(true);
+    const [open, setOpen] = useState(true);
+    const resolvedDrawerWidth = open ? POS_DRAWER_WIDTH_OPEN : POS_DRAWER_WIDTH_CLOSED;
 
-  return (
-    <div style={{ display: "flex", overflowY:'hidden' }}>
-      <SideNav open={open} setOpen={setOpen} />
+    return (
+        <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', bgcolor: '#f4f8fc' }}>
+            <SideNav open={open} setOpen={setOpen} />
 
-      <div
-        style={{
-          flexGrow: 1,
-          marginLeft: 0, // <-- set to 0, let flexbox handle the width
-          marginTop: '5rem',
-          transition: 'margin-left 0.3s ease-in-out',
-          overflowX: 'hidden',
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
+            <Box
+                sx={{
+                    flexGrow: 1,
+                    minWidth: 0,
+                    pl: 0,
+                    pt: `${POS_TOPBAR_HEIGHT}px`,
+                    transition: 'padding-left 0.25s ease',
+                }}
+            >
+                <Box
+                    sx={{
+                        minHeight: `calc(100vh - ${POS_TOPBAR_HEIGHT}px)`,
+                        px: { xs: 1.5, md: 2.5 },
+                        py: { xs: 1.5, md: 2 },
+                        overflowX: 'hidden',
+                    }}
+                >
+                    <Box
+                        sx={{
+                            width: '100%',
+                            maxWidth: '100%',
+                            minHeight: '100%',
+                        }}
+                        data-pos-shell-width={resolvedDrawerWidth}
+                    >
+                        {children}
+                    </Box>
+                </Box>
+            </Box>
+        </Box>
+    );
 }

@@ -5,25 +5,53 @@ namespace App\Http\Controllers\Accounting;
 use App\Http\Controllers\Controller;
 use App\Models\AccountingRule;
 use App\Models\CoaAccount;
+use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class AccountingRuleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+        $query = AccountingRule::query();
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($builder) use ($search) {
+                $builder
+                    ->where('code', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('status') && in_array($request->status, ['active', 'inactive'], true)) {
+            $query->where('is_active', $request->status === 'active');
+        }
+
         return Inertia::render('App/Admin/Accounting/Rules/Index', [
-            'rules' => AccountingRule::orderBy('code')->paginate(25),
-            'coaAccounts' => CoaAccount::query()
-                ->where('is_active', true)
-                ->orderBy('full_code')
-                ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable']),
+            'rules' => $query->orderBy('code')->paginate($perPage)->withQueryString(),
+            'coaAccounts' => Schema::hasTable('coa_accounts')
+                ? CoaAccount::query()
+                    ->where('is_active', true)
+                    ->orderBy('full_code')
+                    ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable'])
+                : collect(),
+            'filters' => $request->only(['search', 'status', 'per_page']),
+            'error' => !Schema::hasTable('coa_accounts') ? $health->setupMessage('Accounting Rules', [], ['coa_accounts']) : null,
         ]);
     }
 
     public function store(Request $request)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $data = $request->validate([
             'code' => 'required|string|max:255|unique:accounting_rules,code',
             'name' => 'required|string|max:255',
@@ -47,6 +75,10 @@ class AccountingRuleController extends Controller
 
     public function update(Request $request, AccountingRule $accountingRule)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $data = $request->validate([
             'code' => 'required|string|max:255|unique:accounting_rules,code,' . $accountingRule->id,
             'name' => 'required|string|max:255',

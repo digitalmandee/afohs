@@ -31,6 +31,10 @@ export default function Create({ vendors, paymentAccounts }) {
     () => (paymentAccounts || []).find((account) => String(account.id) === String(data.payment_account_id)),
     [paymentAccounts, data.payment_account_id]
   );
+  const selectedVendor = React.useMemo(
+    () => (vendors || []).find((vendor) => String(vendor.id) === String(data.vendor_id)),
+    [vendors, data.vendor_id]
+  );
 
   const submit = (e) => {
     e.preventDefault();
@@ -49,7 +53,14 @@ export default function Create({ vendors, paymentAccounts }) {
                   select
                   label="Vendor"
                   value={data.vendor_id}
-                  onChange={(e) => setData('vendor_id', e.target.value)}
+                  onChange={(e) => {
+                    const vendorId = e.target.value;
+                    const vendor = (vendors || []).find((item) => String(item.id) === String(vendorId));
+                    setData('vendor_id', vendorId);
+                    if (vendor?.default_payment_account_id) {
+                      setData('payment_account_id', vendor.default_payment_account_id);
+                    }
+                  }}
                   error={!!errors.vendor_id}
                   helperText={errors.vendor_id}
                   fullWidth
@@ -153,6 +164,9 @@ export default function Create({ vendors, paymentAccounts }) {
               <CardContent sx={{ py: 2 }}>
                 <Typography variant="body2" color="text.secondary">
                   Selected Account: {selectedAccount?.name || 'None'}{selectedAccount ? ` (${selectedAccount.payment_method})` : ''}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Restaurant scope: {selectedVendor?.tenant?.name || (selectedAccount?.tenant_id ? `Account tenant #${selectedAccount.tenant_id}` : 'Shared')}
                 </Typography>
               </CardContent>
             </Card>

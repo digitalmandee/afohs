@@ -1,211 +1,288 @@
 import React from 'react';
 import { useForm, router } from '@inertiajs/react';
 import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
-  MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
+    Alert,
+    Button,
+    Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Grid,
+    MenuItem,
+    TableCell,
+    TableRow,
+    TextField,
 } from '@mui/material';
-import Pagination from '@/components/Pagination';
+import debounce from 'lodash.debounce';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-export default function Accounts({ accounts, coaAccounts, filters }) {
-  const [openModal, setOpenModal] = React.useState(false);
-  const { data, setData, post, processing, errors, reset } = useForm({
-    name: '',
-    payment_method: 'bank_transfer',
-    status: 'active',
-    coa_account_id: '',
-    is_default: false,
-  });
-
-  const list = accounts?.data || [];
-  const coaMap = React.useMemo(() => new Map(coaAccounts.map((acc) => [acc.id, acc])), [coaAccounts]);
-
-  const submitFilters = (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    router.get(route('accounting.bank-accounts.index'), {
-      search: form.get('search'),
-      status: form.get('status'),
-      method: form.get('method'),
+export default function Accounts({ accounts, coaAccounts, filters, error = null }) {
+    const [openModal, setOpenModal] = React.useState(false);
+    const list = accounts?.data || [];
+    const coaMap = React.useMemo(() => new Map(coaAccounts.map((acc) => [acc.id, acc])), [coaAccounts]);
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        method: filters?.method || '',
+        status: filters?.status || '',
+        per_page: filters?.per_page || accounts?.per_page || 25,
+        page: 1,
     });
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    post(route('accounting.bank-accounts.store'), {
-      onSuccess: () => {
-        reset();
-        setOpenModal(false);
-      },
+    const filtersRef = React.useRef(localFilters);
+    const { data, setData, post, processing, errors, reset } = useForm({
+        name: '',
+        payment_method: 'bank_transfer',
+        status: 'active',
+        coa_account_id: '',
+        is_default: false,
     });
-  };
 
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 700 }}>Bank Accounts</Typography>
-        <Button variant="contained" onClick={() => setOpenModal(true)}>
-          Add Account
-        </Button>
-      </Box>
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <form onSubmit={submitFilters}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <TextField name="search" label="Search name" defaultValue={filters?.search || ''} fullWidth />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField select name="method" label="Method" defaultValue={filters?.method || ''} fullWidth>
-                  <MenuItem value="">All Methods</MenuItem>
-                  <MenuItem value="bank_transfer">Bank</MenuItem>
-                  <MenuItem value="online">Online</MenuItem>
-                  <MenuItem value="cheque">Cheque</MenuItem>
-                  <MenuItem value="cash">Cash</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField select name="status" label="Status" defaultValue={filters?.status || ''} fullWidth>
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="inactive">Inactive</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Button type="submit" variant="contained" fullWidth>Apply</Button>
-              </Grid>
-            </Grid>
-          </form>
-        </CardContent>
-      </Card>
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.method) payload.method = nextFilters.method;
+        if (nextFilters.status) payload.status = nextFilters.status;
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
 
-      <Card>
-        <CardContent>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Method</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>COA</TableCell>
-                <TableCell align="right">Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {list.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">No accounts.</TableCell>
-                </TableRow>
-              )}
-              {list.map((acc) => (
-                <TableRow key={acc.id}>
-                  <TableCell>{acc.name}</TableCell>
-                  <TableCell>{acc.payment_method}</TableCell>
-                  <TableCell>{acc.status}</TableCell>
-                  <TableCell>
-                    {acc.coa_account_id && coaMap.has(acc.coa_account_id)
-                      ? `${coaMap.get(acc.coa_account_id).full_code} - ${coaMap.get(acc.coa_account_id).name}`
-                      : '-'}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={() => router.delete(route('accounting.bank-accounts.destroy', acc.id))}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Pagination data={accounts} />
-        </CardContent>
-      </Card>
+        router.get(route('accounting.bank-accounts.index'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
 
-      <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add Bank Account</DialogTitle>
-        <form onSubmit={submit}>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 0 }}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  label="Name"
-                  value={data.name}
-                  onChange={(e) => setData('name', e.target.value)}
-                  error={!!errors.name}
-                  helperText={errors.name}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  select
-                  label="Method"
-                  value={data.payment_method}
-                  onChange={(e) => setData('payment_method', e.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="bank_transfer">Bank</MenuItem>
-                  <MenuItem value="online">Online</MenuItem>
-                  <MenuItem value="cheque">Cheque</MenuItem>
-                  <MenuItem value="cash">Cash</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  select
-                  label="Status"
-                  value={data.status}
-                  onChange={(e) => setData('status', e.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="inactive">Inactive</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  select
-                  label="COA Account"
-                  value={data.coa_account_id}
-                  onChange={(e) => setData('coa_account_id', e.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="">None</MenuItem>
-                  {coaAccounts.map((acc) => (
-                    <MenuItem key={acc.id} value={acc.id}>
-                      {acc.full_code} - {acc.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setOpenModal(false)}>Cancel</Button>
-            <Button type="submit" variant="contained" disabled={processing}>
-              Create Account
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-    </Box>
-  );
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
+            search: filters?.search || '',
+            method: filters?.method || '',
+            status: filters?.status || '',
+            per_page: filters?.per_page || accounts?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [accounts?.per_page, filters?.method, filters?.per_page, filters?.search, filters?.status]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const next = { ...filtersRef.current, ...partial };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                next.page = 1;
+            }
+
+            filtersRef.current = next;
+            setLocalFilters(next);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(next);
+                return;
+            }
+
+            debouncedSubmit(next);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            search: '',
+            method: '',
+            status: '',
+            per_page: filtersRef.current.per_page || accounts?.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = cleared;
+        setLocalFilters(cleared);
+        submitFilters(cleared);
+    }, [accounts?.per_page, debouncedSubmit, submitFilters]);
+
+    const submit = (event) => {
+        event.preventDefault();
+        post(route('accounting.bank-accounts.store'), {
+            onSuccess: () => {
+                reset();
+                setOpenModal(false);
+            },
+        });
+    };
+
+    const columns = [
+        { key: 'name', label: 'Name', minWidth: 200 },
+        { key: 'method', label: 'Method', minWidth: 130 },
+        { key: 'status', label: 'Status', minWidth: 120 },
+        { key: 'default', label: 'Default', minWidth: 110 },
+        { key: 'coa', label: 'COA Mapping', minWidth: 300 },
+        { key: 'action', label: 'Action', minWidth: 120, align: 'center' },
+    ];
+
+    const activeCount = list.filter((account) => account.status === 'active').length;
+    const defaultCount = list.filter((account) => account.is_default).length;
+
+    return (
+        <>
+            <AppPage
+                eyebrow="Accounting"
+                title="Bank Accounts"
+                subtitle="Manage operational payment accounts, their status, and linked chart of accounts mapping."
+                actions={[
+                    <Button key="add" variant="contained" onClick={() => setOpenModal(true)}>
+                        Add Account
+                    </Button>,
+                ]}
+            >
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={3}><StatCard label="Accounts" value={accounts?.total || list.length} accent /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="Active" value={activeCount} tone="light" /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="Default Mapped" value={defaultCount} tone="light" /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="COA Options" value={coaAccounts.length} tone="muted" /></Grid>
+                </Grid>
+
+                {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
+
+                <SurfaceCard title="Live Filters" subtitle="Results update automatically while you refine account name, method, or activity state.">
+                    <FilterToolbar onReset={resetFilters}>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    label="Search account"
+                                    value={localFilters.search}
+                                    onChange={(event) => updateFilters({ search: event.target.value })}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Method"
+                                    value={localFilters.method}
+                                    onChange={(event) => updateFilters({ method: event.target.value }, { immediate: true })}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">All methods</MenuItem>
+                                    <MenuItem value="bank_transfer">Bank</MenuItem>
+                                    <MenuItem value="online">Online</MenuItem>
+                                    <MenuItem value="cheque">Cheque</MenuItem>
+                                    <MenuItem value="cash">Cash</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Status"
+                                    value={localFilters.status}
+                                    onChange={(event) => updateFilters({ status: event.target.value }, { immediate: true })}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">All</MenuItem>
+                                    <MenuItem value="active">Active</MenuItem>
+                                    <MenuItem value="inactive">Inactive</MenuItem>
+                                </TextField>
+                            </Grid>
+                        </Grid>
+                    </FilterToolbar>
+                </SurfaceCard>
+
+                <SurfaceCard title="Account Register" subtitle="Standardized payment-account list with chart mapping and operational cleanup actions.">
+                    <AdminDataTable
+                        columns={columns}
+                        rows={list}
+                        pagination={accounts}
+                        emptyMessage="No bank accounts found."
+                        tableMinWidth={1080}
+                        renderRow={(account) => (
+                            <TableRow key={account.id} hover>
+                                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{account.name}</TableCell>
+                                <TableCell sx={{ textTransform: 'capitalize' }}>{String(account.payment_method || '').replaceAll('_', ' ')}</TableCell>
+                                <TableCell>
+                                    <Chip label={account.status} size="small" color={account.status === 'active' ? 'success' : 'default'} variant="outlined" />
+                                </TableCell>
+                                <TableCell>
+                                    <Chip label={account.is_default ? 'Yes' : 'No'} size="small" color={account.is_default ? 'primary' : 'default'} variant="outlined" />
+                                </TableCell>
+                                <TableCell>
+                                    {account.coa_account_id && coaMap.has(account.coa_account_id)
+                                        ? `${coaMap.get(account.coa_account_id).full_code} - ${coaMap.get(account.coa_account_id).name}`
+                                        : '-'}
+                                </TableCell>
+                                <TableCell align="center">
+                                    <Button size="small" color="error" variant="outlined" onClick={() => router.delete(route('accounting.bank-accounts.destroy', account.id))}>
+                                        Delete
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    />
+                </SurfaceCard>
+            </AppPage>
+
+            <Dialog open={openModal} onClose={() => setOpenModal(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Add Bank Account</DialogTitle>
+                <form onSubmit={submit}>
+                    <DialogContent>
+                        <Grid container spacing={2} sx={{ mt: 0 }}>
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    label="Name"
+                                    value={data.name}
+                                    onChange={(event) => setData('name', event.target.value)}
+                                    error={!!errors.name}
+                                    helperText={errors.name}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField select label="Method" value={data.payment_method} onChange={(event) => setData('payment_method', event.target.value)} fullWidth>
+                                    <MenuItem value="bank_transfer">Bank</MenuItem>
+                                    <MenuItem value="online">Online</MenuItem>
+                                    <MenuItem value="cheque">Cheque</MenuItem>
+                                    <MenuItem value="cash">Cash</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField select label="Status" value={data.status} onChange={(event) => setData('status', event.target.value)} fullWidth>
+                                    <MenuItem value="active">Active</MenuItem>
+                                    <MenuItem value="inactive">Inactive</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    select
+                                    label="COA Account"
+                                    value={data.coa_account_id}
+                                    onChange={(event) => setData('coa_account_id', event.target.value)}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">None</MenuItem>
+                                    {coaAccounts.map((account) => (
+                                        <MenuItem key={account.id} value={account.id}>
+                                            {account.full_code} - {account.name}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                        </Grid>
+                    </DialogContent>
+                    <DialogActions sx={{ px: 3, pb: 2 }}>
+                        <Button onClick={() => setOpenModal(false)}>Cancel</Button>
+                        <Button type="submit" variant="contained" disabled={processing}>
+                            Create Account
+                        </Button>
+                    </DialogActions>
+                </form>
+            </Dialog>
+        </>
+    );
 }

@@ -59,6 +59,10 @@ export default function Create({ vendors, warehouses, products }) {
     (sum, item) => sum + Number(item.qty_ordered || 0) * Number(item.unit_cost || 0),
     0
   );
+  const selectedWarehouse = React.useMemo(
+    () => (warehouses || []).find((warehouse) => String(warehouse.id) === String(data.warehouse_id)),
+    [warehouses, data.warehouse_id]
+  );
 
   const submit = (e) => {
     e.preventDefault();
@@ -98,7 +102,7 @@ export default function Create({ vendors, warehouses, products }) {
                   fullWidth
                 >
                   {warehouses.map((w) => (
-                    <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
+                    <MenuItem key={w.id} value={w.id}>{w.name}{w.tenant ? ` · ${w.tenant.name}` : ''}</MenuItem>
                   ))}
                 </TextField>
               </Grid>
@@ -130,6 +134,13 @@ export default function Create({ vendors, warehouses, products }) {
                   fullWidth
                 />
               </Grid>
+              {selectedWarehouse && (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">
+                    Restaurant scope will be set from the selected warehouse: {selectedWarehouse.tenant?.name || 'Shared / global warehouse'}.
+                  </Typography>
+                </Grid>
+              )}
             </Grid>
 
             <Box sx={{ mt: 3 }}>

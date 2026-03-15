@@ -7,6 +7,9 @@ use App\Models\AccountingPostingLog;
 use App\Models\JournalEntry;
 use App\Services\Accounting\Adapters\FinancialInvoicePostingAdapter;
 use App\Services\Accounting\Adapters\FinancialReceiptPostingAdapter;
+use App\Services\Accounting\Adapters\GoodsReceiptPostingAdapter;
+use App\Services\Accounting\Adapters\VendorBillPostingAdapter;
+use App\Services\Accounting\Adapters\VendorPaymentPostingAdapter;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use Illuminate\Support\Facades\DB;
 
@@ -19,16 +22,29 @@ class AccountingEventDispatcher
 
     public function __construct(
         FinancialInvoicePostingAdapter $financialInvoicePostingAdapter,
-        FinancialReceiptPostingAdapter $financialReceiptPostingAdapter
+        FinancialReceiptPostingAdapter $financialReceiptPostingAdapter,
+        VendorBillPostingAdapter $vendorBillPostingAdapter,
+        VendorPaymentPostingAdapter $vendorPaymentPostingAdapter,
+        GoodsReceiptPostingAdapter $goodsReceiptPostingAdapter
     )
     {
         $this->adapters = [
             $financialInvoicePostingAdapter,
             $financialReceiptPostingAdapter,
+            $vendorBillPostingAdapter,
+            $vendorPaymentPostingAdapter,
+            $goodsReceiptPostingAdapter,
         ];
     }
 
-    public function dispatch(string $eventType, string $sourceType, int $sourceId, ?array $payload = null, ?int $createdBy = null): AccountingEventQueue
+    public function dispatch(
+        string $eventType,
+        string $sourceType,
+        int $sourceId,
+        ?array $payload = null,
+        ?int $createdBy = null,
+        ?int $restaurantId = null
+    ): AccountingEventQueue
     {
         $idempotencyKey = "{$eventType}|{$sourceType}|{$sourceId}";
 
@@ -38,6 +54,7 @@ class AccountingEventDispatcher
                 'event_type' => $eventType,
                 'source_type' => $sourceType,
                 'source_id' => $sourceId,
+                'restaurant_id' => $restaurantId,
                 'payload' => $payload,
                 'status' => 'pending',
                 'created_by' => $createdBy,
@@ -74,6 +91,8 @@ class AccountingEventDispatcher
                         'event_type' => $event->event_type,
                         'source_type' => $event->source_type,
                         'source_id' => $event->source_id,
+                        'restaurant_id' => $event->restaurant_id,
+                        'posting_rule_id' => $event->posting_rule_id,
                         'status' => 'skipped',
                         'message' => 'No posting adapter mapped for this event.',
                         'payload' => $event->payload,
@@ -86,6 +105,7 @@ class AccountingEventDispatcher
 
                 $event->update([
                     'status' => $entry ? 'posted' : 'skipped',
+                    'journal_entry_id' => $entry?->id,
                     'processed_at' => now(),
                     'error_message' => null,
                 ]);
@@ -95,6 +115,8 @@ class AccountingEventDispatcher
                     'event_type' => $event->event_type,
                     'source_type' => $event->source_type,
                     'source_id' => $event->source_id,
+                    'restaurant_id' => $event->restaurant_id,
+                    'posting_rule_id' => $event->posting_rule_id,
                     'status' => $entry ? 'posted' : 'skipped',
                     'journal_entry_id' => $entry?->id,
                     'message' => $entry ? 'Posted successfully.' : 'Event skipped by adapter rules.',
@@ -115,6 +137,8 @@ class AccountingEventDispatcher
                 'event_type' => $event->event_type,
                 'source_type' => $event->source_type,
                 'source_id' => $event->source_id,
+                'restaurant_id' => $event->restaurant_id,
+                'posting_rule_id' => $event->posting_rule_id,
                 'status' => 'failed',
                 'message' => $e->getMessage(),
                 'payload' => $event->payload,

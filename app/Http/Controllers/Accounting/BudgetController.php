@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Accounting;
 use App\Http\Controllers\Controller;
 use App\Models\Budget;
 use App\Models\CoaAccount;
+use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
@@ -16,10 +17,13 @@ class BudgetController extends Controller
 {
     public function index(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
         $emptyBudgets = new LengthAwarePaginator(
             collect(),
             0,
-            25,
+            $perPage,
             1,
             ['path' => $request->url(), 'query' => $request->query()]
         );
@@ -27,8 +31,8 @@ class BudgetController extends Controller
         if (!Schema::hasTable('budgets') || !Schema::hasTable('budget_lines')) {
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
                 'budgets' => $emptyBudgets,
-                'coaAccounts' => CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']),
-                'filters' => $request->only(['search', 'status', 'from', 'to']),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
                 'error' => 'Budget tables are not migrated yet. Run accounting migrations and refresh.',
             ]);
         }
@@ -50,17 +54,18 @@ class BudgetController extends Controller
 
         try {
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
-                'budgets' => $query->orderByDesc('start_date')->paginate(25)->withQueryString(),
-                'coaAccounts' => CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']),
-                'filters' => $request->only(['search', 'status', 'from', 'to']),
+                'budgets' => $query->orderByDesc('start_date')->paginate($perPage)->withQueryString(),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
+                'error' => !Schema::hasTable('coa_accounts') ? $health->setupMessage('Budgets', [], ['coa_accounts']) : null,
             ]);
         } catch (QueryException $e) {
             report($e);
 
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
                 'budgets' => $emptyBudgets,
-                'coaAccounts' => CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']),
-                'filters' => $request->only(['search', 'status', 'from', 'to']),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
                 'error' => 'Could not load budgets due to schema mismatch. Please verify migration state.',
             ]);
         }
@@ -68,6 +73,10 @@ class BudgetController extends Controller
 
     public function store(Request $request)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'start_date' => 'required|date',

@@ -72,7 +72,10 @@ class EmployeeController extends Controller
             'employees_without_salary_structure' => Employee::doesntHave('salaryStructure')->count(),
         ];
 
-        $limit = $request->query('limit') ?? 10;
+        $perPage = (int) $request->query('per_page', $request->query('limit', 25));
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
         $search = $request->query('search', '');
         $departmentId = $request->query('department_id');
         $subdepartmentId = $request->query('subdepartment_id');
@@ -123,7 +126,7 @@ class EmployeeController extends Controller
         }
 
         $employees = $employeesQuery
-            ->paginate($limit)
+            ->paginate($perPage)
             ->withQueryString()
             ->through(function ($employee) {
                 $employee->joining_date = $employee->joining_date ? \Carbon\Carbon::parse($employee->joining_date)->format('d/m/Y') : '-';
@@ -138,7 +141,7 @@ class EmployeeController extends Controller
             'companyStats' => $companyStats,
             'overviewStats' => $overviewStats,
             'employees' => $employees,
-            'filters' => $request->only(['search', 'department_id', 'subdepartment_id', 'branch_id', 'shift_id', 'designation_id']),
+            'filters' => $request->only(['search', 'department_id', 'subdepartment_id', 'branch_id', 'shift_id', 'designation_id', 'per_page']),
             'departments' => $departments,
         ]);
     }

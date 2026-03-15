@@ -4,11 +4,14 @@ namespace App\Observers;
 
 use App\Models\FinancialInvoice;
 use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialInvoiceObserver
 {
     public function created(FinancialInvoice $financialInvoice): void
     {
+        $restaurantId = app(RestaurantContextResolver::class)->forInvoice($financialInvoice);
+
         app(AccountingEventDispatcher::class)->dispatch(
             'invoice_created',
             FinancialInvoice::class,
@@ -18,7 +21,8 @@ class FinancialInvoiceObserver
                 'invoice_type' => $financialInvoice->invoice_type,
                 'total_price' => $financialInvoice->total_price,
             ],
-            $financialInvoice->created_by
+            $financialInvoice->created_by,
+            $restaurantId
         );
     }
 }

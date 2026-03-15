@@ -23,6 +23,10 @@ export default function Create({ receipt, vendors, receipts }) {
     () => (receipts || []).find((row) => String(row.id) === String(data.goods_receipt_id)),
     [receipts, data.goods_receipt_id]
   );
+  const selectedVendor = React.useMemo(
+    () => (vendors || []).find((row) => String(row.id) === String(data.vendor_id)),
+    [vendors, data.vendor_id]
+  );
 
   const handleReceiptChange = (value) => {
     const selected = (receipts || []).find((row) => String(row.id) === String(value));
@@ -145,7 +149,17 @@ export default function Create({ receipt, vendors, receipts }) {
               <Card sx={{ mt: 2, border: '1px solid', borderColor: 'divider' }}>
                 <CardContent sx={{ py: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Linked GRN: {selectedReceipt.grn_no} | Vendor: {selectedReceipt.vendor?.name || '-'} | Date: {selectedReceipt.received_date || '-'}
+                    Linked GRN: {selectedReceipt.grn_no} | Vendor: {selectedReceipt.vendor?.name || '-'} | Restaurant: {selectedReceipt.tenant?.name || '-'} | Date: {selectedReceipt.received_date || '-'}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+
+            {!selectedReceipt && selectedVendor && (
+                <Card sx={{ mt: 2, border: '1px solid', borderColor: 'divider' }}>
+                <CardContent sx={{ py: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Restaurant scope will be inherited from vendor master: {selectedVendor.tenant?.name || 'Shared vendor'}.
                   </Typography>
                 </CardContent>
               </Card>

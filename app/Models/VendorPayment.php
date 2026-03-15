@@ -9,6 +9,7 @@ class VendorPayment extends Model
     protected $fillable = [
         'payment_no',
         'vendor_id',
+        'tenant_id',
         'payment_account_id',
         'payment_date',
         'method',
@@ -30,6 +31,11 @@ class VendorPayment extends Model
     public function vendor()
     {
         return $this->belongsTo(Vendor::class);
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 
     public function paymentAccount()

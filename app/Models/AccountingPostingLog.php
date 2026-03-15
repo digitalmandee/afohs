@@ -11,6 +11,8 @@ class AccountingPostingLog extends Model
         'event_type',
         'source_type',
         'source_id',
+        'restaurant_id',
+        'posting_rule_id',
         'status',
         'journal_entry_id',
         'message',
@@ -24,6 +26,16 @@ class AccountingPostingLog extends Model
     public function queue()
     {
         return $this->belongsTo(AccountingEventQueue::class, 'queue_id');
+    }
+
+    public function restaurant()
+    {
+        return $this->belongsTo(Tenant::class, 'restaurant_id');
+    }
+
+    public function postingRule()
+    {
+        return $this->belongsTo(AccountingRule::class, 'posting_rule_id');
     }
 
     public function journalEntry()

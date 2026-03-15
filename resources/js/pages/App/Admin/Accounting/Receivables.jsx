@@ -1,159 +1,226 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Chip, Grid, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import Pagination from '@/components/Pagination';
-
-const StatCard = ({ label, value, tone = 'default' }) => (
-  <Card
-    sx={{
-      border: '1px solid',
-      borderColor: 'divider',
-      background:
-        tone === 'muted'
-          ? 'linear-gradient(135deg, rgba(6,52,85,0.12) 0%, rgba(6,52,85,0.04) 60%)'
-          : 'background.paper',
-    }}
-  >
-    <CardContent>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="h5" sx={{ mt: 1, fontWeight: 700, color: 'primary.main' }}>{value}</Typography>
-    </CardContent>
-  </Card>
-);
+import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import debounce from 'lodash.debounce';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
 export default function Receivables({ invoices, total, summary, filters }) {
-  const data = invoices?.data || [];
-
-  const submit = (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    router.get(route('accounting.receivables'), {
-      search: form.get('search'),
-      status: form.get('status'),
-      from: form.get('from'),
-      to: form.get('to'),
+    const rows = invoices?.data || [];
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        status: filters?.status || '',
+        from: filters?.from || '',
+        to: filters?.to || '',
+        per_page: filters?.per_page || invoices?.per_page || 25,
+        page: 1,
     });
-  };
+    const filtersRef = React.useRef(localFilters);
 
-  return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 1, color: 'primary.main', fontWeight: 700 }}>Receivables</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Total Outstanding: {Number(total || 0).toFixed(2)}
-      </Typography>
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}><StatCard label="Filtered Records" value={summary?.records || 0} tone="muted" /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="Filtered Outstanding" value={Number(summary?.filtered_outstanding || 0).toFixed(2)} /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="Unpaid" value={summary?.unpaid_count || 0} /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="Partial" value={summary?.partial_count || 0} /></Grid>
-      </Grid>
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.status) payload.status = nextFilters.status;
+        if (nextFilters.from) payload.from = nextFilters.from;
+        if (nextFilters.to) payload.to = nextFilters.to;
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <form onSubmit={submit}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={3}>
-                <TextField name="search" label="Search invoice/member" defaultValue={filters?.search || ''} fullWidth />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  select
-                  name="status"
-                  label="Status"
-                  defaultValue={filters?.status || ''}
-                  fullWidth
-                >
-                  <MenuItem value="">All Open</MenuItem>
-                  <MenuItem value="unpaid">Unpaid</MenuItem>
-                  <MenuItem value="partial">Partial</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  name="from"
-                  label="From"
-                  type="date"
-                  defaultValue={filters?.from || ''}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  name="to"
-                  label="To"
-                  type="date"
-                  defaultValue={filters?.to || ''}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Button type="submit" variant="contained" fullWidth>
-                  Apply
-                </Button>
-              </Grid>
-              <Grid item xs={12} md={1}>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => router.get(route('accounting.receivables'))}
-                >
-                  Reset
-                </Button>
-              </Grid>
+        router.get(route('accounting.receivables'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
+            search: filters?.search || '',
+            status: filters?.status || '',
+            from: filters?.from || '',
+            to: filters?.to || '',
+            per_page: filters?.per_page || invoices?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters?.from, filters?.per_page, filters?.search, filters?.status, filters?.to, invoices?.per_page]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const next = { ...filtersRef.current, ...partial };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                next.page = 1;
+            }
+
+            filtersRef.current = next;
+            setLocalFilters(next);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(next);
+                return;
+            }
+
+            debouncedSubmit(next);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            search: '',
+            status: '',
+            from: '',
+            to: '',
+            per_page: filtersRef.current.per_page || invoices?.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = cleared;
+        setLocalFilters(cleared);
+        submitFilters(cleared);
+    }, [debouncedSubmit, invoices?.per_page, submitFilters]);
+
+    const columns = [
+        { key: 'invoice_no', label: 'Invoice' },
+        { key: 'payer', label: 'Payer', minWidth: 220 },
+        { key: 'source', label: 'Source', minWidth: 150 },
+        { key: 'restaurant', label: 'Restaurant', minWidth: 160 },
+        { key: 'status', label: 'Status', minWidth: 130 },
+        { key: 'posting', label: 'Posting', minWidth: 130 },
+        { key: 'issue_date', label: 'Issue Date', minWidth: 140 },
+        { key: 'total', label: 'Total', minWidth: 120, align: 'right' },
+        { key: 'paid', label: 'Paid', minWidth: 120, align: 'right' },
+        { key: 'balance', label: 'Balance', minWidth: 130, align: 'right' },
+        { key: 'action', label: 'Action', minWidth: 120, align: 'center' },
+    ];
+
+    return (
+        <AppPage
+            eyebrow="Accounting"
+            title="Receivables"
+            subtitle="Track unpaid and partially paid invoices with live filters, clearer source context, and operational drilldowns."
+        >
+            <Grid container spacing={2.25}>
+                <Grid item xs={12} md={3}><StatCard label="Global Outstanding" value={Number(total || 0).toFixed(2)} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Filtered Records" value={summary?.records || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Filtered Outstanding" value={Number(summary?.filtered_outstanding || 0).toFixed(2)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Unpaid" value={summary?.unpaid_count || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Partial" value={summary?.partial_count || 0} tone="muted" /></Grid>
             </Grid>
-          </form>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardContent>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Invoice</TableCell>
-                <TableCell>Payer</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell align="right">Paid</TableCell>
-                <TableCell align="right">Balance</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} align="center">No receivables.</TableCell>
-                </TableRow>
-              )}
-              {data.map((inv) => {
-                const balance = Number(inv.total_price || 0) - Number(inv.paid_amount || 0);
-                const payer = inv.member?.full_name || inv.corporate_member?.full_name || inv.customer?.name || '-';
-                return (
-                  <TableRow key={inv.id}>
-                  <TableCell>{inv.invoice_no}</TableCell>
-                  <TableCell>{payer}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={inv.status}
-                      size="small"
-                      color={inv.status === 'partial' ? 'warning' : 'error'}
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell align="right">{Number(inv.total_price || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{Number(inv.paid_amount || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{balance.toFixed(2)}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          <Pagination data={invoices} />
-        </CardContent>
-      </Card>
-    </Box>
-  );
+            <SurfaceCard title="Live Filters" subtitle="Results update automatically as you refine payer, status, and invoice dates.">
+                <FilterToolbar onReset={resetFilters}>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                label="Search invoice or member"
+                                value={localFilters.search}
+                                onChange={(event) => updateFilters({ search: event.target.value })}
+                                fullWidth
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField
+                                select
+                                label="Status"
+                                value={localFilters.status}
+                                onChange={(event) => updateFilters({ status: event.target.value }, { immediate: true })}
+                                fullWidth
+                            >
+                                <MenuItem value="">All open</MenuItem>
+                                <MenuItem value="unpaid">Unpaid</MenuItem>
+                                <MenuItem value="partial">Partial</MenuItem>
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                            <TextField
+                                label="From"
+                                type="date"
+                                value={localFilters.from}
+                                onChange={(event) => updateFilters({ from: event.target.value }, { immediate: true })}
+                                InputLabelProps={{ shrink: true }}
+                                fullWidth
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                            <TextField
+                                label="To"
+                                type="date"
+                                value={localFilters.to}
+                                onChange={(event) => updateFilters({ to: event.target.value }, { immediate: true })}
+                                InputLabelProps={{ shrink: true }}
+                                fullWidth
+                            />
+                        </Grid>
+                    </Grid>
+                </FilterToolbar>
+            </SurfaceCard>
+
+            <SurfaceCard title="Receivables Register" subtitle="Operational receivables list with source visibility, payment status, and consistent pagination.">
+                <AdminDataTable
+                    columns={columns}
+                    rows={rows}
+                    pagination={invoices}
+                    emptyMessage="No receivables found."
+                    tableMinWidth={1240}
+                    renderRow={(invoice) => {
+                        const balance = Number(invoice.total_price || 0) - Number(invoice.paid_amount || 0);
+                        const payer = invoice.member?.full_name || invoice.corporate_member?.full_name || invoice.customer?.name || '-';
+
+                        return (
+                            <TableRow key={invoice.id} hover>
+                                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{invoice.invoice_no}</TableCell>
+                                <TableCell>{payer}</TableCell>
+                                <TableCell>{invoice.source_label || '-'}</TableCell>
+                                <TableCell>{invoice.restaurant_name || '-'}</TableCell>
+                                <TableCell>
+                                    <Chip
+                                        label={invoice.status}
+                                        size="small"
+                                        color={invoice.status === 'partial' ? 'warning' : 'error'}
+                                        variant="outlined"
+                                        sx={{ textTransform: 'capitalize' }}
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    <Chip
+                                        label={invoice.posting_status || '-'}
+                                        size="small"
+                                        variant="outlined"
+                                        color={invoice.posting_status === 'posted' ? 'success' : invoice.posting_status === 'failed' ? 'error' : 'warning'}
+                                    />
+                                </TableCell>
+                                <TableCell>{invoice.issue_date || '-'}</TableCell>
+                                <TableCell align="right">{Number(invoice.total_price || 0).toFixed(2)}</TableCell>
+                                <TableCell align="right">{Number(invoice.paid_amount || 0).toFixed(2)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>{balance.toFixed(2)}</TableCell>
+                                <TableCell align="center">
+                                    {invoice.document_url ? (
+                                        <Button size="small" variant="outlined" onClick={() => router.visit(invoice.document_url)}>
+                                            Open Source
+                                        </Button>
+                                    ) : (
+                                        <Button size="small" variant="outlined" disabled>
+                                            Unavailable
+                                        </Button>
+                                    )}
+                                </TableCell>
+                            </TableRow>
+                        );
+                    }}
+                />
+            </SurfaceCard>
+        </AppPage>
+    );
 }

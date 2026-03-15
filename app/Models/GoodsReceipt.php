@@ -10,7 +10,9 @@ class GoodsReceipt extends Model
         'grn_no',
         'purchase_order_id',
         'vendor_id',
+        'tenant_id',
         'warehouse_id',
+        'warehouse_location_id',
         'received_date',
         'status',
         'remarks',
@@ -34,9 +36,19 @@ class GoodsReceipt extends Model
         return $this->belongsTo(Vendor::class);
     }
 
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function warehouseLocation()
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 
     public function items()

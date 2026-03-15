@@ -405,9 +405,12 @@ const topLevelMenu = (permissions) => {
             text: 'Warehouses',
             short: 'Stock',
             icon: <PlaceIcon />,
-            path: route('inventory.warehouses.index'),
             permission: 'financial.view',
             group: 'operations',
+            children: [
+                { text: 'Warehouse Master', path: route('inventory.warehouses.index'), permission: 'financial.view' },
+                { text: 'Stock Operations', path: route('inventory.operations.index'), permission: 'financial.view' },
+            ],
         },
         {
             text: 'Subscription',

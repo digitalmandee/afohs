@@ -9,10 +9,14 @@ use App\Models\FinancialReceipt;
 use App\Models\JournalEntry;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use App\Services\Accounting\PostingService;
+use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialReceiptPostingAdapter implements PostingAdapter
 {
-    public function __construct(private readonly PostingService $postingService)
+    public function __construct(
+        private readonly PostingService $postingService,
+        private readonly RestaurantContextResolver $restaurantContextResolver
+    )
     {
     }
 
@@ -100,13 +104,23 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
             ];
         }
 
-        return $this->postingService->post(
+        $restaurantId = $this->restaurantContextResolver->forReceipt($receipt);
+        $entry = $this->postingService->post(
             $ruleCode,
             $receipt->id,
             optional($receipt->receipt_date)->toDateString() ?? now()->toDateString(),
             'Financial Receipt ' . $receipt->receipt_no,
             $lines,
-            $receipt->created_by
+            $receipt->created_by,
+            $restaurantId
         );
+
+        $event->forceFill([
+            'restaurant_id' => $restaurantId,
+            'posting_rule_id' => $rule->id,
+            'journal_entry_id' => $entry->id,
+        ])->save();
+
+        return $entry;
     }
 }

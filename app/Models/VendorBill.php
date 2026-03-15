@@ -9,6 +9,7 @@ class VendorBill extends Model
     protected $fillable = [
         'bill_no',
         'vendor_id',
+        'tenant_id',
         'goods_receipt_id',
         'bill_date',
         'due_date',
@@ -39,6 +40,16 @@ class VendorBill extends Model
     public function vendor()
     {
         return $this->belongsTo(Vendor::class);
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
+    public function goodsReceipt()
+    {
+        return $this->belongsTo(GoodsReceipt::class);
     }
 
     public function items()

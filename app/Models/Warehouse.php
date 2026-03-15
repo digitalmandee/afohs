@@ -25,4 +25,14 @@ class Warehouse extends Model
         'is_global' => 'boolean',
         'metadata' => 'array',
     ];
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
+    }
+
+    public function locations()
+    {
+        return $this->hasMany(WarehouseLocation::class);
+    }
 }

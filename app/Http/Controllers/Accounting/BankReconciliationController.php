@@ -13,11 +13,30 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\AccountingHealth;
 
 class BankReconciliationController extends Controller
 {
     public function index(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+        $status = $health->status(['bank_reconciliation_sessions', 'bank_reconciliation_lines', 'payment_accounts'], ['financial_receipts', 'vendor_payments']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Banking/Reconciliation', [
+                'sessions' => $health->emptyPaginator($request, $perPage),
+                'paymentAccounts' => Schema::hasTable('payment_accounts')
+                    ? PaymentAccount::query()->orderBy('name')->get(['id', 'name', 'payment_method'])
+                    : collect(),
+                'filters' => $request->only(['payment_account_id', 'status', 'session_id', 'per_page']),
+                'activeSession' => null,
+                'bookSnapshot' => null,
+                'error' => $health->setupMessage('Bank reconciliation', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
+
         $sessionsQuery = BankReconciliationSession::query()->with('paymentAccount:id,name,payment_method');
 
         if ($request->filled('payment_account_id')) {
@@ -28,7 +47,7 @@ class BankReconciliationController extends Controller
             $sessionsQuery->where('status', $request->status);
         }
 
-        $sessions = $sessionsQuery->orderByDesc('statement_end_date')->paginate(20)->withQueryString();
+        $sessions = $sessionsQuery->orderByDesc('statement_end_date')->paginate($perPage)->withQueryString();
         $activeSession = null;
         $bookSnapshot = null;
 
@@ -50,7 +69,7 @@ class BankReconciliationController extends Controller
                 ->whereIn('payment_method', ['bank', 'bank_transfer', 'online', 'cheque'])
                 ->orderBy('name')
                 ->get(['id', 'name', 'payment_method']),
-            'filters' => $request->only(['payment_account_id', 'status', 'session_id']),
+            'filters' => $request->only(['payment_account_id', 'status', 'session_id', 'per_page']),
             'activeSession' => $activeSession,
             'bookSnapshot' => $bookSnapshot,
         ]);
@@ -58,6 +77,12 @@ class BankReconciliationController extends Controller
 
     public function store(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $status = $health->status(['bank_reconciliation_sessions', 'bank_reconciliation_lines', 'payment_accounts']);
+        if (!$status['ready']) {
+            return redirect()->back()->with('error', $health->setupMessage('Bank reconciliation', $status['missing_required']));
+        }
+
         $data = $request->validate([
             'payment_account_id' => 'required|exists:payment_accounts,id',
             'statement_start_date' => 'required|date',
@@ -120,6 +145,12 @@ class BankReconciliationController extends Controller
 
     public function autoMatch(BankReconciliationSession $session)
     {
+        $health = app(AccountingHealth::class);
+        $status = $health->status(['bank_reconciliation_sessions', 'bank_reconciliation_lines'], ['financial_receipts', 'vendor_payments']);
+        if (!$status['ready']) {
+            return redirect()->back()->with('error', $health->setupMessage('Bank reconciliation', $status['missing_required'], $status['missing_optional']));
+        }
+
         $snapshot = $this->bookSnapshot(
             (int) $session->payment_account_id,
             $session->statement_start_date->toDateString(),

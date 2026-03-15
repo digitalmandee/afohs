@@ -4,15 +4,15 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
-use App\Models\AccountingRule;
 use App\Models\JournalEntry;
 use App\Models\PaymentAccount;
+use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\VendorPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use App\Services\Accounting\PostingService;
+use App\Services\Accounting\AccountingEventDispatcher;
 
 class VendorPaymentController extends Controller
 {
@@ -23,7 +23,7 @@ class VendorPaymentController extends Controller
             $perPage = 25;
         }
 
-        $query = VendorPayment::with('vendor', 'paymentAccount');
+        $query = VendorPayment::with('vendor', 'paymentAccount', 'tenant');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -49,6 +49,10 @@ class VendorPaymentController extends Controller
 
         if ($request->filled('payment_account_id')) {
             $query->where('payment_account_id', $request->payment_account_id);
+        }
+
+        if ($request->filled('tenant_id')) {
+            $query->where('tenant_id', $request->tenant_id);
         }
 
         if ($request->filled('from') && $request->filled('to')) {
@@ -93,15 +97,16 @@ class VendorPaymentController extends Controller
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'paymentAccounts' => PaymentAccount::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'status', 'method', 'vendor_id', 'payment_account_id', 'from', 'to', 'per_page']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->only(['search', 'status', 'method', 'vendor_id', 'payment_account_id', 'tenant_id', 'from', 'to', 'per_page']),
         ]);
     }
 
     public function create()
     {
         return Inertia::render('App/Admin/Procurement/VendorPayments/Create', [
-            'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
-            'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id']),
+            'vendors' => Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']),
+            'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
         ]);
     }
 
@@ -113,8 +118,8 @@ class VendorPaymentController extends Controller
 
         return Inertia::render('App/Admin/Procurement/VendorPayments/Edit', [
             'payment' => $vendorPayment,
-            'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
-            'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id']),
+            'vendors' => Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']),
+            'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
         ]);
     }
 
@@ -155,9 +160,12 @@ class VendorPaymentController extends Controller
             }
         }
 
+        $vendor = Vendor::query()->findOrFail($data['vendor_id']);
+
         $payment = VendorPayment::create([
             'payment_no' => 'PAY-' . now()->format('YmdHis'),
             'vendor_id' => $data['vendor_id'],
+            'tenant_id' => $vendor->tenant_id ?: PaymentAccount::query()->whereKey($data['payment_account_id'] ?? null)->value('tenant_id'),
             'payment_account_id' => $data['payment_account_id'] ?? null,
             'payment_date' => $data['payment_date'],
             'method' => $data['method'],
@@ -175,31 +183,6 @@ class VendorPaymentController extends Controller
             'remarks' => 'Vendor payment created and submitted.',
             'action_by' => $request->user()?->id,
         ]);
-
-        $rule = AccountingRule::where('code', 'vendor_payment')->where('is_active', true)->first();
-        if ($rule) {
-            $lines = [];
-            foreach ($rule->lines as $line) {
-                $amount = $data['amount'] * ($line['ratio'] ?? 1);
-                $lines[] = [
-                    'account_id' => $line['account_id'],
-                    'debit' => ($line['side'] ?? 'debit') === 'debit' ? $amount : 0,
-                    'credit' => ($line['side'] ?? 'debit') === 'credit' ? $amount : 0,
-                    'vendor_id' => $data['vendor_id'],
-                    'reference_type' => VendorPayment::class,
-                    'reference_id' => $payment->id,
-                ];
-            }
-
-            app(PostingService::class)->post(
-                'vendor_payment',
-                $payment->id,
-                $data['payment_date'],
-                'Vendor Payment ' . $payment->payment_no,
-                $lines,
-                $request->user()?->id
-            );
-        }
 
         return redirect()->route('procurement.vendor-payments.index')->with('success', 'Vendor payment created.');
     }
@@ -247,6 +230,8 @@ class VendorPaymentController extends Controller
 
         $vendorPayment->update([
             'vendor_id' => $data['vendor_id'],
+            'tenant_id' => Vendor::query()->whereKey($data['vendor_id'])->value('tenant_id')
+                ?: PaymentAccount::query()->whereKey($data['payment_account_id'] ?? null)->value('tenant_id'),
             'payment_account_id' => $data['payment_account_id'] ?? null,
             'payment_date' => $data['payment_date'],
             'method' => $data['method'],
@@ -294,6 +279,20 @@ class VendorPaymentController extends Controller
             'posted_by' => $request->user()?->id,
             'posted_at' => now(),
         ]);
+
+        app(AccountingEventDispatcher::class)->dispatch(
+            'vendor_payment_posted',
+            VendorPayment::class,
+            (int) $vendorPayment->id,
+            [
+                'payment_no' => $vendorPayment->payment_no,
+                'vendor_id' => $vendorPayment->vendor_id,
+                'payment_account_id' => $vendorPayment->payment_account_id,
+                'amount' => $vendorPayment->amount,
+            ],
+            $request->user()?->id,
+            $vendorPayment->tenant_id
+        );
 
         ApprovalAction::create([
             'document_type' => 'vendor_payment',

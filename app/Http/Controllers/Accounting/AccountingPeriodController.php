@@ -11,18 +11,32 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\AccountingHealth;
 
 class AccountingPeriodController extends Controller
 {
     public function index(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+        $status = $health->status(['accounting_periods', 'journal_entries'], ['accounting_event_queues', 'bank_reconciliation_sessions', 'vendor_bills', 'purchase_orders', 'goods_receipts']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Close/Periods', [
+                'periods' => $health->emptyPaginator($request, $perPage),
+                'filters' => $request->only(['status', 'per_page']),
+                'error' => $health->setupMessage('Accounting periods', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
+
         $query = AccountingPeriod::query();
 
         if ($request->filled('status') && in_array($request->status, ['open', 'closed'], true)) {
             $query->where('status', $request->status);
         }
 
-        $periods = $query->orderByDesc('start_date')->paginate(20)->withQueryString();
+        $periods = $query->orderByDesc('start_date')->paginate($perPage)->withQueryString();
         $periods->getCollection()->transform(function ($period) {
             $period->checklist = $this->periodChecklist($period);
             return $period;
@@ -30,7 +44,7 @@ class AccountingPeriodController extends Controller
 
         return Inertia::render('App/Admin/Accounting/Close/Periods', [
             'periods' => $periods,
-            'filters' => $request->only(['status']),
+            'filters' => $request->only(['status', 'per_page']),
         ]);
     }
 

@@ -1,12 +1,14 @@
 import React from 'react';
 import { Link, router } from '@inertiajs/react';
-import { Box, Button, Chip, Grid, MenuItem, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import Pagination from '@/components/Pagination';
+import { Alert, Box, Button, Chip, Grid, MenuItem, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
 
-export default function Dashboard({ stats, latestTransactions, transactionFilters, moduleOptions }) {
+export default function Dashboard({ stats, latestTransactions, transactionFilters, moduleOptions, tenants = [], error = null }) {
     const recentEntries = stats?.recent_entries || [];
     const latestRows = latestTransactions?.data || [];
     const entryMix = stats?.entry_mix || [];
@@ -16,19 +18,119 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
         search: transactionFilters?.search || '',
         status: transactionFilters?.status || '',
         module_type: transactionFilters?.module_type || '',
+        tenant_id: transactionFilters?.tenant_id || '',
         from: transactionFilters?.from || '',
         to: transactionFilters?.to || '',
+        per_page: transactionFilters?.per_page || latestTransactions?.per_page || 25,
+        page: 1,
     });
+    const filtersRef = React.useRef(filters);
 
-    const applyFilters = () => {
-        router.get(route('accounting.dashboard'), filters, { preserveState: true, preserveScroll: true });
-    };
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
 
-    const resetFilters = () => {
-        const cleared = { search: '', status: '', module_type: '', from: '', to: '' };
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.status) payload.status = nextFilters.status;
+        if (nextFilters.module_type) payload.module_type = nextFilters.module_type;
+        if (nextFilters.tenant_id) payload.tenant_id = nextFilters.tenant_id;
+        if (nextFilters.from) payload.from = nextFilters.from;
+        if (nextFilters.to) payload.to = nextFilters.to;
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
+
+        router.get(route('accounting.dashboard'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
+            search: transactionFilters?.search || '',
+            status: transactionFilters?.status || '',
+            module_type: transactionFilters?.module_type || '',
+            tenant_id: transactionFilters?.tenant_id || '',
+            from: transactionFilters?.from || '',
+            to: transactionFilters?.to || '',
+            per_page: transactionFilters?.per_page || latestTransactions?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setFilters(next);
+    }, [
+        latestTransactions?.per_page,
+        transactionFilters?.from,
+        transactionFilters?.module_type,
+        transactionFilters?.per_page,
+        transactionFilters?.search,
+        transactionFilters?.status,
+        transactionFilters?.tenant_id,
+        transactionFilters?.to,
+    ]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+            setFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            search: '',
+            status: '',
+            module_type: '',
+            tenant_id: '',
+            from: '',
+            to: '',
+            per_page: filtersRef.current.per_page || latestTransactions?.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = cleared;
         setFilters(cleared);
-        router.get(route('accounting.dashboard'), cleared, { preserveState: true, preserveScroll: true });
-    };
+        submitFilters(cleared);
+    }, [debouncedSubmit, latestTransactions?.per_page, submitFilters]);
+
+    const recentColumns = [
+        { key: 'entry_no', label: 'Entry No' },
+        { key: 'entry_date', label: 'Date' },
+        { key: 'status', label: 'Status' },
+        { key: 'description', label: 'Description', sx: { minWidth: 320 } },
+    ];
+
+    const feedColumns = [
+        { key: 'entry_no', label: 'Entry No' },
+        { key: 'entry_date', label: 'Date' },
+        { key: 'module_type', label: 'Source' },
+        { key: 'status', label: 'Status' },
+        { key: 'restaurant', label: 'Restaurant' },
+        { key: 'description', label: 'Description', sx: { minWidth: 320 } },
+        { key: 'action', label: 'Action', align: 'right', sx: { minWidth: 150 } },
+    ];
 
     return (
         <AppPage
@@ -53,9 +155,13 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                 <Grid item xs={12} md={3}><StatCard label="Vendors" value={stats.total_vendors} /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="Bank Accounts" value={stats.bank_accounts} /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="Cash Accounts" value={stats.cash_accounts} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posting Failures" value={exceptions.failed_postings} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posting Pending" value={exceptions.pending_postings} /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Posting Failures" value={exceptions.failed_postings} /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Posting Pending" value={exceptions.pending_postings} /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Posting Skipped" value={exceptions.skipped_postings || 0} /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Source Unresolved" value={exceptions.unresolved_postings || 0} tone="muted" /></Grid>
             </Grid>
+
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
             <SurfaceCard title="Quick Actions" subtitle="Jump into the highest-traffic accounting workflows.">
                 <Grid container spacing={1.5}>
@@ -75,33 +181,20 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
             </SurfaceCard>
 
             <SurfaceCard title="Recent Transactions" subtitle="Latest entries moving through the books.">
-                <TableContainer>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Entry No</TableCell>
-                                <TableCell>Date</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Description</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {recentEntries.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={4} align="center">No recent entries.</TableCell>
-                                </TableRow>
-                            )}
-                            {recentEntries.map((entry) => (
-                                <TableRow key={entry.id}>
-                                    <TableCell>{entry.entry_no}</TableCell>
-                                    <TableCell>{entry.entry_date}</TableCell>
-                                    <TableCell>{entry.status}</TableCell>
-                                    <TableCell>{entry.description || '-'}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                <AdminDataTable
+                    columns={recentColumns}
+                    rows={recentEntries}
+                    emptyMessage="No recent entries."
+                    tableMinWidth={780}
+                    renderRow={(entry) => (
+                        <TableRow key={entry.id} hover>
+                            <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
+                            <TableCell>{entry.entry_date}</TableCell>
+                            <TableCell>{entry.status}</TableCell>
+                            <TableCell>{entry.description || '-'}</TableCell>
+                        </TableRow>
+                    )}
+                />
             </SurfaceCard>
 
             <SurfaceCard title="Transaction Mix" subtitle="See which modules are generating accounting activity.">
@@ -110,7 +203,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                     {entryMix.map((item, idx) => (
                         <Chip
                             key={`${item.module_type || 'generic'}-${idx}`}
-                            label={`${item.module_type || 'general'}: ${item.total}`}
+                            label={`${item.module_label || item.module_type || 'general'}: ${item.total}`}
                             sx={{
                                 bgcolor: 'rgba(6,52,85,0.10)',
                                 border: '1px solid rgba(6,52,85,0.24)',
@@ -125,28 +218,14 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
             <SurfaceCard
                 title="Transaction Feed"
                 subtitle="Filter the latest accounting activity by status, source module, and date range."
-                actions={
-                    <Stack direction="row" spacing={1}>
-                        <Button variant="contained" onClick={applyFilters}>Apply</Button>
-                        <Button variant="outlined" onClick={resetFilters}>Reset</Button>
-                    </Stack>
-                }
             >
-                <Box
-                    sx={{
-                        p: 2,
-                        mb: 2.5,
-                        borderRadius: '18px',
-                        border: '1px solid rgba(229,231,235,0.9)',
-                        background: 'linear-gradient(180deg, rgba(248,250,253,0.92) 0%, rgba(255,255,255,0.92) 100%)',
-                    }}
-                >
+                <FilterToolbar onReset={resetFilters}>
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField
                                 label="Search entry or description"
                                 value={filters.search}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                                onChange={(e) => updateFilters({ search: e.target.value })}
                                 fullWidth
                             />
                         </Grid>
@@ -155,7 +234,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                                 select
                                 label="Status"
                                 value={filters.status}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+                                onChange={(e) => updateFilters({ status: e.target.value }, { immediate: true })}
                                 fullWidth
                             >
                                 <MenuItem value="">All</MenuItem>
@@ -169,12 +248,26 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                                 select
                                 label="Module"
                                 value={filters.module_type}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, module_type: e.target.value }))}
+                                onChange={(e) => updateFilters({ module_type: e.target.value }, { immediate: true })}
                                 fullWidth
                             >
                                 <MenuItem value="">All Modules</MenuItem>
                                 {(moduleOptions || []).map((module) => (
-                                    <MenuItem key={module} value={module}>{module}</MenuItem>
+                                    <MenuItem key={module.value} value={module.value}>{module.label}</MenuItem>
+                                ))}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField
+                                select
+                                label="Restaurant"
+                                value={filters.tenant_id}
+                                onChange={(e) => updateFilters({ tenant_id: e.target.value }, { immediate: true })}
+                                fullWidth
+                            >
+                                <MenuItem value="">All restaurants</MenuItem>
+                                {tenants.map((tenant) => (
+                                    <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
                                 ))}
                             </TextField>
                         </Grid>
@@ -183,7 +276,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                                 label="From"
                                 type="date"
                                 value={filters.from}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
+                                onChange={(e) => updateFilters({ from: e.target.value }, { immediate: true })}
                                 InputLabelProps={{ shrink: true }}
                                 fullWidth
                             />
@@ -193,45 +286,45 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                                 label="To"
                                 type="date"
                                 value={filters.to}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
+                                onChange={(e) => updateFilters({ to: e.target.value }, { immediate: true })}
                                 InputLabelProps={{ shrink: true }}
                                 fullWidth
                             />
                         </Grid>
                     </Grid>
-                </Box>
+                </FilterToolbar>
 
                 <Typography variant="h6" sx={{ mb: 2, color: 'text.primary' }}>Latest Posted Feed</Typography>
-                <TableContainer>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Entry No</TableCell>
-                                <TableCell>Date</TableCell>
-                                <TableCell>Module</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Description</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {latestRows.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={5} align="center">No transactions available.</TableCell>
-                                </TableRow>
-                            )}
-                            {latestRows.map((entry) => (
-                                <TableRow key={entry.id}>
-                                    <TableCell>{entry.entry_no}</TableCell>
-                                    <TableCell>{entry.entry_date}</TableCell>
-                                    <TableCell>{entry.module_type || 'general'}</TableCell>
-                                    <TableCell>{entry.status}</TableCell>
-                                    <TableCell>{entry.description || '-'}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-                <Pagination data={latestTransactions} />
+                <AdminDataTable
+                    columns={feedColumns}
+                    rows={latestRows}
+                    pagination={latestTransactions}
+                    emptyMessage="No transactions available."
+                    tableMinWidth={960}
+                    renderRow={(entry) => (
+                        <TableRow key={entry.id} hover>
+                            <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
+                            <TableCell>{entry.entry_date}</TableCell>
+                            <TableCell>
+                                <Chip size="small" label={entry.source_label || entry.module_type || 'General'} variant="outlined" />
+                            </TableCell>
+                            <TableCell>{entry.status}</TableCell>
+                            <TableCell>{entry.restaurant_name || '-'}</TableCell>
+                            <TableCell>{entry.description || '-'}</TableCell>
+                            <TableCell align="right">
+                                {entry.document_url ? (
+                                    <Button size="small" variant="outlined" onClick={() => router.visit(entry.document_url)}>
+                                        Open Source
+                                    </Button>
+                                ) : (
+                                    <Button size="small" variant="outlined" disabled>
+                                        Unavailable
+                                    </Button>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
             </SurfaceCard>
 
             <SurfaceCard title="Integration Coverage" subtitle="Monitor posting-rule readiness across modules.">
@@ -262,7 +355,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
 
             <SurfaceCard
                 title="Exception Center"
-                subtitle="Review posting failures and retry directly from the dashboard."
+                subtitle="Review posting failures with source labels, restaurant context, and direct retry access."
                 actions={
                     <Button
                         size="small"
@@ -274,38 +367,51 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                     </Button>
                 }
             >
-                <TableContainer>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>Event</TableCell>
-                                <TableCell>Source</TableCell>
-                                <TableCell>Error</TableCell>
-                                <TableCell>Last Attempt</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {(exceptions.recent_failures || []).length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={4} align="center">No failed postings.</TableCell>
-                                </TableRow>
-                            )}
-                            {(exceptions.recent_failures || []).map((failure) => (
-                                <TableRow key={failure.id}>
-                                    <TableCell>{failure.event_type}</TableCell>
-                                    <TableCell>{failure.source_type.split('\\').pop()} #{failure.source_id}</TableCell>
-                                    <TableCell>{failure.error_message || '-'}</TableCell>
-                                    <TableCell>
-                                        {failure.updated_at || '-'}
-                                        <Button size="small" sx={{ ml: 1 }} onClick={() => router.post(route('accounting.events.retry', failure.id))}>
-                                            Retry
+                <AdminDataTable
+                    columns={[
+                        { key: 'event', label: 'Event', minWidth: 140 },
+                        { key: 'source', label: 'Source', minWidth: 220 },
+                        { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
+                        { key: 'error', label: 'Failure Reason', minWidth: 320 },
+                        { key: 'attempt', label: 'Last Attempt', minWidth: 180 },
+                        { key: 'action', label: 'Action', minWidth: 180, align: 'right' },
+                    ]}
+                    rows={exceptions.recent_failures || []}
+                    emptyMessage="No failed postings."
+                    tableMinWidth={1240}
+                    renderRow={(failure) => (
+                        <TableRow key={failure.id} hover>
+                            <TableCell>{failure.event_type}</TableCell>
+                            <TableCell>
+                                <Stack spacing={0.35}>
+                                    <Typography sx={{ fontWeight: 700 }}>{failure.source_label || failure.source_type}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {failure.document_no || `#${failure.source_id}`}
+                                    </Typography>
+                                </Stack>
+                            </TableCell>
+                            <TableCell>{failure.restaurant_name || '-'}</TableCell>
+                            <TableCell>{failure.failure_reason || '-'}</TableCell>
+                            <TableCell>{failure.updated_at || '-'}</TableCell>
+                            <TableCell align="right">
+                                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                    {failure.document_url ? (
+                                        <Button size="small" variant="outlined" onClick={() => router.visit(failure.document_url)}>
+                                            Open Source
                                         </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                                    ) : (
+                                        <Button size="small" variant="outlined" disabled>
+                                            Unavailable
+                                        </Button>
+                                    )}
+                                    <Button size="small" variant="outlined" onClick={() => router.post(route('accounting.events.retry', failure.id))}>
+                                        Retry
+                                    </Button>
+                                </Stack>
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
             </SurfaceCard>
         </AppPage>
     );

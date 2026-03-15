@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\CoaAccount;
 use App\Models\FinancialInvoice;
 use App\Models\InventoryTransaction;
+use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\PaymentAccount;
 use App\Models\Budget;
+use App\Models\Tenant;
 use App\Models\VendorBill;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\AccountingSourceResolver;
+use App\Services\Accounting\Support\AccountingHealth;
 
 class AccountingReportController extends Controller
 {
@@ -79,8 +83,24 @@ class AccountingReportController extends Controller
 
     public function trialBalance(Request $request)
     {
+        $health = app(AccountingHealth::class);
         $from = $request->input('from');
         $to = $request->input('to');
+        $status = $health->status(['journal_entries', 'journal_lines', 'coa_accounts']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Reports/TrialBalance', [
+                'rows' => [],
+                'summary' => [
+                    'total_debit' => 0,
+                    'total_credit' => 0,
+                    'difference' => 0,
+                    'type_totals' => [],
+                ],
+                'filters' => ['from' => $from, 'to' => $to],
+                'error' => $health->setupMessage('Trial balance', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
 
         $query = JournalLine::query()
             ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit) as debit'), DB::raw('SUM(journal_lines.credit) as credit'))
@@ -91,8 +111,9 @@ class AccountingReportController extends Controller
         }
 
         $totals = $query->groupBy('journal_lines.account_id')->get()->keyBy('account_id');
+        $ledgerReady = Schema::hasTable('journal_entries') && Schema::hasTable('journal_lines');
 
-        $accounts = CoaAccount::orderBy('full_code')->get()->map(function ($acc) use ($totals, $from, $to) {
+        $accounts = CoaAccount::orderBy('full_code')->get()->map(function ($acc) use ($totals, $from, $to, $health, $ledgerReady) {
             $line = $totals->get($acc->id);
             $ledgerQuery = array_filter([
                 'account_id' => $acc->id,
@@ -109,7 +130,7 @@ class AccountingReportController extends Controller
                 'is_postable' => (bool) $acc->is_postable,
                 'debit' => $line?->debit ?? 0,
                 'credit' => $line?->credit ?? 0,
-                'ledger_url' => route('accounting.general-ledger', $ledgerQuery),
+                'ledger_url' => $ledgerReady ? $health->safeRoute('accounting.general-ledger', $ledgerQuery) : null,
             ];
         });
 
@@ -162,6 +183,26 @@ class AccountingReportController extends Controller
 
     public function generalLedger(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $sourceResolver = app(AccountingSourceResolver::class);
+        $perPage = $this->resolvePerPage($request);
+        $status = $health->status(['journal_entries', 'journal_lines', 'coa_accounts'], ['tenants']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/GeneralLedger', [
+                'lines' => $health->emptyPaginator($request, $perPage),
+                'accounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'tenants' => Schema::hasTable('tenants') ? Tenant::query()->orderBy('name')->get(['id', 'name']) : collect(),
+                'summary' => [
+                    'records' => 0,
+                    'total_debit' => 0,
+                    'total_credit' => 0,
+                ],
+                'filters' => $request->only(['account_id', 'tenant_id', 'from', 'to', 'search', 'per_page']),
+                'error' => $health->setupMessage('General ledger', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
+
         $accounts = CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']);
         $query = JournalLine::with(['account', 'entry'])->orderBy('journal_entries.entry_date');
 
@@ -183,21 +224,76 @@ class AccountingReportController extends Controller
             });
         }
 
+        if ($request->filled('tenant_id')) {
+            $query->where('journal_entries.tenant_id', $request->tenant_id);
+        }
+
         $lines = $query->select('journal_lines.*', 'journal_entries.entry_date as entry_date', 'journal_entries.entry_no as entry_no')
-            ->paginate(25)
+            ->paginate($perPage)
             ->withQueryString();
+
+        $entryIds = collect($lines->items())->pluck('journal_entry_id')->filter()->unique()->values()->all();
+        $entryLookup = JournalEntry::query()
+            ->with('tenant')
+            ->whereIn('id', $entryIds)
+            ->get()
+            ->keyBy('id');
+
+        $lines->setCollection(collect($lines->items())->map(function ($line) use ($entryLookup, $sourceResolver) {
+            $entry = $entryLookup->get($line->journal_entry_id);
+            $source = $entry ? $sourceResolver->resolveForJournalEntry($entry) : [
+                'source_label' => 'General Journal',
+                'document_url' => null,
+                'restaurant_name' => null,
+                'source_resolution_status' => 'unresolved',
+            ];
+
+            $line->source_label = $source['source_label'];
+            $line->document_url = $source['document_url'];
+            $line->restaurant_name = $source['restaurant_name'];
+            $line->source_resolution_status = $source['source_resolution_status'];
+
+            return $line;
+        }));
+
+        $summary = [
+            'records' => $lines->total(),
+            'total_debit' => (float) collect($lines->items())->sum(fn ($line) => (float) ($line->debit ?? 0)),
+            'total_credit' => (float) collect($lines->items())->sum(fn ($line) => (float) ($line->credit ?? 0)),
+        ];
 
         return Inertia::render('App/Admin/Accounting/GeneralLedger', [
             'lines' => $lines,
             'accounts' => $accounts,
-            'filters' => $request->only(['account_id', 'from', 'to', 'search']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'summary' => $summary,
+            'filters' => $request->only(['account_id', 'tenant_id', 'from', 'to', 'search', 'per_page']),
         ]);
     }
 
     public function balanceSheet(Request $request)
     {
+        $health = app(AccountingHealth::class);
         $from = $request->input('from');
         $to = $request->input('to');
+        $status = $health->status(['journal_entries', 'journal_lines', 'coa_accounts']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Reports/BalanceSheet', [
+                'assets' => [],
+                'liabilities' => [],
+                'equity' => [],
+                'summary' => [
+                    'assets_total' => 0,
+                    'liabilities_total' => 0,
+                    'equity_total' => 0,
+                    'liabilities_equity_total' => 0,
+                    'difference' => 0,
+                ],
+                'filters' => ['from' => $from, 'to' => $to],
+                'error' => $health->setupMessage('Balance sheet', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
 
         $lines = $this->aggregateByAccount($from, $to);
         $accounts = CoaAccount::orderBy('full_code')->get();
@@ -247,8 +343,24 @@ class AccountingReportController extends Controller
 
     public function profitLoss(Request $request)
     {
+        $health = app(AccountingHealth::class);
         $from = $request->input('from');
         $to = $request->input('to');
+        $status = $health->status(['journal_entries', 'journal_lines', 'coa_accounts']);
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Reports/ProfitLoss', [
+                'income' => [],
+                'expense' => [],
+                'summary' => [
+                    'income_total' => 0,
+                    'expense_total' => 0,
+                    'net_profit' => 0,
+                ],
+                'filters' => ['from' => $from, 'to' => $to],
+                'error' => $health->setupMessage('Profit and loss', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
 
         $lines = $this->aggregateByAccount($from, $to);
         $accounts = CoaAccount::orderBy('full_code')->get();
@@ -343,7 +455,7 @@ class AccountingReportController extends Controller
         return Inertia::render('App/Admin/Accounting/Reports/ReceivablesAging', [
             'rows' => $paginated,
             'summary' => $summary,
-            'filters' => $request->only(['search', 'from', 'to', 'bucket']),
+            'filters' => $request->only(['search', 'from', 'to', 'bucket', 'per_page']),
         ]);
     }
 
@@ -402,15 +514,16 @@ class AccountingReportController extends Controller
         return Inertia::render('App/Admin/Accounting/Reports/PayablesAging', [
             'rows' => $paginated,
             'summary' => $summary,
-            'filters' => $request->only(['search', 'from', 'to', 'bucket']),
+            'filters' => $request->only(['search', 'from', 'to', 'bucket', 'per_page']),
         ]);
     }
 
     public function receivablesAgingBySource(Request $request)
     {
+        $sourceResolver = app(AccountingSourceResolver::class);
         $query = FinancialInvoice::query()
             ->whereIn('status', ['unpaid', 'partial', 'overdue'])
-            ->with(['member:id,full_name', 'corporateMember:id,full_name', 'customer:id,name']);
+            ->with(['member:id,full_name', 'corporateMember:id,full_name', 'customer:id,name', 'invoiceable']);
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -433,12 +546,14 @@ class AccountingReportController extends Controller
                 : 0;
             $balance = max(0, ((float) ($invoice->total_price ?? 0)) - ((float) ($invoice->paid_amount ?? 0)));
             $bucket = $this->agingBucket($age);
-            $source = $this->resolveReceivableSource($invoice);
+            $source = $sourceResolver->resolveForFinancialInvoice($invoice);
 
             return [
                 'id' => $invoice->id,
-                'document_no' => $invoice->invoice_no,
-                'source' => $source,
+                'document_no' => $source['document_no'],
+                'source' => $source['source_label'],
+                'document_url' => $source['document_url'],
+                'restaurant_name' => $source['restaurant_name'],
                 'party' => $invoice->member?->full_name
                     ?? $invoice->corporateMember?->full_name
                     ?? $invoice->customer?->name
@@ -684,6 +799,23 @@ class AccountingReportController extends Controller
 
     private function statementSnapshot(string $from, string $to): array
     {
+        if (!Schema::hasTable('journal_entries') || !Schema::hasTable('journal_lines') || !Schema::hasTable('coa_accounts')) {
+            return [
+                'from' => $from,
+                'to' => $to,
+                'trial_debit' => 0,
+                'trial_credit' => 0,
+                'trial_balance_gap' => 0,
+                'assets_total' => 0,
+                'liabilities_total' => 0,
+                'equity_total' => 0,
+                'income_total' => 0,
+                'expense_total' => 0,
+                'net_profit' => 0,
+                'balance_sheet_gap' => 0,
+            ];
+        }
+
         $lines = $this->aggregateByAccount($from, $to);
         $accounts = CoaAccount::query()->get(['id', 'type']);
 
@@ -733,7 +865,10 @@ class AccountingReportController extends Controller
 
     private function mapBalances($accounts, $lines, string $normalSide, ?string $from = null, ?string $to = null)
     {
-        return $accounts->map(function ($acc) use ($lines, $normalSide, $from, $to) {
+        $health = app(AccountingHealth::class);
+        $ledgerReady = Schema::hasTable('journal_entries') && Schema::hasTable('journal_lines');
+
+        return $accounts->map(function ($acc) use ($lines, $normalSide, $from, $to, $health, $ledgerReady) {
             $line = $lines->get($acc->id);
             $debit = $line?->debit ?? 0;
             $credit = $line?->credit ?? 0;
@@ -749,7 +884,7 @@ class AccountingReportController extends Controller
                 'code' => $acc->full_code,
                 'name' => $acc->name,
                 'balance' => $balance,
-                'ledger_url' => route('accounting.general-ledger', $ledgerQuery),
+                'ledger_url' => $ledgerReady ? $health->safeRoute('accounting.general-ledger', $ledgerQuery) : null,
             ];
         })->values();
     }
@@ -797,7 +932,7 @@ class AccountingReportController extends Controller
 
     private function paginateCollection($rows, Request $request): LengthAwarePaginator
     {
-        $perPage = 25;
+        $perPage = $this->resolvePerPage($request);
         $page = LengthAwarePaginator::resolveCurrentPage();
 
         return new LengthAwarePaginator(
@@ -807,6 +942,13 @@ class AccountingReportController extends Controller
             $page,
             ['path' => $request->url(), 'query' => $request->query()]
         );
+    }
+
+    private function resolvePerPage(Request $request): int
+    {
+        $perPage = (int) $request->integer('per_page', 25);
+
+        return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
     }
 
     private function safeParseDate($value): ?Carbon

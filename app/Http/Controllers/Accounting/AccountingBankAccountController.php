@@ -5,13 +5,32 @@ namespace App\Http\Controllers\Accounting;
 use App\Http\Controllers\Controller;
 use App\Models\CoaAccount;
 use App\Models\PaymentAccount;
+use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 class AccountingBankAccountController extends Controller
 {
     public function index(Request $request)
     {
+        $health = app(AccountingHealth::class);
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
+        $status = $health->status(
+            requiredTables: ['payment_accounts'],
+            optionalTables: ['coa_accounts']
+        );
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Banking/Accounts', [
+                'accounts' => $health->emptyPaginator($request, $perPage),
+                'coaAccounts' => collect(),
+                'filters' => $request->only(['search', 'status', 'method', 'per_page']),
+                'error' => $health->setupMessage('Bank Accounts', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
+
         $query = PaymentAccount::query();
 
         if ($request->filled('search')) {
@@ -28,9 +47,14 @@ class AccountingBankAccountController extends Controller
         }
 
         return Inertia::render('App/Admin/Accounting/Banking/Accounts', [
-            'accounts' => $query->orderByDesc('id')->paginate(25)->withQueryString(),
-            'coaAccounts' => CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']),
-            'filters' => $request->only(['search', 'status', 'method']),
+            'accounts' => $query->orderByDesc('id')->paginate($perPage)->withQueryString(),
+            'coaAccounts' => Schema::hasTable('coa_accounts')
+                ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name'])
+                : collect(),
+            'filters' => $request->only(['search', 'status', 'method', 'per_page']),
+            'error' => !empty($status['missing_optional'])
+                ? $health->setupMessage('Bank Accounts', [], $status['missing_optional'])
+                : null,
         ]);
     }
 

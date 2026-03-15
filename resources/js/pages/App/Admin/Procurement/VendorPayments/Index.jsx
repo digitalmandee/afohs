@@ -12,36 +12,30 @@ import {
     DialogTitle,
     Grid,
     MenuItem,
-    Table,
-    TableBody,
     TableCell,
-    TableContainer,
-    TableHead,
     TableRow,
     TextField,
     Typography,
 } from '@mui/material';
-import Pagination from '@/components/Pagination';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
 
-const tableHeadSx = {
-    '& .MuiTableCell-head': {
-        bgcolor: '#0a3d62',
-        color: '#f8fafc',
-        borderBottom: 'none',
-        fontSize: '0.74rem',
-        fontWeight: 700,
-        py: 1.35,
-    },
-    '& .MuiTableCell-head:first-of-type': { borderTopLeftRadius: 16 },
-    '& .MuiTableCell-head:last-of-type': { borderTopRightRadius: 16 },
-};
-
-export default function Index({ payments, filters, summary = {}, vendors = [], paymentAccounts = [] }) {
+export default function Index({ payments, filters, summary = {}, vendors = [], paymentAccounts = [], tenants = [] }) {
     const rows = payments?.data || [];
+    const columns = [
+        { key: 'payment_no', label: 'Payment No' },
+        { key: 'vendor', label: 'Vendor', sx: { minWidth: 200 } },
+        { key: 'date', label: 'Date' },
+        { key: 'method', label: 'Method' },
+        { key: 'status', label: 'Status' },
+        { key: 'approval', label: 'Approval' },
+        { key: 'gl', label: 'GL' },
+        { key: 'amount', label: 'Amount', align: 'right' },
+        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 240 } },
+    ];
     const [historyOpen, setHistoryOpen] = React.useState(false);
     const [historyRows, setHistoryRows] = React.useState([]);
     const [historyTitle, setHistoryTitle] = React.useState('');
@@ -52,6 +46,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
         method: filters?.method || '',
         vendor_id: filters?.vendor_id || '',
         payment_account_id: filters?.payment_account_id || '',
+        tenant_id: filters?.tenant_id || '',
         from: filters?.from || '',
         to: filters?.to || '',
         per_page: filters?.per_page || payments?.per_page || 25,
@@ -66,6 +61,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
         if (nextFilters.method) payload.method = nextFilters.method;
         if (nextFilters.vendor_id) payload.vendor_id = nextFilters.vendor_id;
         if (nextFilters.payment_account_id) payload.payment_account_id = nextFilters.payment_account_id;
+        if (nextFilters.tenant_id) payload.tenant_id = nextFilters.tenant_id;
         if (nextFilters.from) payload.from = nextFilters.from;
         if (nextFilters.to) payload.to = nextFilters.to;
         payload.per_page = nextFilters.per_page || 25;
@@ -88,6 +84,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
             method: filters?.method || '',
             vendor_id: filters?.vendor_id || '',
             payment_account_id: filters?.payment_account_id || '',
+            tenant_id: filters?.tenant_id || '',
             from: filters?.from || '',
             to: filters?.to || '',
             per_page: filters?.per_page || payments?.per_page || 25,
@@ -95,7 +92,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
         };
         filtersRef.current = next;
         setLocalFilters(next);
-    }, [filters?.from, filters?.method, filters?.payment_account_id, filters?.per_page, filters?.search, filters?.status, filters?.to, filters?.vendor_id, payments?.per_page]);
+    }, [filters?.from, filters?.method, filters?.payment_account_id, filters?.per_page, filters?.search, filters?.status, filters?.tenant_id, filters?.to, filters?.vendor_id, payments?.per_page]);
 
     const updateFilters = React.useCallback(
         (partial, { immediate = false } = {}) => {
@@ -128,6 +125,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
             method: '',
             vendor_id: '',
             payment_account_id: '',
+            tenant_id: '',
             from: '',
             to: '',
             per_page: localFilters.per_page || 25,
@@ -240,6 +238,20 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                                 {paymentAccounts.map((acc) => (
                                     <MenuItem key={acc.id} value={acc.id}>{acc.name}</MenuItem>
                                 ))}
+                                </TextField>
+                            </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField
+                                select
+                                label="Restaurant"
+                                value={localFilters.tenant_id}
+                                onChange={(e) => updateFilters({ tenant_id: e.target.value }, { immediate: true })}
+                                fullWidth
+                            >
+                                <MenuItem value="">All Restaurants</MenuItem>
+                                {tenants.map((tenant) => (
+                                    <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
+                                ))}
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={1}>
@@ -267,63 +279,43 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
             </SurfaceCard>
 
             <SurfaceCard title="Vendor Payment Register" subtitle="Operational payment list with approval history and GL status in one place.">
-                <TableContainer className="premium-scroll">
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow sx={tableHeadSx}>
-                                <TableCell>Payment No</TableCell>
-                                <TableCell>Vendor</TableCell>
-                                <TableCell>Date</TableCell>
-                                <TableCell>Method</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Approval</TableCell>
-                                <TableCell>GL</TableCell>
-                                <TableCell align="right">Amount</TableCell>
-                                <TableCell align="right">Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {rows.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={9} align="center" sx={{ py: 5 }}>
-                                        No payments found.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {rows.map((payment) => (
-                                <TableRow key={payment.id} hover sx={{ '& .MuiTableCell-body': { py: 1.45, borderBottomColor: '#edf2f7' } }}>
-                                    <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{payment.payment_no}</TableCell>
-                                    <TableCell>{payment.vendor?.name || '-'}</TableCell>
-                                    <TableCell>{payment.payment_date || '-'}</TableCell>
-                                    <TableCell>{payment.method || '-'}</TableCell>
-                                    <TableCell>{payment.status || '-'}</TableCell>
-                                    <TableCell>{payment.latest_approval_action?.action || '-'}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            size="small"
-                                            label={payment.gl_posted ? 'Posted' : 'Pending'}
-                                            color={payment.gl_posted ? 'success' : 'warning'}
-                                            variant={payment.gl_posted ? 'filled' : 'outlined'}
-                                        />
-                                    </TableCell>
-                                    <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(payment.amount || 0).toFixed(2)}</TableCell>
-                                    <TableCell align="right">
-                                        {payment.status === 'draft' && (
-                                            <>
-                                                <Button size="small" component={Link} href={route('procurement.vendor-payments.edit', payment.id)}>Edit</Button>
-                                                <Button size="small" onClick={() => router.post(route('procurement.vendor-payments.submit', payment.id))}>Submit</Button>
-                                                <Button size="small" color="success" onClick={() => router.post(route('procurement.vendor-payments.approve', payment.id))}>Approve</Button>
-                                                <Button size="small" color="error" onClick={() => router.post(route('procurement.vendor-payments.reject', payment.id))}>Reject</Button>
-                                            </>
-                                        )}
-                                        <Button size="small" onClick={() => openHistory(payment)}>History</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-                <Pagination data={payments} />
+                <AdminDataTable
+                    columns={columns}
+                    rows={rows}
+                    pagination={payments}
+                    emptyMessage="No payments found."
+                    tableMinWidth={1120}
+                    renderRow={(payment) => (
+                        <TableRow key={payment.id} hover sx={{ '& .MuiTableCell-body': { py: 1.45, borderBottomColor: '#edf2f7' } }}>
+                            <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{payment.payment_no}</TableCell>
+                            <TableCell>{payment.vendor?.name || '-'}</TableCell>
+                            <TableCell>{payment.payment_date || '-'}</TableCell>
+                            <TableCell>{payment.method || '-'}</TableCell>
+                            <TableCell>{payment.status || '-'}</TableCell>
+                            <TableCell>{payment.latest_approval_action?.action || '-'}</TableCell>
+                            <TableCell>
+                                <Chip
+                                    size="small"
+                                    label={payment.gl_posted ? 'Posted' : 'Pending'}
+                                    color={payment.gl_posted ? 'success' : 'warning'}
+                                    variant={payment.gl_posted ? 'filled' : 'outlined'}
+                                />
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(payment.amount || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">
+                                {payment.status === 'draft' && (
+                                    <>
+                                        <Button size="small" component={Link} href={route('procurement.vendor-payments.edit', payment.id)}>Edit</Button>
+                                        <Button size="small" onClick={() => router.post(route('procurement.vendor-payments.submit', payment.id))}>Submit</Button>
+                                        <Button size="small" color="success" onClick={() => router.post(route('procurement.vendor-payments.approve', payment.id))}>Approve</Button>
+                                        <Button size="small" color="error" onClick={() => router.post(route('procurement.vendor-payments.reject', payment.id))}>Reject</Button>
+                                    </>
+                                )}
+                                <Button size="small" onClick={() => openHistory(payment)}>History</Button>
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
             </SurfaceCard>
 
             <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
@@ -331,31 +323,25 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                 <DialogContent>
                     {loadingHistory && <Typography>Loading history...</Typography>}
                     {!loadingHistory && (
-                        <Table size="small">
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Action</TableCell>
-                                    <TableCell>By</TableCell>
-                                    <TableCell>Remarks</TableCell>
-                                    <TableCell>Date</TableCell>
+                        <AdminDataTable
+                            columns={[
+                                { key: 'action', label: 'Action' },
+                                { key: 'by', label: 'By' },
+                                { key: 'remarks', label: 'Remarks', sx: { minWidth: 240 } },
+                                { key: 'date', label: 'Date' },
+                            ]}
+                            rows={historyRows}
+                            emptyMessage="No approval actions yet."
+                            tableMinWidth={720}
+                            renderRow={(row) => (
+                                <TableRow key={row.id}>
+                                    <TableCell>{row.action}</TableCell>
+                                    <TableCell>{row.action_by_name || row.action_by || '-'}</TableCell>
+                                    <TableCell>{row.remarks || '-'}</TableCell>
+                                    <TableCell>{row.created_at || '-'}</TableCell>
                                 </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {historyRows.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={4} align="center">No approval actions yet.</TableCell>
-                                    </TableRow>
-                                )}
-                                {historyRows.map((row) => (
-                                    <TableRow key={row.id}>
-                                        <TableCell>{row.action}</TableCell>
-                                        <TableCell>{row.action_by_name || row.action_by || '-'}</TableCell>
-                                        <TableCell>{row.remarks || '-'}</TableCell>
-                                        <TableCell>{row.created_at || '-'}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                            )}
+                        />
                     )}
                 </DialogContent>
                 <DialogActions sx={{ p: 2.5 }}>

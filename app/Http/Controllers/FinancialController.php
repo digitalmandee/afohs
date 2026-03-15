@@ -3,20 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Constants\AppConstants;
+use App\Models\AccountingEventQueue;
 use App\Models\FinancialInvoice;
 use App\Models\FinancialInvoiceItem;
 use App\Models\FinancialReceipt;
+use App\Models\JournalEntry;
 use App\Models\Member;
 use App\Models\MemberCategory;
+use App\Models\Tenant;
 use App\Models\Transaction;
 use App\Models\TransactionRelation;
+use App\Models\TransactionType;
 use App\Models\User;
+use App\Services\Accounting\Support\AccountingSourceResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 
 class FinancialController extends Controller
@@ -27,8 +30,9 @@ class FinancialController extends Controller
         $this->middleware('permission:financial.view')->only('getAllTransactions', 'fetchRevenue', 'getMemberInvoices');
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $perPage = $this->resolvePerPage($request, 10);
         // Member Statistics
         $totalMembers = Member::whereNull('parent_id')->count();
         $activeMembers = Member::whereNull('parent_id')->where('status', 'active')->count();
@@ -92,39 +96,21 @@ class FinancialController extends Controller
         // Recent transactions
         $recentTransactions = FinancialInvoice::with([
             'member:id,full_name,membership_no,mobile_number_a',
+            'corporateMember:id,full_name,membership_no',
             'customer:id,name,email',
             'createdBy:id,name',
             'items.transactions'  // Load item transactions
         ])
             ->latest()
-            ->limit(10)
-            ->get()
-            ->map(function ($invoice) {
-                // Determine display type
-                if ($invoice->items && $invoice->items->count() > 0) {
-                    $types = $invoice->items->pluck('fee_type')->unique();
-                    if ($types->count() === 1) {
-                        // Resolve type name if possible, or just use ID (which won't look good unless mapped)
-                        // Ideally we map ID to name here, but for dashboard simplicity we might need a quick helper or leave it.
-                        // Let's assume frontend maps it or we provide formatting.
-                        $invoice->fee_type_formatted = 'Single Type';  // Placeholder, improved below
-                    } else {
-                        $invoice->fee_type_formatted = 'Multiple Items';
-                    }
-                } else {
-                    $invoice->fee_type_formatted = $invoice->fee_type
-                        ? ucwords(str_replace('_', ' ', $invoice->fee_type))
-                        : ucwords(str_replace('_', ' ', $invoice->invoice_type));
-                }
+            ->paginate($perPage)
+            ->withQueryString();
 
-                // Calculate Paid Amount from items
-                $invoice->paid_amount = $invoice->items->sum(function ($item) {
-                    return $item->transactions->where('type', 'credit')->sum('amount');
-                });
-                $invoice->balance = $invoice->total_price - $invoice->paid_amount;
+        $recentTransactions->setCollection($this->decorateInvoices($recentTransactions->getCollection()));
 
-                return $invoice;
-            });
+        $byStatus = FinancialInvoice::query()
+            ->select('status', DB::raw('COUNT(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
 
         return Inertia::render('App/Admin/Finance/Dashboard', [
             'statistics' => [
@@ -143,8 +129,19 @@ class FinancialController extends Controller
                 'event_revenue' => $eventRevenue,
                 'total_booking_revenue' => $totalBookingRevenue,
                 'food_revenue' => $foodRevenue,
+                'paid_invoices' => (int) ($byStatus['paid'] ?? 0),
+                'open_invoices' => (int) (($byStatus['unpaid'] ?? 0) + ($byStatus['partial'] ?? 0) + ($byStatus['overdue'] ?? 0)),
+                'failed_postings' => AccountingEventQueue::query()
+                    ->where('source_type', FinancialInvoice::class)
+                    ->where('status', 'failed')
+                    ->count(),
+                'pending_postings' => AccountingEventQueue::query()
+                    ->where('source_type', FinancialInvoice::class)
+                    ->where('status', 'pending')
+                    ->count(),
             ],
-            'recent_transactions' => $recentTransactions
+            'recent_transactions' => $recentTransactions,
+            'transaction_filters' => $request->only(['per_page']),
         ]);
     }
 
@@ -160,7 +157,7 @@ class FinancialController extends Controller
 
     public function getAllTransactions(Request $request)
     {
-        $perPage = $request->input('per_page', 7);
+        $perPage = $this->resolvePerPage($request, 25);
         $search = $request->input('search', '');
 
         // Capture new filters for passing back to view
@@ -358,39 +355,19 @@ class FinancialController extends Controller
         $financialChargeTypes = \App\Models\FinancialChargeType::where('status', 'active')->select('id', 'name')->get();
 
         // Transform transactions
-        $transactions->getCollection()->transform(function ($invoice) use ($transactionTypes) {
-            $resolveType = function ($type) use ($transactionTypes) {
-                if (isset($transactionTypes[$type])) {
-                    return $transactionTypes[$type];
-                }
-                return ucwords(str_replace('_', ' ', $type));
-            };
+        $transactions->setCollection($this->decorateInvoices($transactions->getCollection(), $transactionTypes));
 
-            if ($invoice->items && $invoice->items->count() > 0) {
-                $types = $invoice->items->pluck('fee_type')->unique();
-                if ($types->count() === 1) {
-                    $invoice->fee_type_formatted = $resolveType($types->first());
-                } else {
-                    $invoice->fee_type_formatted = 'Multiple Items';
-                    $invoice->items->transform(function ($item) use ($resolveType) {
-                        $item->fee_type_formatted = $resolveType($item->fee_type);
-                        return $item;
-                    });
-                }
-            } else {
-                $type = $invoice->fee_type ?? $invoice->invoice_type;
-                $invoice->fee_type_formatted = $resolveType($type);
-            }
-
-            // Calculate Paid & Balance
-            $paid = $invoice->items->sum(function ($item) {
-                return $item->transactions->where('type', 'credit')->sum('amount');
-            });
-            $invoice->paid_amount = $paid;
-            $invoice->balance = $invoice->total_price - $paid;
-
-            return $invoice;
-        });
+        $summaryQuery = clone $query;
+        $summaryRows = $summaryQuery->get();
+        $summaryRows = $this->decorateInvoices($summaryRows, $transactionTypes);
+        $summary = [
+            'count' => $summaryRows->count(),
+            'total_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->total_price ?? 0)),
+            'paid_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->paid_amount ?? 0)),
+            'balance' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->balance ?? 0)),
+            'failed_postings' => (int) $summaryRows->where('posting_status', 'failed')->count(),
+            'pending_postings' => (int) $summaryRows->where('posting_status', 'pending')->count(),
+        ];
 
         return Inertia::render('App/Admin/Finance/Transaction', [
             'transactions' => $transactions,
@@ -404,11 +381,99 @@ class FinancialController extends Controller
                 'start_date' => $request->input('start_date'),
                 'end_date' => $request->input('end_date'),
             ], $filters),
+            'summary' => $summary,
             'users' => \App\Models\User::select('id', 'name')->orderBy('name')->get(),
             'transactionTypes' => $transactionTypes,
             'subscriptionCategories' => $subscriptionCategories,
             'financialChargeTypes' => $financialChargeTypes,
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
         ]);
+    }
+
+    private function decorateInvoices($invoices, array $transactionTypes = [])
+    {
+        $sourceResolver = app(AccountingSourceResolver::class);
+        $collection = collect($invoices);
+
+        if ($collection->isEmpty()) {
+            return $collection;
+        }
+
+        if (empty($transactionTypes)) {
+            $transactionTypes = TransactionType::query()->pluck('name', 'id')->toArray();
+        }
+
+        $invoiceIds = $collection->pluck('id')->all();
+        $events = AccountingEventQueue::query()
+            ->with('restaurant:id,name')
+            ->where('source_type', FinancialInvoice::class)
+            ->whereIn('source_id', $invoiceIds)
+            ->latest('updated_at')
+            ->get()
+            ->groupBy('source_id');
+
+        $journals = JournalEntry::query()
+            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+            ->whereIn('module_id', $invoiceIds)
+            ->get()
+            ->groupBy('module_id');
+
+        return $collection->map(function ($invoice) use ($events, $journals, $transactionTypes) {
+            $resolveType = function ($type) use ($transactionTypes) {
+                if (isset($transactionTypes[$type])) {
+                    return $transactionTypes[$type];
+                }
+
+                return ucwords(str_replace('_', ' ', (string) $type));
+            };
+
+            if ($invoice->items && $invoice->items->count() > 0) {
+                $types = $invoice->items->pluck('fee_type')->filter()->unique();
+                if ($types->count() === 1) {
+                    $invoice->fee_type_formatted = $resolveType($types->first());
+                } elseif ($types->count() > 1) {
+                    $invoice->fee_type_formatted = 'Multiple Items';
+                } else {
+                    $invoice->fee_type_formatted = $resolveType($invoice->fee_type ?? $invoice->invoice_type);
+                }
+            } else {
+                $invoice->fee_type_formatted = $resolveType($invoice->fee_type ?? $invoice->invoice_type);
+            }
+
+            $paid = $invoice->items
+                ? $invoice->items->sum(fn ($item) => $item->transactions->where('type', 'credit')->sum('amount'))
+                : (float) ($invoice->paid_amount ?? 0);
+
+            $invoice->paid_amount = $paid;
+            $invoice->balance = max(0, (float) ($invoice->total_price ?? 0) - (float) $paid);
+
+            $event = $events->get($invoice->id)?->first();
+            $journal = $journals->get($invoice->id)?->first();
+            $restaurantId = $event?->restaurant_id ?? data_get($invoice, 'data.restaurant_id') ?? data_get($invoice, 'invoiceable.tenant_id');
+            $restaurantName = $event?->restaurant?->name;
+            $source = $sourceResolver->resolveForFinancialInvoice($invoice, $event, $journal);
+            $invoice->posting_status = $source['posting_status'];
+            $invoice->journal_entry_id = $source['journal_entry_id'];
+            $invoice->source_module = $source['source_module'];
+            $invoice->source_label = $source['source_label'];
+            $invoice->source_type = $source['source_type'];
+            $invoice->source_id = $source['source_id'];
+            $invoice->restaurant_id = $source['restaurant_id'] ?? $restaurantId;
+            $invoice->restaurant_name = $source['restaurant_name'] ?? $restaurantName;
+            $invoice->document_no = $source['document_no'];
+            $invoice->document_url = $source['document_url'];
+            $invoice->failure_reason = $source['failure_reason'];
+            $invoice->source_resolution_status = $source['source_resolution_status'];
+
+            return $invoice;
+        });
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25): int
+    {
+        $perPage = (int) $request->input('per_page', $default);
+
+        return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : $default;
     }
 
     // Get Member Invoices - Accepts either member_id or invoice_id

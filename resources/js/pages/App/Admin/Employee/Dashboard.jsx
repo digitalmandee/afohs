@@ -1,41 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { usePage, router } from '@inertiajs/react';
-import { Autocomplete, Tooltip, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Paper, CircularProgress, Pagination, IconButton, FormControl, InputLabel, Select, MenuItem, TextField, Grid, Box, Chip, Avatar } from '@mui/material';
-import EventSeatIcon from '@mui/icons-material/EventSeat';
-import PeopleIcon from '@mui/icons-material/People';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import PrintIcon from '@mui/icons-material/Print';
-import Search from '@mui/icons-material/Search';
-import { FaEdit, FaTrash } from 'react-icons/fa';
-import { Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
+import React, { useEffect, useMemo, useState } from 'react';
+import { router, usePage } from '@inertiajs/react';
+import {
+    Alert,
+    Autocomplete,
+    Avatar,
+    Box,
+    Button,
+    Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
+    Grid,
+    IconButton,
+    TableCell,
+    TableRow,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import debounce from 'lodash.debounce';
 import axios from 'axios';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import PublishedWithChangesRoundedIcon from '@mui/icons-material/PublishedWithChangesRounded';
+import EventSeatIcon from '@mui/icons-material/EventSeat';
+import Groups2RoundedIcon from '@mui/icons-material/Groups2Rounded';
+import AssignmentTurnedInRoundedIcon from '@mui/icons-material/AssignmentTurnedInRounded';
+import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppPage from '@/components/App/ui/AppPage';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import TransferModal from './TransferModal';
-import { FaExchangeAlt } from 'react-icons/fa';
 
-const EmployeeDashboard = () => {
+const columns = [
+    { key: 'employee_id', label: 'Emp ID', sx: { minWidth: 120 } },
+    { key: 'name', label: 'Employee', sx: { minWidth: 240 } },
+    { key: 'department', label: 'Department', sx: { minWidth: 180 } },
+    { key: 'subdepartment', label: 'Sub-Department', sx: { minWidth: 180 } },
+    { key: 'designation', label: 'Designation', sx: { minWidth: 160 } },
+    { key: 'joining_date', label: 'Joining Date', sx: { minWidth: 140 } },
+    { key: 'email', label: 'Email', sx: { minWidth: 220 } },
+    { key: 'phone', label: 'Contact', sx: { minWidth: 150 } },
+    { key: 'status', label: 'Employee Status', sx: { minWidth: 160 } },
+    { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 140 } },
+];
+
+const autocompleteSx = {
+    '& .MuiAutocomplete-inputRoot': {
+        minHeight: 54,
+    },
+};
+
+const findOption = (options, id) => options.find((option) => String(option.id) === String(id)) || null;
+
+export default function EmployeeDashboard() {
     const { props } = usePage();
-    const { employees, companyStats, departments: initialDepartments, overviewStats } = props;
-    const [searchTerm, setSearchTerm] = useState('');
+    const {
+        employees,
+        companyStats = [],
+        departments: initialDepartments = [],
+        overviewStats = {},
+        filters: initialFilters = {},
+    } = props;
+
     const [isLoading, setIsLoading] = useState(false);
     const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null });
     const [transferModal, setTransferModal] = useState({ open: false, employee: null });
+    const [fetchError, setFetchError] = useState('');
 
-    const handleTransferClick = (employee) => {
-        setTransferModal({ open: true, employee });
-    };
-
-    const handleDeleteClick = (id) => {
-        setDeleteDialog({ open: true, id });
-    };
-
-    const handleConfirmDelete = () => {
-        router.delete(route('employees.destroy', deleteDialog.id), {
-            onSuccess: () => setDeleteDialog({ open: false, id: null }),
-            onError: () => setDeleteDialog({ open: false, id: null }), // Handle error properly if needed
-        });
-    };
-
-    // Filter states with Autocomplete
     const [departments, setDepartments] = useState(initialDepartments || []);
     const [subdepartments, setSubdepartments] = useState([]);
     const [branches, setBranches] = useState([]);
@@ -43,698 +79,540 @@ const EmployeeDashboard = () => {
     const [designations, setDesignations] = useState([]);
 
     const [filters, setFilters] = useState({
-        department_id: null,
-        subdepartment_id: null,
-        branch_id: null,
-        shift_id: null,
-        designation_id: null,
+        search: initialFilters?.search || '',
+        department_id: initialFilters?.department_id || '',
+        subdepartment_id: initialFilters?.subdepartment_id || '',
+        branch_id: initialFilters?.branch_id || '',
+        shift_id: initialFilters?.shift_id || '',
+        designation_id: initialFilters?.designation_id || '',
+        per_page: initialFilters?.per_page || employees?.per_page || 25,
+        page: 1,
     });
+    const filtersRef = React.useRef(filters);
 
-    // Fetch filter options on mount
+    const summaryCards = useMemo(
+        () => [
+            {
+                label: 'Total Employees',
+                value: overviewStats?.total_employees ?? 0,
+                caption: `${overviewStats?.total_departments ?? 0} departments`,
+                icon: <Groups2RoundedIcon />,
+                tone: 'dark',
+            },
+            {
+                label: 'Present Today',
+                value: overviewStats?.present_today ?? 0,
+                caption: `${overviewStats?.weekend_today ?? 0} on weekend`,
+                icon: <EventSeatIcon />,
+                tone: 'light',
+            },
+            {
+                label: 'Absent Today',
+                value: overviewStats?.absent_today ?? 0,
+                caption: `${overviewStats?.total_subdepartments ?? 0} sub-departments`,
+                icon: <AssignmentTurnedInRoundedIcon />,
+                tone: 'muted',
+            },
+            {
+                label: 'Active Salary Structures',
+                value: overviewStats?.active_salary_structures ?? 0,
+                caption: `${overviewStats?.employees_without_salary_structure ?? 0} missing structure`,
+                icon: <BadgeRoundedIcon />,
+                tone: 'light',
+            },
+        ],
+        [overviewStats],
+    );
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        setIsLoading(true);
+
+        const payload = {};
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.department_id) payload.department_id = nextFilters.department_id;
+        if (nextFilters.subdepartment_id) payload.subdepartment_id = nextFilters.subdepartment_id;
+        if (nextFilters.branch_id) payload.branch_id = nextFilters.branch_id;
+        if (nextFilters.shift_id) payload.shift_id = nextFilters.shift_id;
+        if (nextFilters.designation_id) payload.designation_id = nextFilters.designation_id;
+        payload.per_page = nextFilters.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
+
+        router.get(route('employees.dashboard'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            onFinish: () => setIsLoading(false),
+            onError: () => setIsLoading(false),
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
     useEffect(() => {
+        const next = {
+            search: initialFilters?.search || '',
+            department_id: initialFilters?.department_id || '',
+            subdepartment_id: initialFilters?.subdepartment_id || '',
+            branch_id: initialFilters?.branch_id || '',
+            shift_id: initialFilters?.shift_id || '',
+            designation_id: initialFilters?.designation_id || '',
+            per_page: initialFilters?.per_page || employees?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setFilters(next);
+    }, [
+        employees?.per_page,
+        initialFilters?.branch_id,
+        initialFilters?.department_id,
+        initialFilters?.designation_id,
+        initialFilters?.per_page,
+        initialFilters?.search,
+        initialFilters?.shift_id,
+        initialFilters?.subdepartment_id,
+    ]);
+
+    useEffect(() => {
+        let active = true;
+
         const fetchFilterData = async () => {
             try {
-                const [branchesRes, shiftsRes, designationsRes, departmentsRes] = await Promise.all([axios.get(route('branches.list')), axios.get(route('shifts.list')), axios.get(route('designations.list')), axios.get(route('api.departments.listAll'))]);
+                const [branchesRes, shiftsRes, designationsRes, departmentsRes] = await Promise.all([
+                    axios.get(route('branches.list')),
+                    axios.get(route('shifts.list')),
+                    axios.get(route('designations.list')),
+                    axios.get(route('api.departments.listAll')),
+                ]);
+
+                if (!active) return;
 
                 if (branchesRes.data.success) setBranches(branchesRes.data.branches || []);
                 if (shiftsRes.data.success) setShifts(shiftsRes.data.shifts || []);
                 if (designationsRes.data.success) setDesignations(designationsRes.data.data || []);
                 if (departmentsRes.data.results) setDepartments(departmentsRes.data.results || []);
+                setFetchError('');
             } catch (error) {
-                console.error('Error fetching filter data:', error);
+                if (active) {
+                    setFetchError('Some employee filter options could not be loaded.');
+                }
             }
         };
+
         fetchFilterData();
+
+        return () => {
+            active = false;
+        };
     }, []);
 
-    // Fetch subdepartments when department changes
     useEffect(() => {
-        if (filters.department_id) {
-            axios
-                .get(route('api.subdepartments.listAll', { department_id: filters.department_id.id }))
-                .then((res) => setSubdepartments(res.data.results || []))
-                .catch((err) => console.error(err));
-        } else {
+        const departmentId = filters.department_id;
+
+        if (!departmentId) {
             setSubdepartments([]);
-            setFilters((prev) => ({ ...prev, subdepartment_id: null }));
+            return;
         }
+
+        let active = true;
+
+        axios
+            .get(route('api.subdepartments.listAll', { department_id: departmentId }))
+            .then((res) => {
+                if (!active) return;
+                setSubdepartments(res.data.results || []);
+            })
+            .catch(() => {
+                if (!active) return;
+                setSubdepartments([]);
+            });
+
+        return () => {
+            active = false;
+        };
     }, [filters.department_id]);
 
-    const handleFilter = () => {
-        setIsLoading(true);
-        router.get(
-            route('employees.dashboard'),
-            {
-                search: searchTerm,
-                department_id: filters.department_id?.id,
-                subdepartment_id: filters.subdepartment_id?.id,
-                branch_id: filters.branch_id?.id,
-                shift_id: filters.shift_id?.id,
-                designation_id: filters.designation_id?.id,
-                page: 1,
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                onFinish: () => setIsLoading(false),
-                onError: () => setIsLoading(false),
-            },
-        );
-    };
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
 
-    const handleClearFilters = () => {
-        setSearchTerm('');
-        setFilters({
-            department_id: null,
-            subdepartment_id: null,
-            branch_id: null,
-            shift_id: null,
-            designation_id: null,
-        });
-        router.get(
-            route('employees.dashboard'),
-            {},
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
 
-    const autocompleteStyle = {
-        minWidth: 160,
-        '& .MuiOutlinedInput-root': {
-            borderRadius: '16px',
+            if (Object.prototype.hasOwnProperty.call(partial, 'department_id') && !partial.department_id) {
+                nextFilters.subdepartment_id = '';
+            }
+
+            filtersRef.current = nextFilters;
+            setFilters(nextFilters);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
         },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const next = {
+            search: '',
+            department_id: '',
+            subdepartment_id: '',
+            branch_id: '',
+            shift_id: '',
+            designation_id: '',
+            per_page: filtersRef.current.per_page || employees?.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, employees?.per_page, submitFilters]);
+
+    const handleDeleteClick = (id) => setDeleteDialog({ open: true, id });
+
+    const handleConfirmDelete = () => {
+        router.delete(route('employees.destroy', deleteDialog.id), {
+            onSuccess: () => setDeleteDialog({ open: false, id: null }),
+            onError: () => setDeleteDialog({ open: false, id: null }),
+        });
     };
 
-    const capitalizeFirst = (text = '') =>
-        text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+    const renderStatus = (employee, needsAttention, hasNoDepartment) => {
+        if (needsAttention) {
+            return (
+                <Chip
+                    size="small"
+                    label={hasNoDepartment ? 'No Department' : 'Dept Deleted'}
+                    sx={{
+                        bgcolor: '#fee2e2',
+                        color: '#b91c1c',
+                        border: '1px solid #fecaca',
+                        fontWeight: 700,
+                    }}
+                />
+            );
+        }
+
+        return (
+            <Chip
+                size="small"
+                label={(employee.status || 'active').charAt(0).toUpperCase() + (employee.status || 'active').slice(1)}
+                sx={{
+                    bgcolor: employee.status === 'inactive' ? 'rgba(220,38,38,0.08)' : 'rgba(21,128,61,0.08)',
+                    color: employee.status === 'inactive' ? '#b91c1c' : '#166534',
+                    border: `1px solid ${employee.status === 'inactive' ? 'rgba(220,38,38,0.2)' : 'rgba(21,128,61,0.2)'}`,
+                    fontWeight: 700,
+                }}
+            />
+        );
+    };
 
     return (
         <>
-            <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
-                <Box sx={{ px: 2, py: 2 }}>
-                    <div style={{ paddingTop: '1rem' }}>
-                        {/* Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography style={{ color: '#063455', fontWeight: '700', fontSize: '30px' }}>Employee Management</Typography>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <Button variant="contained" startIcon={<span style={{ fontSize: '1.5rem', marginBottom: 5 }}>+</span>} style={{ color: 'white', backgroundColor: '#063455', borderRadius: '16px', height: 35, textTransform: 'none' }} onClick={() => router.visit(route('employees.create'))}>
-                                    Add Employee
-                                </Button>
-                                <Button
-                                    onClick={() => router.visit(route('employees.trashed'))}
-                                    style={{
-                                        // color: '#063455',
-                                        // backgroundColor: 'white',
-                                        borderRadius: '16px',
-                                        height: 35,
-                                        marginLeft: '10px',
-                                        textTransform: 'none',
-                                        // border: '1px solid #063455',
-                                    }}
-                                    variant="outlined"
-                                    color='error'
-                                    startIcon={<FaTrash size={14} />}
-                                >
-                                    Trashed
-                                </Button>
-                            </div>
-                        </div>
-                        <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Overview of staff strength, attendance status, and pending HR actions</Typography>
-
-                        <Grid container spacing={3} sx={{ mb: 4, mt: 1 }}>
-                            <Grid item xs={12} sm={6} md={3}>
-                                <Card sx={{ borderRadius: '16px', border: '1px solid #E9E9E9' }}>
-                                    <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography sx={{ color: '#063455', fontWeight: 700, fontSize: '20px' }}>{overviewStats?.total_employees ?? 0}</Typography>
-                                            <Typography sx={{ color: '#7F7F7F', fontWeight: 600, fontSize: '14px' }}>Total Employees</Typography>
-                                        </Box>
-                                        <PeopleIcon sx={{ color: '#063455' }} />
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                                <Card sx={{ borderRadius: '16px', border: '1px solid #E9E9E9' }}>
-                                    <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography sx={{ color: '#2E7D32', fontWeight: 700, fontSize: '20px' }}>{overviewStats?.present_today ?? 0}</Typography>
-                                            <Typography sx={{ color: '#7F7F7F', fontWeight: 600, fontSize: '14px' }}>Present Today</Typography>
-                                        </Box>
-                                        <EventSeatIcon sx={{ color: '#2E7D32' }} />
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                                <Card sx={{ borderRadius: '16px', border: '1px solid #E9E9E9' }}>
-                                    <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography sx={{ color: '#d32f2f', fontWeight: 700, fontSize: '20px' }}>{overviewStats?.absent_today ?? 0}</Typography>
-                                            <Typography sx={{ color: '#7F7F7F', fontWeight: 600, fontSize: '14px' }}>Absent Today</Typography>
-                                        </Box>
-                                        <AssignmentIcon sx={{ color: '#d32f2f' }} />
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                                <Card sx={{ borderRadius: '16px', border: '1px solid #E9E9E9' }}>
-                                    <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Box>
-                                            <Typography sx={{ color: '#063455', fontWeight: 700, fontSize: '20px' }}>{overviewStats?.active_salary_structures ?? 0}</Typography>
-                                            <Typography sx={{ color: '#7F7F7F', fontWeight: 600, fontSize: '14px' }}>Active Salary Structures</Typography>
-                                        </Box>
-                                        <PrintIcon sx={{ color: '#063455' }} />
-                                    </CardContent>
-                                </Card>
-                            </Grid>
+            <AppPage
+                eyebrow="Employee HR"
+                title="Employee Management"
+                subtitle="Monitor staff strength, attendance posture, and department readiness in a single premium workspace."
+                actions={[
+                    <Button key="trashed" variant="outlined" color="error" onClick={() => router.visit(route('employees.trashed'))}>
+                        Trashed
+                    </Button>,
+                    <Button key="create" variant="contained" onClick={() => router.visit(route('employees.create'))}>
+                        Add Employee
+                    </Button>,
+                ]}
+            >
+                <Grid container spacing={2.25}>
+                    {summaryCards.map((card) => (
+                        <Grid key={card.label} item xs={12} sm={6} md={3}>
+                            <StatCard
+                                label={card.label}
+                                value={card.value}
+                                caption={card.caption}
+                                icon={card.icon}
+                                tone={card.tone}
+                            />
                         </Grid>
+                    ))}
+                </Grid>
 
-                        {/* Company Stats Grid */}
-                        <Typography sx={{ fontWeight: 600, fontSize: '20px', color: '#063455', mb: 2, mt: 3 }}>Company Overview</Typography>
-                        <Grid container spacing={3} sx={{ mb: 4 }}>
-                            {companyStats?.map((company) => (
-                                <Grid item xs={12} sm={6} md={3} key={company.id}>
-                                    <Card
-                                        sx={{
-                                            borderRadius: '16px',
-                                            boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.05)',
-                                            border: '1px solid #E9E9E9',
-                                            height: '100%',
-                                            backgroundColor: '#063455',
-                                        }}
-                                    >
-                                        <CardContent>
-                                            <Typography sx={{ color: '#ffffff', fontSize: '16px', fontWeight: 600, mb: 1 }}>{company.name}</Typography>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                                <Typography sx={{ color: '#ffffff', fontSize: '14px' }}>Total Employees</Typography>
-                                                <Typography sx={{ color: '#ffffff', fontSize: '18px', fontWeight: 700 }}>{company.total_employees}</Typography>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                                <Typography sx={{ color: '#81c784', fontSize: '13px' }}>Present: {company.present}</Typography>
-                                                <Typography sx={{ color: '#e57373', fontSize: '13px' }}>Absent: {company.absent}</Typography>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
-                                                <Typography sx={{ color: '#ffb74d', fontSize: '13px' }}>Weekend: {company.weekend}</Typography>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
+                <SurfaceCard title="Company Overview" subtitle="Compare headcount and attendance posture across active branches.">
+                    <Grid container spacing={2.25}>
+                        {companyStats.length === 0 ? (
+                            <Grid item xs={12}>
+                                <Alert severity="info" variant="outlined">
+                                    No branch-level employee statistics are available yet.
+                                </Alert>
+                            </Grid>
+                        ) : (
+                            companyStats.map((company) => (
+                                <Grid item xs={12} sm={6} lg={3} key={company.id}>
+                                    <StatCard
+                                        label={company.name}
+                                        value={company.total_employees}
+                                        caption={`Present ${company.present}  |  Absent ${company.absent}  |  Weekend ${company.weekend}`}
+                                        tone="dark"
+                                    />
                                 </Grid>
-                            ))}
-                        </Grid>
+                            ))
+                        )}
+                    </Grid>
+                </SurfaceCard>
 
-                        {/* Filter Section */}
-                        <Box sx={{ mb: 3 }}>
-                            {/* Search and Filters - Single Row */}
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+                <SurfaceCard title="Live Filters" subtitle="Employee results update automatically while you search or refine HR filters.">
+                    <FilterToolbar onReset={resetFilters}>
+                        {fetchError ? (
+                            <Alert severity="warning" variant="outlined">
+                                {fetchError}
+                            </Alert>
+                        ) : null}
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={4}>
                                 <TextField
-                                    size="small"
-                                    placeholder="Search by Name, ID, CNIC..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter') handleFilter();
-                                    }}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            // backgroundColor: '#fff',
-                                        },
-                                    }}
+                                    label="Search employee"
+                                    placeholder="Name, ID, email, or national ID"
+                                    value={filters.search}
+                                    onChange={(e) => updateFilters({ search: e.target.value })}
+                                    fullWidth
                                 />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
                                 <Autocomplete
-                                    size="small"
                                     options={branches}
                                     getOptionLabel={(option) => option.name || ''}
-                                    value={filters.branch_id}
-                                    onChange={(e, value) => setFilters({ ...filters, branch_id: value })}
-                                    renderInput={(params) => <TextField {...params} placeholder="Company" />}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            // backgroundColor: '#fff',
-                                        },
-                                    }}
-                                    ListboxProps={{
-                                        sx: {
-
-                                            '& .MuiAutocomplete-option': {
-                                                borderRadius: '16px',
-                                                mx: '8px',
-                                            },
-                                            '& .MuiAutocomplete-option:hover': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                            '& .MuiAutocomplete-option[aria-selected="true"]': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                        },
-                                    }}
+                                    value={findOption(branches, filters.branch_id)}
+                                    onChange={(event, value) => updateFilters({ branch_id: value?.id || '' }, { immediate: true })}
+                                    renderInput={(params) => <TextField {...params} label="Company" fullWidth />}
+                                    sx={autocompleteSx}
                                 />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
                                 <Autocomplete
-                                    size="small"
                                     options={departments}
                                     getOptionLabel={(option) => option.name || ''}
-                                    value={filters.department_id}
-                                    onChange={(e, value) => setFilters({ ...filters, department_id: value, subdepartment_id: null })}
-                                    renderInput={(params) => <TextField {...params} placeholder="Department" />}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                        },
-                                    }}
-                                    ListboxProps={{
-                                        sx: {
-
-                                            '& .MuiAutocomplete-option': {
-                                                borderRadius: '16px',
-                                                mx: '8px',
+                                    value={findOption(departments, filters.department_id)}
+                                    onChange={(event, value) =>
+                                        updateFilters(
+                                            {
+                                                department_id: value?.id || '',
+                                                subdepartment_id: '',
                                             },
-                                            '& .MuiAutocomplete-option:hover': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                            '& .MuiAutocomplete-option[aria-selected="true"]': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                        },
-                                    }}
+                                            { immediate: true },
+                                        )
+                                    }
+                                    renderInput={(params) => <TextField {...params} label="Department" fullWidth />}
+                                    sx={autocompleteSx}
                                 />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
                                 <Autocomplete
-                                    size="small"
                                     options={subdepartments}
                                     getOptionLabel={(option) => option.name || ''}
-                                    value={filters.subdepartment_id}
+                                    value={findOption(subdepartments, filters.subdepartment_id)}
                                     disabled={!filters.department_id}
-                                    onChange={(e, value) => setFilters({ ...filters, subdepartment_id: value })}
-                                    renderInput={(params) => <TextField {...params} placeholder="SubDept" />}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            // backgroundColor: '#fff',
-                                        },
-                                    }}
-                                    ListboxProps={{
-                                        sx: {
-
-                                            '& .MuiAutocomplete-option': {
-                                                borderRadius: '16px',
-                                                mx: '8px',
-                                            },
-                                            '& .MuiAutocomplete-option:hover': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                            '& .MuiAutocomplete-option[aria-selected="true"]': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                        },
-                                    }}
+                                    onChange={(event, value) => updateFilters({ subdepartment_id: value?.id || '' }, { immediate: true })}
+                                    renderInput={(params) => <TextField {...params} label="Sub-Department" fullWidth />}
+                                    sx={autocompleteSx}
                                 />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
                                 <Autocomplete
-                                    size="small"
                                     options={designations}
                                     getOptionLabel={(option) => option.name || ''}
-                                    value={filters.designation_id}
-                                    onChange={(e, value) => setFilters({ ...filters, designation_id: value })}
-                                    renderInput={(params) => <TextField {...params} placeholder="Designation" />}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            // backgroundColor: '#fff',
-                                        },
-                                    }}
-                                    ListboxProps={{
-                                        sx: {
-
-                                            '& .MuiAutocomplete-option': {
-                                                borderRadius: '16px',
-                                                mx: '8px',
-                                            },
-                                            '& .MuiAutocomplete-option:hover': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                            '& .MuiAutocomplete-option[aria-selected="true"]': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                        },
-                                    }}
+                                    value={findOption(designations, filters.designation_id)}
+                                    onChange={(event, value) => updateFilters({ designation_id: value?.id || '' }, { immediate: true })}
+                                    renderInput={(params) => <TextField {...params} label="Designation" fullWidth />}
+                                    sx={autocompleteSx}
                                 />
+                            </Grid>
+                            <Grid item xs={12} md={4}>
                                 <Autocomplete
-                                    size="small"
                                     options={shifts}
                                     getOptionLabel={(option) => option.name || ''}
-                                    value={filters.shift_id}
-                                    onChange={(e, value) => setFilters({ ...filters, shift_id: value })}
-                                    renderInput={(params) => <TextField {...params} placeholder="Shift" />}
-                                    sx={{
-                                        minWidth: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            // backgroundColor: '#fff',
-                                        },
-                                    }}
-                                    ListboxProps={{
-                                        sx: {
-
-                                            '& .MuiAutocomplete-option': {
-                                                borderRadius: '16px',
-                                                mx: '8px',
-                                            },
-                                            '& .MuiAutocomplete-option:hover': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                            '& .MuiAutocomplete-option[aria-selected="true"]': {
-                                                backgroundColor: '#063455',
-                                                color: '#fff',
-                                            },
-                                        },
-                                    }}
+                                    value={findOption(shifts, filters.shift_id)}
+                                    onChange={(event, value) => updateFilters({ shift_id: value?.id || '' }, { immediate: true })}
+                                    renderInput={(params) => <TextField {...params} label="Shift" fullWidth />}
+                                    sx={autocompleteSx}
                                 />
-                                <Button
-                                    startIcon={<Search />}
-                                    variant="contained"
-                                    onClick={handleFilter}
-                                    disabled={isLoading}
+                            </Grid>
+                        </Grid>
+                    </FilterToolbar>
+                </SurfaceCard>
+
+                <SurfaceCard title="Employee Register" subtitle="Standardized HR register with denser rows, stronger status cues, and consistent pagination.">
+                    <AdminDataTable
+                        columns={columns}
+                        rows={employees?.data || []}
+                        pagination={employees}
+                        loading={isLoading}
+                        emptyMessage="No employees found."
+                        tableMinWidth={1440}
+                        renderRow={(employee) => {
+                            const isDepartmentDeleted = employee.department?.deleted_at !== null && employee.department?.deleted_at !== undefined;
+                            const hasNoDepartment = !employee.department_id || !employee.department;
+                            const needsAttention = isDepartmentDeleted || hasNoDepartment;
+
+                            return (
+                                <TableRow
+                                    key={employee.id}
+                                    hover
                                     sx={{
-                                        backgroundColor: '#063455',
-                                        color: 'white',
-                                        textTransform: 'none',
-                                        borderRadius: '20px',
-                                        height: '40px',
-                                        px: 3,
-                                        '&:hover': { backgroundColor: '#052d45' },
-                                        '&:disabled': { backgroundColor: '#ccc', color: '#666' },
+                                        backgroundColor: needsAttention ? 'rgba(254,242,242,0.9)' : 'transparent',
+                                        '& .MuiTableCell-body': {
+                                            borderBottomColor: needsAttention ? 'rgba(248,113,113,0.16)' : '#edf2f7',
+                                        },
                                     }}
                                 >
-                                    {isLoading ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : 'Search'}
-                                </Button>
-                                {/* {(searchTerm || filters.department_id || filters.branch_id || filters.shift_id || filters.designation_id) && ( */}
-                                <Button
-                                    variant="outlined"
-                                    onClick={handleClearFilters}
-                                    sx={{
-                                        color: '#063455',
-                                        borderColor: '#063455',
-                                        textTransform: 'none',
-                                        borderRadius: '20px',
-                                        height: '40px',
-                                        px: 4,
-                                        '&:hover': { borderColor: '#052d45', backgroundColor: 'rgba(6,52,85,0.05)' },
-                                    }}
-                                >
-                                    Reset
-                                </Button>
-
-                            </Box>
-                        </Box>
-
-                        {/* Employees Table */}
-                        <TableContainer component={Paper} style={{ borderRadius: '12px', overflowX: 'auto' }}>
-                            <Table>
-                                <TableHead style={{ backgroundColor: '#063455', height: 30 }}>
-                                    <TableRow>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>EMP ID</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Name</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Department</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Sub-department</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Designation</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Joining Date</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Email Address</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Contact</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Employee Status</TableCell>
-                                        <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Actions</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {employees?.data?.length > 0 ? (
-                                        employees.data.map((emp) => {
-                                            // Check if department is deleted OR not assigned at all
-                                            const isDepartmentDeleted = emp.department?.deleted_at !== null && emp.department?.deleted_at !== undefined;
-                                            const hasNoDepartment = !emp.department_id || !emp.department;
-                                            const needsAttention = isDepartmentDeleted || hasNoDepartment;
-
-                                            const rowStyle = needsAttention
-                                                ? {
-                                                    backgroundColor: '#ffebee',
-                                                }
-                                                : {};
-
-                                            const cellStyle = needsAttention ? { color: '#d32f2f', fontWeight: 400, fontSize: '14px' } : { color: '#7F7F7F', fontWeight: 400, fontSize: '14px' };
-
-                                            return (
-                                                <TableRow key={emp.id} style={rowStyle}>
-                                                    <TableCell
-                                                        style={{
-                                                            color: '#000',
-                                                            fontWeight: '600',
-                                                            fontSize: '14px',
-                                                            textOverflow: 'ellipsis',
+                                    <TableCell sx={{ fontWeight: 700, color: '#0f172a' }}>
+                                        <Tooltip title={employee.employee_id} arrow>
+                                            <span>{employee.employee_id}</span>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, minWidth: 0 }}>
+                                            <Avatar
+                                                src={employee.photo_url || undefined}
+                                                alt={employee.name}
+                                                sx={{ width: 42, height: 42, border: '1px solid #e5e7eb' }}
+                                            >
+                                                {employee.name?.charAt(0) || 'E'}
+                                            </Avatar>
+                                            <Box sx={{ minWidth: 0 }}>
+                                                <Tooltip title={employee.name} arrow>
+                                                    <Typography
+                                                        sx={{
+                                                            fontWeight: 700,
+                                                            color: '#334155',
+                                                            whiteSpace: 'nowrap',
                                                             overflow: 'hidden',
-                                                            maxWidth: '100px',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                        <Tooltip title={emp.employee_id} arrow>
-                                                            {emp.employee_id}
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell style={cellStyle}>
-                                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                            <Avatar src={emp.photo_url} alt={emp.name} sx={{ width: 40, height: 40, mr: 2, border: '1px solid #eee' }}>
-                                                                {emp.name.charAt(0)}
-                                                            </Avatar>
-                                                            <div style={{
-                                                                textOverflow: 'ellipsis',
-                                                                overflow: 'hidden',
-                                                                maxWidth: '100px',
-                                                                whiteSpace: 'nowrap'
-                                                            }}>
-                                                                <Tooltip title={emp.name} arrow>
-                                                                    {emp.name}
-                                                                </Tooltip>
-                                                            </div>
-                                                        </Box>
-                                                    </TableCell>
-                                                    <TableCell style={cellStyle}>
-                                                        {emp.department?.name ? (
-                                                            <>
-                                                                {emp.department.name}
-                                                                {isDepartmentDeleted && (
-                                                                    <Typography
-                                                                        variant="caption"
-                                                                        style={{
-                                                                            color: '#d32f2f',
-                                                                            fontStyle: 'italic',
-                                                                            display: 'block',
-                                                                            fontSize: '0.7rem',
-                                                                        }}
-                                                                    >
-                                                                        (Department Deleted)
-                                                                    </Typography>
-                                                                )}
-                                                            </>
-                                                        ) : (
-                                                            <Typography variant="caption" style={{ color: '#d32f2f', fontStyle: 'italic' }}>
-                                                                No Department
-                                                            </Typography>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell style={cellStyle}>
-                                                        {emp.subdepartment?.name ? (
-                                                            <>
-                                                                {emp.subdepartment.name}
-                                                                {emp.subdepartment?.deleted_at && (
-                                                                    <Typography variant="caption" style={{ color: '#d32f2f', fontStyle: 'italic', display: 'block', fontSize: '0.7rem' }}>
-                                                                        (Sub-dept Deleted)
-                                                                    </Typography>
-                                                                )}
-                                                            </>
-                                                        ) : (
-                                                            <Typography variant="caption" style={{ color: '#d32f2f', fontStyle: 'italic' }}>
-                                                                No Sub-dept
-                                                            </Typography>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell style={{
-                                                        fontSize: '14px',
-                                                        fontWeight: 400,
-                                                        color: '#7f7f7f',
-                                                        textOverflow: 'ellipsis',
-                                                        overflow: 'hidden',
-                                                        maxWidth: '100px',
-                                                        whiteSpace: 'nowrap'
-                                                    }}>
-                                                        <Tooltip title={emp.designation?.name || emp.designation || '-'} arrow>
-                                                            {emp.designation?.name || emp.designation || '-'}
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell style={cellStyle}>{emp.joining_date}</TableCell>
-                                                    <TableCell style={{
-                                                        fontSize: '14px',
-                                                        fontWeight: 400,
-                                                        color: '#7f7f7f',
-                                                        textOverflow: 'ellipsis',
-                                                        overflow: 'hidden',
-                                                        maxWidth: '150px',
-                                                        whiteSpace: 'nowrap'
-                                                    }}>
-                                                        <Tooltip title={emp.email} arrow>
-                                                            {emp.email}
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell style={cellStyle}>
-                                                        <Tooltip title={emp.phone_no || '-'} arrow>
-                                                            {emp.phone_no || '-'}
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    {/* <TableCell style={cellStyle}>
-                                                        {needsAttention ? (
-                                                            <Typography
-                                                                variant="caption"
-                                                                style={{
-                                                                    color: '#d32f2f',
-                                                                    fontWeight: 'bold',
-                                                                    backgroundColor: '#ffcdd2',
-                                                                    padding: '2px 8px',
-                                                                    borderRadius: '4px',
-                                                                }}
-                                                            >
-                                                                {hasNoDepartment ? 'No Department' : 'Dept Deleted'}
-                                                            </Typography>
-                                                        ) : (
-                                                            (emp.status ?? 'Active')
-                                                        )}
-                                                    </TableCell> */}
-                                                    <TableCell style={cellStyle}>
-                                                        {needsAttention ? (
-                                                            <Typography
-                                                                variant="caption"
-                                                                sx={{
-                                                                    color: '#d32f2f',
-                                                                    fontWeight: 'bold',
-                                                                    backgroundColor: '#ffcdd2',
-                                                                    px: 2,
-                                                                    py: 0.7,
-                                                                    borderRadius: '16px',
-                                                                    display: 'inline-block',
-                                                                    fontSize: '14px'
-                                                                }}
-                                                            >
-                                                                {hasNoDepartment ? 'No Department' : 'Dept Deleted'}
-                                                            </Typography>
-                                                        ) : (
-                                                            <Typography
-                                                                variant="caption"
-                                                                sx={{
-                                                                    fontWeight: 'bold',
-                                                                    px: 2,
-                                                                    py: 0.7,
-                                                                    borderRadius: '16px',
-                                                                    fontSize: '14px',
-                                                                    display: 'inline-block',
-                                                                    color: emp.status === 'inactive' ? '#d32f2f' : '#2E7D32',
-                                                                    border: `1px solid ${emp.status === 'inactive' ? '#d32f2f' : '#2E7D32'
-                                                                        }`,
-                                                                }}
-                                                            >
-                                                                {capitalizeFirst(emp.status ?? 'active')}
-                                                            </Typography>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <IconButton
-                                                            onClick={() => router.visit(route('employees.edit', emp.id))}
-                                                            size="small"
-                                                            sx={{
-                                                                color: '#0a3d62',
-                                                                '&:hover': { backgroundColor: '#f5f5f5' },
-                                                            }}
-                                                        >
-                                                            <FaEdit size={18} style={{ color: '#f57c00' }} />
-                                                        </IconButton>
-                                                        <IconButton
-                                                            onClick={() => handleDeleteClick(emp.id)}
-                                                            size="small"
-                                                            sx={{
-                                                                color: '#d32f2f',
-                                                                '&:hover': { backgroundColor: '#ffebee' },
-                                                            }}
-                                                        >
-                                                            <FaTrash size={16} />
-                                                        </IconButton>
+                                                            textOverflow: 'ellipsis',
+                                                            maxWidth: 180,
+                                                        }}
+                                                    >
+                                                        {employee.name}
+                                                    </Typography>
+                                                </Tooltip>
+                                            </Box>
+                                        </Box>
+                                    </TableCell>
+                                    <TableCell>
+                                        {employee.department?.name ? (
+                                            <Box>
+                                                <Typography sx={{ color: needsAttention ? '#b91c1c' : '#64748b', fontWeight: 600 }}>
+                                                    {employee.department.name}
+                                                </Typography>
+                                                {isDepartmentDeleted ? (
+                                                    <Typography variant="caption" sx={{ color: '#b91c1c' }}>
+                                                        Department deleted
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        ) : (
+                                            <Typography variant="body2" sx={{ color: '#b91c1c', fontStyle: 'italic' }}>
+                                                No Department
+                                            </Typography>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>
+                                        {employee.subdepartment?.name ? (
+                                            <Box>
+                                                <Typography sx={{ color: '#64748b', fontWeight: 500 }}>{employee.subdepartment.name}</Typography>
+                                                {employee.subdepartment?.deleted_at ? (
+                                                    <Typography variant="caption" sx={{ color: '#b91c1c' }}>
+                                                        Sub-department deleted
+                                                    </Typography>
+                                                ) : null}
+                                            </Box>
+                                        ) : (
+                                            <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                                                -
+                                            </Typography>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Tooltip title={employee.designation?.name || employee.designation || '-'} arrow>
+                                            <Typography
+                                                sx={{
+                                                    color: '#64748b',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    maxWidth: 150,
+                                                }}
+                                            >
+                                                {employee.designation?.name || employee.designation || '-'}
+                                            </Typography>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#64748b' }}>{employee.joining_date || '-'}</TableCell>
+                                    <TableCell>
+                                        <Tooltip title={employee.email || '-'} arrow>
+                                            <Typography
+                                                sx={{
+                                                    color: '#64748b',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    maxWidth: 180,
+                                                }}
+                                            >
+                                                {employee.email || '-'}
+                                            </Typography>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell sx={{ color: '#64748b' }}>{employee.phone_no || '-'}</TableCell>
+                                    <TableCell>{renderStatus(employee, needsAttention, hasNoDepartment)}</TableCell>
+                                    <TableCell align="right">
+                                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.35 }}>
+                                            <Tooltip title="Edit employee" arrow>
+                                                <IconButton size="small" onClick={() => router.visit(route('employees.edit', employee.id))}>
+                                                    <EditRoundedIcon sx={{ fontSize: '1.05rem', color: '#0c67a7' }} />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Delete employee" arrow>
+                                                <IconButton size="small" onClick={() => handleDeleteClick(employee.id)}>
+                                                    <DeleteOutlineRoundedIcon sx={{ fontSize: '1.05rem', color: '#dc2626' }} />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Transfer employee" arrow>
+                                                <IconButton size="small" onClick={() => setTransferModal({ open: true, employee })}>
+                                                    <PublishedWithChangesRoundedIcon sx={{ fontSize: '1.05rem', color: '#7c3aed' }} />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </Box>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        }}
+                    />
+                </SurfaceCard>
+            </AppPage>
 
-                                                        <IconButton
-                                                            onClick={() => handleTransferClick(emp)}
-                                                            size="small"
-                                                            title="Transfer Employee"
-                                                            sx={{
-                                                                color: '#1976d2',
-                                                                '&:hover': { backgroundColor: '#e3f2fd' },
-                                                            }}
-                                                        >
-                                                            <FaExchangeAlt size={16} />
-                                                        </IconButton>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={10} align="center">
-                                                No employees found.
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-
-                        {/* Pagination */}
-                        <Box sx={{ display: 'flex', justifyContent: 'end', mt: 3 }}>
-                            <Pagination
-                                count={employees?.last_page || 1}
-                                page={employees?.current_page || 1}
-                                onChange={(e, page) =>
-                                    router.get(route('employees.dashboard'), {
-                                        page,
-                                        search: searchTerm,
-                                        department_id: filters.department_id?.id,
-                                        subdepartment_id: filters.subdepartment_id?.id,
-                                        branch_id: filters.branch_id?.id,
-                                        shift_id: filters.shift_id?.id,
-                                        designation_id: filters.designation_id?.id,
-                                    })
-                                }
-                            />
-                        </Box>
-                    </div>
-                </Box>
-            </div>
-
-            {/* Delete Confirmation Dialog */}
-            <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, id: null })} aria-labelledby="alert-dialog-title" aria-describedby="alert-dialog-description">
-                <DialogTitle id="alert-dialog-title">{'Delete Employee?'}</DialogTitle>
+            <Dialog
+                open={deleteDialog.open}
+                onClose={() => setDeleteDialog({ open: false, id: null })}
+                PaperProps={{ sx: { borderRadius: '22px' } }}
+            >
+                <DialogTitle>Delete Employee?</DialogTitle>
                 <DialogContent>
-                    <DialogContentText id="alert-dialog-description">Are you sure you want to delete this employee? They can be restored later from the Trashed Employees page.</DialogContentText>
+                    <DialogContentText>
+                        Are you sure you want to delete this employee? They can be restored later from the trashed employees page.
+                    </DialogContentText>
                 </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDeleteDialog({ open: false, id: null })} color="primary">
-                        Cancel
-                    </Button>
-                    <Button onClick={handleConfirmDelete} color="error" autoFocus>
+                <DialogActions sx={{ px: 3, pb: 2.5 }}>
+                    <Button onClick={() => setDeleteDialog({ open: false, id: null })}>Cancel</Button>
+                    <Button onClick={handleConfirmDelete} color="error" variant="contained">
                         Delete
                     </Button>
                 </DialogActions>
@@ -745,15 +623,13 @@ const EmployeeDashboard = () => {
                 onClose={() => setTransferModal({ open: false, employee: null })}
                 employee={transferModal.employee}
                 onSuccess={() => {
-                    router.visit(window.location.href, {
+                    router.reload({
                         preserveScroll: true,
                         preserveState: true,
-                        only: ['employees', 'companyStats'],
+                        only: ['employees', 'companyStats', 'overviewStats', 'filters'],
                     });
                 }}
             />
         </>
     );
-};
-
-export default EmployeeDashboard;
+}

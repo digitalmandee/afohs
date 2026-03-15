@@ -8,10 +8,14 @@ use App\Models\FinancialInvoice;
 use App\Models\JournalEntry;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use App\Services\Accounting\PostingService;
+use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialInvoicePostingAdapter implements PostingAdapter
 {
-    public function __construct(private readonly PostingService $postingService)
+    public function __construct(
+        private readonly PostingService $postingService,
+        private readonly RestaurantContextResolver $restaurantContextResolver
+    )
     {
     }
 
@@ -65,14 +69,24 @@ class FinancialInvoicePostingAdapter implements PostingAdapter
             ];
         }
 
-        return $this->postingService->post(
+        $restaurantId = $this->restaurantContextResolver->forInvoice($invoice);
+        $entry = $this->postingService->post(
             $ruleCode,
             $invoice->id,
             optional($invoice->issue_date)->toDateString() ?? now()->toDateString(),
             'Financial Invoice ' . $invoice->invoice_no,
             $lines,
-            $invoice->created_by
+            $invoice->created_by,
+            $restaurantId
         );
+
+        $event->forceFill([
+            'restaurant_id' => $restaurantId,
+            'posting_rule_id' => $rule->id,
+            'journal_entry_id' => $entry->id,
+        ])->save();
+
+        return $entry;
     }
 
     private function resolveRuleCode(FinancialInvoice $invoice): ?string

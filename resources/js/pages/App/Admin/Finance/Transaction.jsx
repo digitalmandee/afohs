@@ -1,616 +1,433 @@
-import { useState, useEffect } from 'react';
-import { Typography, Button, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, InputAdornment, Pagination, MenuItem, Select, FormControl, Tooltip, ThemeProvider, createTheme, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch } from '@mui/material';
-import { Search, FilterAlt, Payment } from '@mui/icons-material';
-import PrintIcon from '@mui/icons-material/Print';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import React from 'react';
 import { router } from '@inertiajs/react';
-import TransactionFilter from './Filter';
-import MembershipInvoiceSlip from '../Membership/Invoice';
-import BookingInvoiceModal from '@/components/App/Rooms/BookingInvoiceModal';
-import EventBookingInvoiceModal from '@/components/App/Events/EventBookingInvoiceModal';
-import PaymentDialog from '@/components/App/Transactions/PaymentDialog';
+import {
+    Box,
+    Button,
+    Checkbox,
+    Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    Grid,
+    MenuItem,
+    Stack,
+    TableCell,
+    TableRow,
+    TextField,
+    Typography,
+} from '@mui/material';
 import axios from 'axios';
+import debounce from 'lodash.debounce';
 import { enqueueSnackbar } from 'notistack';
-import dayjs from 'dayjs';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import PaymentDialog from '@/components/App/Transactions/PaymentDialog';
 
-// const drawerWidthOpen = 240;
-// const drawerWidthClosed = 110;
+const statusColor = {
+    paid: 'success',
+    unpaid: 'warning',
+    partial: 'warning',
+    overdue: 'error',
+    cancelled: 'default',
+    failed: 'error',
+    pending: 'warning',
+    posted: 'success',
+    not_configured: 'default',
+};
 
-const Transaction = ({ transactions, filters, users, transactionTypes, subscriptionCategories, financialChargeTypes }) => {
-    // Modal state
-    // const [open, setOpen] = useState(true);
-    const [openMembershipInvoiceModal, setOpenMembershipInvoiceModal] = useState(false);
-    const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
-    const [showRoomInvoiceModal, setShowRoomInvoiceModal] = useState(false);
-    const [showEventInvoiceModal, setShowEventInvoiceModal] = useState(false);
-    const [selectedBookingId, setSelectedBookingId] = useState(null);
-    const [transactionList, setTransactionList] = useState(transactions);
-    // const [searchQuery, setSearchQuery] = useState(filters?.search || ''); // Search handled by Filter component now
-    const [perPage, setPerPage] = useState(filters?.per_page || 10);
+const defaultFilters = (filters, transactions) => ({
+    search: filters?.search || '',
+    invoice_no: filters?.invoice_no || '',
+    member_name: filters?.member_name || '',
+    membership_no: filters?.membership_no || '',
+    status: filters?.status || 'all',
+    type: filters?.type || 'all',
+    customer_type: filters?.customer_type || 'all',
+    created_by: filters?.created_by || 'all',
+    start_date: filters?.start_date || '',
+    end_date: filters?.end_date || '',
+    per_page: filters?.per_page || transactions?.per_page || 25,
+    page: 1,
+});
 
-    // Bulk Action State
-    const [selectedIds, setSelectedIds] = useState([]);
-    const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
-    const [overdueDialogOpen, setOverdueDialogOpen] = useState(false);
-    const [bulkAmount, setBulkAmount] = useState('');
-    const [bulkIsPercent, setBulkIsPercent] = useState(false);
-    const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
+export default function Transaction({ transactions, filters, users = [], transactionTypes = {}, summary = {}, tenants = [] }) {
+    const rows = transactions?.data || [];
+    const [localFilters, setLocalFilters] = React.useState(() => defaultFilters(filters, transactions));
+    const filtersRef = React.useRef(localFilters);
+    const [selectedIds, setSelectedIds] = React.useState([]);
+    const [paymentDialog, setPaymentDialog] = React.useState({ open: false, transaction: null });
+    const [submittingPayment, setSubmittingPayment] = React.useState(false);
+    const [bulkDialog, setBulkDialog] = React.useState({ open: false, type: 'discount', amount: '', is_percent: false });
 
-    // Handle Checkbox Select All
-    const handleSelectAll = (event) => {
-        if (event.target.checked) {
-            const newSelecteds = transactions.data.map((n) => n.id);
-            setSelectedIds(newSelecteds);
-        } else {
-            setSelectedIds([]);
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
+        Object.entries(nextFilters).forEach(([key, value]) => {
+            if (['all', '', null, undefined].includes(value)) return;
+            if (key === 'page' && Number(value) <= 1) return;
+            payload[key] = value;
+        });
+        payload.per_page = nextFilters.per_page || 25;
+
+        router.get(route('finance.transaction'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((next) => submitFilters(next), 350), [submitFilters]);
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = defaultFilters(filters, transactions);
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters, transactions?.per_page]);
+
+    const updateFilters = React.useCallback((partial, { immediate = false } = {}) => {
+        const next = { ...filtersRef.current, ...partial };
+        if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+            next.page = 1;
         }
-    };
+        filtersRef.current = next;
+        setLocalFilters(next);
 
-    // Handle Checkbox Select Single
-    const handleSelectClick = (event, id) => {
-        const selectedIndex = selectedIds.indexOf(id);
-        let newSelected = [];
-
-        if (selectedIndex === -1) {
-            newSelected = newSelected.concat(selectedIds, id);
-        } else if (selectedIndex === 0) {
-            newSelected = newSelected.concat(selectedIds.slice(1));
-        } else if (selectedIndex === selectedIds.length - 1) {
-            newSelected = newSelected.concat(selectedIds.slice(0, -1));
-        } else if (selectedIndex > 0) {
-            newSelected = newSelected.concat(selectedIds.slice(0, selectedIndex), selectedIds.slice(selectedIndex + 1));
-        }
-        setSelectedIds(newSelected);
-    };
-
-    const isSelected = (id) => selectedIds.indexOf(id) !== -1;
-
-    // Bulk Action Handlers
-    const handleBulkSubmit = async (type) => {
-        if (!bulkAmount) {
-            enqueueSnackbar('Please enter an amount', { variant: 'error' });
+        if (immediate) {
+            debouncedSubmit.cancel();
+            submitFilters(next);
             return;
         }
 
-        setIsSubmittingBulk(true);
-        const endpoint = type === 'discount' ? route('finance.transaction.bulk-discount') : route('finance.transaction.bulk-overdue');
+        debouncedSubmit(next);
+    }, [debouncedSubmit, submitFilters]);
 
-        try {
-            const response = await axios.post(endpoint, {
-                ids: selectedIds,
-                amount: bulkAmount,
-                is_percent: bulkIsPercent,
-            });
+    const resetFilters = React.useCallback(() => {
+        const next = defaultFilters({}, { per_page: filtersRef.current.per_page });
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setLocalFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, submitFilters]);
 
-            if (response.data.success) {
-                enqueueSnackbar(response.data.message, { variant: 'success' });
-                // Reset state
-                setSelectedIds([]);
-                setBulkAmount('');
-                setBulkIsPercent(false);
-                if (type === 'discount') setDiscountDialogOpen(false);
-                else setOverdueDialogOpen(false);
-
-                // Reload data
-                router.reload();
-            }
-        } catch (error) {
-            console.error('Bulk action error:', error);
-            enqueueSnackbar(error.response?.data?.message || 'Action failed', { variant: 'error' });
-        } finally {
-            setIsSubmittingBulk(false);
-        }
+    const handleSelectAll = (checked) => {
+        setSelectedIds(checked ? rows.map((row) => row.id) : []);
     };
 
-    // Handle per page change
-    const handlePerPageChange = (event) => {
-        const newPerPage = event.target.value;
-        setPerPage(newPerPage);
-        // Preserve other filters when changing per_page
-        router.get(
-            route('finance.transaction'),
-            { ...filters, per_page: newPerPage },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            },
-        );
+    const toggleSelect = (id) => {
+        setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
     };
-
-    // Handle page change
-    const handlePageChange = (event, value) => {
-        router.get(
-            transactions.links[value].url,
-            {},
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
-
-    // Payment Confirmation State
-    const [paymentConfirmationOpen, setPaymentConfirmationOpen] = useState(false);
-    const [transactionToPay, setTransactionToPay] = useState(null);
-
-    // Payment Confirmation Handlers
-    const handlePayClick = (transaction) => {
-        setTransactionToPay(transaction);
-        setPaymentConfirmationOpen(true);
-    };
-
-    const [submittingPayment, setSubmittingPayment] = useState(false);
 
     const handleConfirmPayment = async (paymentData) => {
-        if (!transactionToPay) return;
+        if (!paymentDialog.transaction) return;
 
         setSubmittingPayment(true);
         const formData = new FormData();
         formData.append('status', 'paid');
         formData.append('payment_method', paymentData.payment_method);
-        if (paymentData.payment_method === 'credit_card') {
+        if (paymentData.payment_account_id) {
+            formData.append('payment_account_id', paymentData.payment_account_id);
+        }
+        if (paymentData.credit_card_type) {
             formData.append('credit_card_type', paymentData.credit_card_type);
-            if (paymentData.receipt_file) {
-                formData.append('receipt_file', paymentData.receipt_file);
-            }
+        }
+        if (paymentData.receipt_file) {
+            formData.append('receipt_file', paymentData.receipt_file);
+        }
+        if (paymentData.payment_mode_details) {
+            formData.append('payment_mode_details', paymentData.payment_mode_details);
         }
 
         try {
-            const response = await axios.post(route('finance.transaction.update-status', transactionToPay.id), formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+            const response = await axios.post(route('finance.transaction.update-status', paymentDialog.transaction.id), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
             if (response.data.success) {
-                enqueueSnackbar('Invoice marked as paid successfully!', { variant: 'success' });
-                // Refresh transactions using Inertia reload
-                router.reload({ only: ['transactions'] });
-                setPaymentConfirmationOpen(false);
-                setTransactionToPay(null);
+                enqueueSnackbar('Invoice marked as paid successfully.', { variant: 'success' });
+                setPaymentDialog({ open: false, transaction: null });
+                router.reload({ only: ['transactions', 'summary'] });
             }
         } catch (error) {
-            console.error('Error updating status:', error);
-            enqueueSnackbar(error.response?.data?.errors ? Object.values(error.response.data.errors).flat().join(', ') : 'Failed to update status', { variant: 'error' });
+            enqueueSnackbar(error.response?.data?.message || 'Failed to update payment.', { variant: 'error' });
         } finally {
             setSubmittingPayment(false);
         }
     };
 
-    // Helper function to format currency
-    const formatCurrency = (amount) => {
-        if (!amount) return 'Rs 0';
-        return `Rs ${parseFloat(amount).toLocaleString()}`;
-    };
+    const submitBulkAction = async () => {
+        if (!bulkDialog.amount || selectedIds.length === 0) {
+            enqueueSnackbar('Select records and enter an amount first.', { variant: 'error' });
+            return;
+        }
 
-    // Helper function to format date
-    const formatDate = (date) => {
-        if (!date) return '';
+        const endpoint = bulkDialog.type === 'discount'
+            ? route('finance.transaction.bulk-discount')
+            : route('finance.transaction.bulk-overdue');
+
         try {
-            return dayjs(date).format('DD-MM-YYYY');
+            const response = await axios.post(endpoint, {
+                ids: selectedIds,
+                amount: bulkDialog.amount,
+                is_percent: bulkDialog.is_percent,
+            });
+            enqueueSnackbar(response.data.message || 'Bulk action completed.', { variant: 'success' });
+            setBulkDialog({ open: false, type: 'discount', amount: '', is_percent: false });
+            setSelectedIds([]);
+            router.reload({ only: ['transactions', 'summary'] });
         } catch (error) {
-            return date;
+            enqueueSnackbar(error.response?.data?.message || 'Bulk action failed.', { variant: 'error' });
         }
     };
 
-    const pageTotals = (transactions?.data || []).reduce(
-        (acc, t) => {
-            const amount = Number(t?.total_price ?? t?.amount ?? 0) || 0;
-            const paid = Number(t?.paid_amount ?? 0) || 0;
-            const balance = Number(t?.balance ?? 0) || 0;
-            return {
-                amount: acc.amount + amount,
-                paid: acc.paid + paid,
-                balance: acc.balance + balance,
-            };
-        },
-        { amount: 0, paid: 0, balance: 0 },
-    );
+    const columns = [
+        { key: 'select', label: '', minWidth: 52 },
+        { key: 'invoice', label: 'Invoice', minWidth: 150 },
+        { key: 'party', label: 'Party', minWidth: 220 },
+        { key: 'type', label: 'Type', minWidth: 170 },
+        { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
+        { key: 'amount', label: 'Amount', minWidth: 120, align: 'right' },
+        { key: 'paid', label: 'Paid', minWidth: 120, align: 'right' },
+        { key: 'balance', label: 'Balance', minWidth: 120, align: 'right' },
+        { key: 'invoice_status', label: 'Invoice Status', minWidth: 130 },
+        { key: 'posting_status', label: 'Posting', minWidth: 130 },
+        { key: 'journal', label: 'Journal', minWidth: 110 },
+        { key: 'action', label: 'Action', minWidth: 170, align: 'right' },
+    ];
 
     return (
         <>
-            <div className="container-fluid p-4" style={{ backgroundColor: '#f5f5f5', minHeight: '100vh', overflowX: 'hidden' }}>
-                {/* Recently Joined Section */}
-                <div className="mx-0">
-                    <div className="d-flex justify-content-between align-items-center">
-                        <div>
-                            <Typography style={{ fontWeight: 700, fontSize: '30px', color: '#063455' }}>Transactions</Typography>
-                        </div>
-                        <div className="d-flex align-items-center">
-                            <FormControl
-                                size="small"
-                                sx={{
-                                    width: '80px',
-                                    marginRight: '10px',
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: '16px',
-                                    },
-                                    '& .MuiOutlinedInput-notchedOutline': {
-                                        borderRadius: '16px',
-                                    },
-                                }}
-                            >
-                                <Select value={perPage} onChange={handlePerPageChange} displayEmpty>
-                                    <MenuItem value={10}>10</MenuItem>
-                                    <MenuItem value={25}>25</MenuItem>
-                                    <MenuItem value={50}>50</MenuItem>
-                                    <MenuItem value={100}>100</MenuItem>
-                                </Select>
-                            </FormControl>
+            <AppPage
+                eyebrow="Finance"
+                title="Transactions"
+                subtitle="Legacy finance transactions are still available here, now aligned with accounting-backed posting state, journal linkage, and restaurant context."
+                actions={[
+                    <Button key="create" variant="contained" onClick={() => router.visit(route('finance.transaction.create'))}>
+                        Add Transaction
+                    </Button>,
+                ]}
+            >
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={2.4}><StatCard label="Transactions" value={summary?.count || 0} accent /></Grid>
+                    <Grid item xs={12} md={2.4}><StatCard label="Total Amount" value={Number(summary?.total_amount || 0).toFixed(2)} tone="light" /></Grid>
+                    <Grid item xs={12} md={2.4}><StatCard label="Paid Amount" value={Number(summary?.paid_amount || 0).toFixed(2)} tone="light" /></Grid>
+                    <Grid item xs={12} md={2.4}><StatCard label="Open Balance" value={Number(summary?.balance || 0).toFixed(2)} tone="muted" /></Grid>
+                    <Grid item xs={12} md={1.2}><StatCard label="Failed" value={summary?.failed_postings || 0} tone="muted" /></Grid>
+                    <Grid item xs={12} md={1.2}><StatCard label="Pending" value={summary?.pending_postings || 0} tone="light" /></Grid>
+                </Grid>
 
-                            <Button
-                                variant="contained"
-                                startIcon={<PrintIcon />}
-                                sx={{
-                                    backgroundColor: '#063455',
-                                    textTransform: 'none',
-                                    color: 'white',
-                                    borderRadius: '16px',
-                                }}
-                            >
-                                Print
-                            </Button>
-                        </div>
-                    </div>
-                    <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>View and manage all recorded financial transactions</Typography>
-
-                    {/* Inline Filter */}
-                    <TransactionFilter transactionTypes={transactionTypes} users={users} subscriptionCategories={subscriptionCategories} financialChargeTypes={financialChargeTypes} />
-
-                    {/* Bulk Actions Toolbar */}
-                    {selectedIds.length > 0 && (
-                        <Paper
-                            sx={{
-                                p: 2,
-                                mt: 2,
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                backgroundColor: '#e3f2fd',
-                                border: '1px solid #90caf9',
-                            }}
-                        >
-                            <Typography variant="body1" color="primary" fontWeight={600}>
-                                {selectedIds.length} invoice(s) selected
-                            </Typography>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <Button variant="contained" color="primary" onClick={() => setDiscountDialogOpen(true)}>
-                                    Apply Discount
+                <SurfaceCard title="Live Filters" subtitle="Refine finance transactions by invoice, party, type, status, creator, and date without using the older manual search workflow.">
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        actions={(
+                            <Stack direction="row" spacing={1}>
+                                <Button
+                                    variant="outlined"
+                                    disabled={selectedIds.length === 0}
+                                    onClick={() => setBulkDialog({ open: true, type: 'discount', amount: '', is_percent: false })}
+                                >
+                                    Bulk Discount
                                 </Button>
-                                <Button variant="contained" color="error" onClick={() => setOverdueDialogOpen(true)}>
-                                    Apply Overdue
+                                <Button
+                                    variant="outlined"
+                                    disabled={selectedIds.length === 0}
+                                    onClick={() => setBulkDialog({ open: true, type: 'overdue', amount: '', is_percent: false })}
+                                >
+                                    Bulk Overdue
                                 </Button>
-                                <Button variant="outlined" color="primary" onClick={() => setSelectedIds([])}>
-                                    Clear Selection
-                                </Button>
-                            </div>
-                        </Paper>
-                    )}
+                            </Stack>
+                        )}
+                    >
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={3}>
+                                <TextField label="Search invoice or payment method" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField label="Invoice #" value={localFilters.invoice_no} onChange={(event) => updateFilters({ invoice_no: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2.5}>
+                                <TextField label="Member / customer" value={localFilters.member_name} onChange={(event) => updateFilters({ member_name: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2.5}>
+                                <TextField label="Membership / customer #" value={localFilters.membership_no} onChange={(event) => updateFilters({ membership_no: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField select label="Status" value={localFilters.status} onChange={(event) => updateFilters({ status: event.target.value }, { immediate: true })} fullWidth>
+                                    <MenuItem value="all">All</MenuItem>
+                                    <MenuItem value="paid">Paid</MenuItem>
+                                    <MenuItem value="unpaid">Unpaid</MenuItem>
+                                    <MenuItem value="partial">Partial</MenuItem>
+                                    <MenuItem value="overdue">Overdue</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={2.5}>
+                                <TextField select label="Customer Type" value={localFilters.customer_type} onChange={(event) => updateFilters({ customer_type: event.target.value }, { immediate: true })} fullWidth>
+                                    <MenuItem value="all">All</MenuItem>
+                                    <MenuItem value="member">Primary Member</MenuItem>
+                                    <MenuItem value="corporate">Corporate</MenuItem>
+                                    <MenuItem value="guest">Guest</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField select label="Transaction Type" value={localFilters.type} onChange={(event) => updateFilters({ type: event.target.value }, { immediate: true })} fullWidth>
+                                    <MenuItem value="all">All types</MenuItem>
+                                    {Object.entries(transactionTypes).map(([id, label]) => (
+                                        <MenuItem key={id} value={`type_${id}`}>{label}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={2.5}>
+                                <TextField select label="Created By" value={localFilters.created_by} onChange={(event) => updateFilters({ created_by: event.target.value }, { immediate: true })} fullWidth>
+                                    <MenuItem value="all">All users</MenuItem>
+                                    {users.map((user) => (
+                                        <MenuItem key={user.id} value={user.id}>{user.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField label="From" type="date" value={localFilters.start_date} onChange={(event) => updateFilters({ start_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField label="To" type="date" value={localFilters.end_date} onChange={(event) => updateFilters({ end_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
+                            </Grid>
+                        </Grid>
+                    </FilterToolbar>
+                </SurfaceCard>
 
-                    {/* Transactions Table */}
-                    <TableContainer component={Paper} style={{ boxShadow: 'none', marginTop: '2rem', overflowX: 'auto', borderRadius: '12px' }}>
-                        <Table>
-                            <TableHead>
-                                <TableRow style={{ backgroundColor: '#063455', height: '30px' }}>
+                <SurfaceCard title="Transaction Register" subtitle="Operational finance table with selection, payment action, posting state, and accounting journal linkage.">
+                    <AdminDataTable
+                        columns={columns}
+                        rows={rows}
+                        pagination={transactions}
+                        tableMinWidth={1620}
+                        emptyMessage="No finance transactions found."
+                        renderRow={(row) => {
+                            const checked = selectedIds.includes(row.id);
+                            const corporate = row.corporateMember || row.corporate_member;
+                            return (
+                                <TableRow key={row.id} hover>
                                     <TableCell padding="checkbox">
-                                        <Checkbox color="primary" indeterminate={selectedIds.length > 0 && selectedIds.length < transactions.data.length} checked={transactions.data.length > 0 && selectedIds.length === transactions.data.length} onChange={handleSelectAll} sx={{ color: 'white', '&.Mui-checked': { color: 'white' }, '&.MuiCheckbox-indeterminate': { color: 'white' } }} />
+                                        <Checkbox checked={checked} onChange={() => toggleSelect(row.id)} />
                                     </TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Invoice No</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Member</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Type</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Amount</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Paid</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Balance</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Status</TableCell>
-                                    {/* <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Payment Method</TableCell> */}
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Date</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Days</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>From</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>To</TableCell>
-                                    <TableCell sx={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap' }}>Action</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {transactions.data && transactions.data.length > 0 ? (
-                                    transactions.data.map((transaction) => {
-                                        const isItemSelected = isSelected(transaction.id);
-                                        // Format fee type
-                                        const formatType = (type) => {
-                                            if (!type) return 'N/A';
-                                            return type
-                                                .replace(/_/g, ' ')
-                                                .split(' ')
-                                                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                                                .join(' ');
-                                        };
-                                        const displayType = transaction.fee_type_formatted || transaction.fee_type || transaction.invoice_type;
-
-                                        // Format date
-                                        const formatDate = (date) => {
-                                            if (!date) return 'N/A';
-                                            try {
-                                                return dayjs(date).format('DD-MM-YYYY');
-                                            } catch (e) {
-                                                return 'N/A';
-                                            }
-                                        };
-
-                                        // Status Badge
-                                        const getStatusBadge = (status) => {
-                                            // Adjust status based on balance if needed, but using DB status for badge color
-                                            // Logic: Paid if balance <= 0 (floating point tolerance)
-                                            // Partial if paid > 0 and balance > 0
-                                            // Unpaid if paid == 0
-                                            // We can rely on backend/DB status mostly, but let's trust the calc vals too
-                                            const formattedText = status ? status.replace(/_/g, ' ') : 'N/A';
-                                            const styles = {
-                                                paid: { bg: '#d4edda', color: '#155724' },
-                                                unpaid: { bg: '#f8d7da', color: '#721c24' },
-                                                default: { bg: '#e2e3e5', color: '#383d41' },
-                                            };
-                                            // Force status display based on balance? Or mostly trust DB?
-                                            // DB status is accurate if updated correctly.
-                                            return styles[status] || styles.default;
-                                        };
-                                        const statusStyle = getStatusBadge(transaction.status);
-
-                                        return (
-                                            <TableRow key={transaction.id} style={{ borderBottom: '1px solid #eee' }} hover onClick={(event) => handleSelectClick(event, transaction.id)} role="checkbox" aria-checked={isItemSelected} selected={isItemSelected}>
-                                                <TableCell padding="checkbox">
-                                                    <Checkbox color="primary" checked={isItemSelected} />
-                                                </TableCell>
-                                                <TableCell sx={{ color: '#000', fontWeight: 600, fontSize: '16px' }}>{transaction.invoice_no || 'N/A'}</TableCell>
-                                                <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>
-                                                    <Tooltip title={transaction.member?.full_name || transaction.corporate_member?.full_name || transaction.customer?.name || transaction.invoiceable?.name || 'N/A'} arrow>
-                                                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '120px' }}>{transaction.member?.full_name || transaction.corporate_member?.full_name || transaction.customer?.name || transaction.invoiceable?.name || 'N/A'}</div>
-                                                    </Tooltip>
-                                                    {(transaction.member?.membership_no || transaction.corporate_member?.membership_no) && <div style={{ fontSize: '12px', color: '#7F7F7F' }}>{transaction.member?.membership_no || transaction.corporate_member?.membership_no}</div>}
-                                                </TableCell>
-
-                                                <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>
-                                                    <span style={{ backgroundColor: '#e3f2fd', color: '#1976d2', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                                                        {displayType === 'Multiple Items' ? (
-                                                            <Tooltip
-                                                                title={
-                                                                    transaction.items && transaction.items.length > 0 ? (
-                                                                        <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                                                                            {transaction.items.map((item, idx) => (
-                                                                                <li key={idx}>
-                                                                                    {item.fee_type_formatted || formatType(item.fee_type)} {item.description}
-                                                                                </li>
-                                                                            ))}
-                                                                        </ul>
-                                                                    ) : (
-                                                                        'Multiple items'
-                                                                    )
-                                                                }
-                                                                arrow
-                                                            >
-                                                                <span>{displayType}</span>
-                                                            </Tooltip>
-                                                        ) : (
-                                                            formatType(displayType)
-                                                        )}
-                                                    </span>
-                                                </TableCell>
-
-                                                <TableCell sx={{ color: '#7F7F7F', fontWeight: 500, fontSize: '14px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100px' }}>
-                                                    <Tooltip title={(transaction.total_price || transaction.amount || 0).toLocaleString()} arrow>
-                                                        Rs {(transaction.total_price || transaction.amount || 0).toLocaleString()}
-                                                    </Tooltip>
-                                                </TableCell>
-                                                <TableCell sx={{ color: 'success.main', fontWeight: 500, fontSize: '14px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100px' }}>
-                                                    <Tooltip title={(transaction.paid_amount || 0).toLocaleString()} arrow>
-                                                        Rs {(transaction.paid_amount || 0).toLocaleString()}
-                                                    </Tooltip>
-                                                </TableCell>
-                                                <TableCell sx={{ color: 'error.main', fontWeight: 500, fontSize: '14px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '100px' }}>
-                                                    <Tooltip title={(transaction.balance || 0).toLocaleString()} arrow>
-                                                        Rs {(transaction.balance || 0).toLocaleString()}
-                                                    </Tooltip>
-                                                </TableCell>
-
-                                                <TableCell>
-                                                    <span style={{ backgroundColor: statusStyle.bg, color: statusStyle.color, padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500 }}>{transaction.status ? transaction.status : 'N/A'}</span>
-                                                </TableCell>
-
-                                                {/* <TableCell sx={{ color: '#7F7F7F', fontSize: '14px' }}>{formatPaymentMethod(transaction.payment_method)}</TableCell> */}
-                                                <TableCell sx={{ color: '#7F7F7F', fontSize: '14px', whiteSpace: 'nowrap' }}>{formatDate(transaction.issue_date)}</TableCell>
-
-                                                <TableCell sx={{ color: '#7F7F7F', fontSize: '14px' }}>
-                                                    {(() => {
-                                                        // Get dates from items
-                                                        const itemsWithDates = transaction.items?.filter((item) => item.start_date && item.end_date) || [];
-                                                        if (itemsWithDates.length > 0) {
-                                                            const startDate = itemsWithDates.reduce((min, item) => (!min || dayjs(item.start_date).isBefore(dayjs(min)) ? item.start_date : min), null);
-                                                            const endDate = itemsWithDates.reduce((max, item) => (!max || dayjs(item.end_date).isAfter(dayjs(max)) ? item.end_date : max), null);
-                                                            return dayjs(endDate).diff(dayjs(startDate), 'day') + 1;
-                                                        }
-                                                        return '-';
-                                                    })()}
-                                                </TableCell>
-                                                <TableCell sx={{ color: '#7F7F7F', fontSize: '14px' }}>
-                                                    {(() => {
-                                                        const itemsWithDates = transaction.items?.filter((item) => item.start_date) || [];
-                                                        if (itemsWithDates.length > 0) {
-                                                            const startDate = itemsWithDates.reduce((min, item) => (!min || dayjs(item.start_date).isBefore(dayjs(min)) ? item.start_date : min), null);
-                                                            return dayjs(startDate).format('DD-MM-YYYY');
-                                                        }
-                                                        return '-';
-                                                    })()}
-                                                </TableCell>
-                                                <TableCell sx={{ color: '#7F7F7F', fontSize: '14px' }}>
-                                                    {(() => {
-                                                        const itemsWithDates = transaction.items?.filter((item) => item.end_date) || [];
-                                                        if (itemsWithDates.length > 0) {
-                                                            const endDate = itemsWithDates.reduce((max, item) => (!max || dayjs(item.end_date).isAfter(dayjs(max)) ? item.end_date : max), null);
-                                                            return dayjs(endDate).format('DD-MM-YYYY');
-                                                        }
-                                                        return '-';
-                                                    })()}
-                                                </TableCell>
-
-                                                <TableCell sx={{ display: 'flex', gap: '4px' }}>
-                                                    <Button
-                                                        variant="outlined"
-                                                        size="small"
-                                                        style={{ textTransform: 'none', color: '#063455', borderColor: '#063455', padding: '2px 8px', fontSize: '12px' }}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation(); // Prevent row click
-                                                            // View Logic (Keep existing modal logic if desired, or simplified)
-                                                            if (transaction.invoice_type === 'room_booking' && transaction.invoiceable_id) {
-                                                                setSelectedBookingId(transaction.invoiceable_id);
-                                                                setShowRoomInvoiceModal(true);
-                                                            } else if (transaction.invoice_type === 'event_booking' && transaction.invoiceable_id) {
-                                                                setSelectedBookingId(transaction.invoiceable_id);
-                                                                setShowEventInvoiceModal(true);
-                                                            } else {
-                                                                setSelectedInvoiceId(transaction.id);
-                                                                setOpenMembershipInvoiceModal(true);
-                                                            }
-                                                        }}
-                                                    >
-                                                        View
-                                                    </Button>
-                                                    {(transaction.balance > 0 || transaction.status === 'unpaid') && (
-                                                        <Button
-                                                            size="small"
-                                                            variant="contained"
-                                                            color="success"
-                                                            startIcon={<Payment sx={{ fontSize: '16px' }} />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                router.visit(route('finance.invoice.pay', transaction.id));
-                                                            }}
-                                                            sx={{ fontSize: '11px', py: 0.5, px: 1, whiteSpace: 'nowrap', textTransform: 'none' }}
-                                                        >
-                                                            Pay
-                                                        </Button>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={13} align="center" sx={{ py: 4, color: '#7F7F7F' }}>
-                                            No transactions found
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                <TableRow style={{ backgroundColor: '#e3f2fd' }}>
-                                    <TableCell padding="checkbox" />
-                                    <TableCell colSpan={3} sx={{ fontWeight: 700, color: '#063455' }}>
-                                        Grand Total
+                                    <TableCell>
+                                        <Stack spacing={0.35}>
+                                            <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{row.invoice_no}</Typography>
+                                            <Typography variant="body2" color="text.secondary">{row.issue_date || row.created_at}</Typography>
+                                        </Stack>
                                     </TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#063455', whiteSpace: 'nowrap' }}>Rs {pageTotals.amount.toLocaleString()}</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: 'success.main', whiteSpace: 'nowrap' }}>Rs {pageTotals.paid.toLocaleString()}</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: 'error.main', whiteSpace: 'nowrap' }}>Rs {pageTotals.balance.toLocaleString()}</TableCell>
-                                    <TableCell colSpan={6} />
+                                    <TableCell>
+                                        <Stack spacing={0.35}>
+                                            <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                {row.member?.full_name || corporate?.full_name || row.customer?.name || 'Guest'}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {row.member?.membership_no || corporate?.membership_no || row.customer?.customer_no || '-'}
+                                            </Typography>
+                                        </Stack>
+                                    </TableCell>
+                                    <TableCell>{row.fee_type_formatted || '-'}</TableCell>
+                                    <TableCell>{row.restaurant_name || '-'}</TableCell>
+                                    <TableCell align="right">{Number(row.total_price || 0).toFixed(2)}</TableCell>
+                                    <TableCell align="right">{Number(row.paid_amount || 0).toFixed(2)}</TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(row.balance || 0).toFixed(2)}</TableCell>
+                                    <TableCell>
+                                        <Chip size="small" label={row.status || '-'} color={statusColor[row.status] || 'default'} />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip size="small" variant="outlined" label={row.posting_status || '-'} color={statusColor[row.posting_status] || 'default'} />
+                                    </TableCell>
+                                    <TableCell>{row.journal_entry_id ? `JE-${row.journal_entry_id}` : '-'}</TableCell>
+                                    <TableCell align="right">
+                                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                            {Number(row.balance || 0) > 0 ? (
+                                                <Button size="small" variant="contained" onClick={() => setPaymentDialog({ open: true, transaction: row })}>
+                                                    Receive
+                                                </Button>
+                                            ) : null}
+                                            {row.document_url ? (
+                                                <Button size="small" variant="outlined" onClick={() => router.visit(row.document_url)}>
+                                                    Open
+                                                </Button>
+                                            ) : null}
+                                            {row.journal_entry_id ? (
+                                                <Button size="small" variant="outlined" onClick={() => router.visit(route('accounting.journals.show', row.journal_entry_id))}>
+                                                    Journal
+                                                </Button>
+                                            ) : null}
+                                        </Stack>
+                                    </TableCell>
                                 </TableRow>
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-
-                    {/* Pagination */}
-                    {transactions.last_page > 1 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                            <Typography style={{ fontSize: '14px', color: '#7F7F7F' }}>
-                                Page {transactions.current_page} of {transactions.last_page}
-                            </Typography>
-                            <Pagination count={transactions.last_page} page={transactions.current_page} onChange={handlePageChange} color="primary" showFirstButton showLastButton />
-                        </div>
-                    )}
-                </div>
-                {/* <TransactionFilter open={openFilterModal} onClose={() => setOpenFilterModal(false)} currentFilters={filters} onApply={handleFilterApply} /> */}
-
-                {/* Membership Invoice Modal - Used for Membership, Subscription & Maintenance Fees */}
-                <MembershipInvoiceSlip
-                    open={openMembershipInvoiceModal}
-                    onClose={() => {
-                        setOpenMembershipInvoiceModal(false);
-                        setSelectedInvoiceId(null);
-                    }}
-                    invoiceId={selectedInvoiceId}
-                />
-
-
-                {/* Room Booking Invoice Modal */}
-                <BookingInvoiceModal
-                    open={showRoomInvoiceModal}
-                    onClose={() => {
-                        setShowRoomInvoiceModal(false);
-                        setSelectedBookingId(null);
-                    }}
-                    bookingId={selectedBookingId}
-                    setBookings={setTransactionList}
-                    financeView={true}
-                />
-
-                {/* Event Booking Invoice Modal */}
-                <EventBookingInvoiceModal
-                    open={showEventInvoiceModal}
-                    onClose={() => {
-                        setShowEventInvoiceModal(false);
-                        setSelectedBookingId(null);
-                    }}
-                    bookingId={selectedBookingId}
-                    setBookings={setTransactionList}
-                    financeView={true}
-                />
-
-                {/* Payment Dialog */}
-                <PaymentDialog
-                    open={paymentConfirmationOpen}
-                    onClose={() => {
-                        setPaymentConfirmationOpen(false);
-                        setTransactionToPay(null);
-                    }}
-                    transaction={transactionToPay}
-                    onConfirm={handleConfirmPayment}
-                    submitting={submittingPayment}
-                />
-
-                {/* Bulk Discount Dialog */}
-                <Dialog open={discountDialogOpen} onClose={() => setDiscountDialogOpen(false)}>
-                    <DialogTitle>Apply Bulk Discount</DialogTitle>
-                    <DialogContent>
-                        <Typography variant="body2" sx={{ mb: 2 }}>
-                            Apply a discount to {selectedIds.length} selected items. This will reduce the invoice amount.
+                            );
+                        }}
+                        headRowSx={{
+                            '& .MuiTableCell-head': {
+                                bgcolor: '#0a3d62',
+                                color: '#f8fafc',
+                                borderBottom: 'none',
+                                py: 1.35,
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.06em',
+                                textTransform: 'uppercase',
+                                whiteSpace: 'nowrap',
+                            },
+                        }}
+                    />
+                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 1.5 }}>
+                        <Checkbox
+                            checked={rows.length > 0 && selectedIds.length === rows.length}
+                            indeterminate={selectedIds.length > 0 && selectedIds.length < rows.length}
+                            onChange={(event) => handleSelectAll(event.target.checked)}
+                        />
+                        <Typography color="text.secondary">
+                            {selectedIds.length} selected on this page
                         </Typography>
-                        <TextField autoFocus margin="dense" label="Discount Amount" type="number" fullWidth variant="outlined" value={bulkAmount} onChange={(e) => setBulkAmount(e.target.value)} />
-                        <FormControlLabel control={<Switch checked={bulkIsPercent} onChange={(e) => setBulkIsPercent(e.target.checked)} />} label="Is Percentage (%)" />
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setDiscountDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={() => handleBulkSubmit('discount')} variant="contained" disabled={isSubmittingBulk}>
-                            {isSubmittingBulk ? 'Applying...' : 'Apply'}
-                        </Button>
-                    </DialogActions>
-                </Dialog>
+                    </Stack>
+                </SurfaceCard>
+            </AppPage>
 
-                {/* Bulk Overdue Dialog */}
-                <Dialog open={overdueDialogOpen} onClose={() => setOverdueDialogOpen(false)}>
-                    <DialogTitle>Apply Bulk Overdue Charges</DialogTitle>
-                    <DialogContent>
-                        <Typography variant="body2" sx={{ mb: 2 }}>
-                            Apply overdue charges to {selectedIds.length} selected items. This will increase the invoice amount.
+            <PaymentDialog
+                open={paymentDialog.open}
+                onClose={() => setPaymentDialog({ open: false, transaction: null })}
+                transaction={paymentDialog.transaction}
+                onConfirm={handleConfirmPayment}
+                submitting={submittingPayment}
+            />
+
+            <Dialog open={bulkDialog.open} onClose={() => setBulkDialog({ open: false, type: 'discount', amount: '', is_percent: false })} maxWidth="xs" fullWidth>
+                <DialogTitle>{bulkDialog.type === 'discount' ? 'Bulk Discount' : 'Bulk Overdue'}</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2} sx={{ mt: 0.5 }}>
+                        <Typography color="text.secondary">
+                            Apply this to {selectedIds.length} selected invoices.
                         </Typography>
-                        <TextField autoFocus margin="dense" label="Overdue Amount" type="number" fullWidth variant="outlined" value={bulkAmount} onChange={(e) => setBulkAmount(e.target.value)} />
-                        <FormControlLabel control={<Switch checked={bulkIsPercent} onChange={(e) => setBulkIsPercent(e.target.checked)} />} label="Is Percentage (%)" />
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setOverdueDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={() => handleBulkSubmit('overdue')} variant="contained" color="error" disabled={isSubmittingBulk}>
-                            {isSubmittingBulk ? 'Applying...' : 'Apply'}
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-            </div>
-            {/* </div> */}
+                        <TextField
+                            label="Amount"
+                            type="number"
+                            value={bulkDialog.amount}
+                            onChange={(event) => setBulkDialog((current) => ({ ...current, amount: event.target.value }))}
+                            fullWidth
+                        />
+                        <TextField
+                            select
+                            label="Mode"
+                            value={bulkDialog.is_percent ? 'percent' : 'fixed'}
+                            onChange={(event) => setBulkDialog((current) => ({ ...current, is_percent: event.target.value === 'percent' }))}
+                            fullWidth
+                        >
+                            <MenuItem value="fixed">Fixed amount</MenuItem>
+                            <MenuItem value="percent">Percentage</MenuItem>
+                        </TextField>
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setBulkDialog({ open: false, type: 'discount', amount: '', is_percent: false })}>Cancel</Button>
+                    <Button variant="contained" onClick={submitBulkAction}>Apply</Button>
+                </DialogActions>
+            </Dialog>
         </>
     );
-};
-
-export default Transaction;
+}

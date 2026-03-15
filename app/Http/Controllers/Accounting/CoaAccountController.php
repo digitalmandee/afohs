@@ -7,9 +7,11 @@ use App\Models\AccountingRule;
 use App\Models\CoaAccount;
 use App\Models\JournalLine;
 use App\Models\PaymentAccount;
+use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Illuminate\Validation\ValidationException;
 
@@ -17,30 +19,53 @@ class CoaAccountController extends Controller
 {
     public function index()
     {
-        $accounts = CoaAccount::orderBy('full_code')->get();
-        $totals = JournalLine::query()
-            ->select('account_id', DB::raw('SUM(debit) as total_debit'), DB::raw('SUM(credit) as total_credit'), DB::raw('COUNT(*) as line_count'))
-            ->groupBy('account_id')
-            ->get()
-            ->keyBy('account_id');
+        $health = app(AccountingHealth::class);
+        $status = $health->status(
+            requiredTables: ['coa_accounts'],
+            optionalTables: ['journal_lines', 'accounting_rules', 'payment_accounts', 'journal_entries']
+        );
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Accounting/Coa/Index', [
+                'accounts' => [],
+                'error' => $health->setupMessage('Chart of Accounts', $status['missing_required'], $status['missing_optional']),
+            ]);
+        }
+
+        $accounts = CoaAccount::with('parent:id,full_code,name')->orderBy('full_code')->get();
+        $totals = collect();
+        if (Schema::hasTable('journal_lines')) {
+            $totals = JournalLine::query()
+                ->select('account_id', DB::raw('SUM(debit) as total_debit'), DB::raw('SUM(credit) as total_credit'), DB::raw('COUNT(*) as line_count'))
+                ->groupBy('account_id')
+                ->get()
+                ->keyBy('account_id');
+        }
 
         $ruleUsage = [];
-        AccountingRule::query()->where('is_active', true)->get(['id', 'lines'])->each(function ($rule) use (&$ruleUsage) {
-            foreach ((array) $rule->lines as $line) {
-                $accountId = $line['account_id'] ?? null;
-                if ($accountId) {
-                    $ruleUsage[$accountId] = ($ruleUsage[$accountId] ?? 0) + 1;
+        if (Schema::hasTable('accounting_rules')) {
+            AccountingRule::query()->where('is_active', true)->get(['id', 'lines'])->each(function ($rule) use (&$ruleUsage) {
+                foreach ((array) $rule->lines as $line) {
+                    $accountId = $line['account_id'] ?? null;
+                    if ($accountId) {
+                        $ruleUsage[$accountId] = ($ruleUsage[$accountId] ?? 0) + 1;
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        $paymentUsage = PaymentAccount::query()
-            ->whereNotNull('coa_account_id')
-            ->select('coa_account_id', DB::raw('COUNT(*) as count'))
-            ->groupBy('coa_account_id')
-            ->pluck('count', 'coa_account_id');
+        $paymentUsage = collect();
+        if (Schema::hasTable('payment_accounts')) {
+            $paymentUsage = PaymentAccount::query()
+                ->whereNotNull('coa_account_id')
+                ->select('coa_account_id', DB::raw('COUNT(*) as count'))
+                ->groupBy('coa_account_id')
+                ->pluck('count', 'coa_account_id');
+        }
 
-        $accounts = $accounts->map(function ($account) use ($totals, $ruleUsage, $paymentUsage) {
+        $ledgerReady = Schema::hasTable('journal_entries') && Schema::hasTable('journal_lines');
+
+        $accounts = $accounts->map(function ($account) use ($totals, $ruleUsage, $paymentUsage, $health, $ledgerReady) {
             $summary = $totals->get($account->id);
             $balance = (float) (($summary->total_debit ?? 0) - ($summary->total_credit ?? 0));
 
@@ -51,17 +76,32 @@ class CoaAccountController extends Controller
                 'payment_accounts' => (int) ($paymentUsage[$account->id] ?? 0),
                 'journal_lines' => $account->journal_line_count,
             ];
+            $account->parent_summary = $account->parent ? [
+                'id' => $account->parent->id,
+                'full_code' => $account->parent->full_code,
+                'name' => $account->parent->name,
+            ] : null;
+            $account->ledger_url = $ledgerReady
+                ? $health->safeRoute('accounting.general-ledger', ['account_id' => $account->id])
+                : null;
 
             return $account;
         });
 
         return Inertia::render('App/Admin/Accounting/Coa/Index', [
             'accounts' => $accounts,
+            'error' => !empty($status['missing_optional'])
+                ? $health->setupMessage('Chart of Accounts', [], $status['missing_optional'])
+                : null,
         ]);
     }
 
     public function store(Request $request)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $data = $request->validate([
             'segment1' => 'required|string|max:4',
             'segment2' => 'nullable|string|max:4',
@@ -95,6 +135,10 @@ class CoaAccountController extends Controller
 
     public function update(Request $request, CoaAccount $coaAccount)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $data = $request->validate([
             'segment1' => 'required|string|max:4',
             'segment2' => 'nullable|string|max:4',
@@ -157,6 +201,10 @@ class CoaAccountController extends Controller
 
     public function destroy(CoaAccount $coaAccount)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $usage = $this->getUsage($coaAccount);
         $childrenCount = CoaAccount::where('parent_id', $coaAccount->id)->count();
 
@@ -175,6 +223,10 @@ class CoaAccountController extends Controller
 
     public function template()
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $headers = ['segment1', 'segment2', 'segment3', 'segment4', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
         $sample = [
             ['1', '', '', '', 'Assets', 'asset', '', '0', '1'],
@@ -194,6 +246,10 @@ class CoaAccountController extends Controller
 
     public function import(Request $request)
     {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
         $request->validate([
             'file' => 'required|file|mimes:csv,txt',
         ]);
@@ -302,17 +358,19 @@ class CoaAccountController extends Controller
     private function getUsage(CoaAccount $account): array
     {
         $ruleCount = 0;
-        AccountingRule::query()->where('is_active', true)->get(['lines'])->each(function ($rule) use ($account, &$ruleCount) {
-            foreach ((array) $rule->lines as $line) {
-                if ((int) ($line['account_id'] ?? 0) === (int) $account->id) {
-                    $ruleCount++;
+        if (Schema::hasTable('accounting_rules')) {
+            AccountingRule::query()->where('is_active', true)->get(['lines'])->each(function ($rule) use ($account, &$ruleCount) {
+                foreach ((array) $rule->lines as $line) {
+                    if ((int) ($line['account_id'] ?? 0) === (int) $account->id) {
+                        $ruleCount++;
+                    }
                 }
-            }
-        });
+            });
+        }
 
         return [
-            'journal_lines' => JournalLine::where('account_id', $account->id)->count(),
-            'payment_accounts' => PaymentAccount::where('coa_account_id', $account->id)->count(),
+            'journal_lines' => Schema::hasTable('journal_lines') ? JournalLine::where('account_id', $account->id)->count() : 0,
+            'payment_accounts' => Schema::hasTable('payment_accounts') ? PaymentAccount::where('coa_account_id', $account->id)->count() : 0,
             'rules' => $ruleCount,
         ];
     }

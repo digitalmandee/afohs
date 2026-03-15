@@ -10,6 +10,9 @@ class AccountingEventQueue extends Model
         'event_type',
         'source_type',
         'source_id',
+        'restaurant_id',
+        'posting_rule_id',
+        'journal_entry_id',
         'idempotency_key',
         'status',
         'payload',
@@ -29,5 +32,20 @@ class AccountingEventQueue extends Model
     public function postingLogs()
     {
         return $this->hasMany(AccountingPostingLog::class, 'queue_id');
+    }
+
+    public function restaurant()
+    {
+        return $this->belongsTo(Tenant::class, 'restaurant_id');
+    }
+
+    public function postingRule()
+    {
+        return $this->belongsTo(AccountingRule::class, 'posting_rule_id');
+    }
+
+    public function journalEntry()
+    {
+        return $this->belongsTo(JournalEntry::class, 'journal_entry_id');
     }
 }

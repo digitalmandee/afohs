@@ -1,163 +1,173 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Chip, Grid, MenuItem, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import Pagination from '@/components/Pagination';
+import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-const StatCard = ({ label, value }) => (
-  <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
-    <CardContent>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 700 }}>{value}</Typography>
-    </CardContent>
-  </Card>
-);
+function formatNumber(value, digits = 2) {
+    return Number(value || 0).toFixed(digits);
+}
 
 export default function ReceivablesBySource({ rows, summary = {}, sourceOptions = [], filters = {} }) {
-  const list = rows?.data || [];
-  const sourceTotals = summary?.source_totals || {};
-
-  const apply = (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    router.get(route('accounting.reports.receivables-by-source'), {
-      search: form.get('search'),
-      source: form.get('source'),
-      bucket: form.get('bucket'),
-      from: form.get('from'),
-      to: form.get('to'),
+    const list = rows?.data || [];
+    const sourceTotals = summary?.source_totals || {};
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        source: filters?.source || '',
+        bucket: filters?.bucket || '',
+        from: filters?.from || '',
+        to: filters?.to || '',
     });
-  };
 
-  const reset = () => {
-    router.get(route('accounting.reports.receivables-by-source'));
-  };
+    React.useEffect(() => {
+        setLocalFilters({
+            search: filters?.search || '',
+            source: filters?.source || '',
+            bucket: filters?.bucket || '',
+            from: filters?.from || '',
+            to: filters?.to || '',
+        });
+    }, [filters]);
 
-  const printView = () => window.print();
+    const applyFilters = (nextFilters = localFilters) => {
+        router.get(route('accounting.reports.receivables-by-source'), nextFilters, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
 
-  return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 1, color: 'primary.main', fontWeight: 700, '@media print': { display: 'none' } }}>
-        Receivables by Source
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, '@media print': { display: 'none' } }}>
-        Unified receivables aging across membership, subscription, POS, room and events.
-      </Typography>
-
-      <Grid container spacing={2} sx={{ mb: 2, '@media print': { display: 'none' } }}>
-        <Grid item xs={12} md={3}><StatCard label="Open Receivables" value={summary.records || 0} /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="Outstanding" value={Number(summary.total_balance || 0).toFixed(2)} /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="Average Age" value={`${Number(summary.average_age || 0).toFixed(1)} days`} /></Grid>
-        <Grid item xs={12} md={3}><StatCard label="90+ Bucket" value={Number(summary?.bucket_balance?.['90+'] || 0).toFixed(2)} /></Grid>
-      </Grid>
-
-      <Card sx={{ mb: 2, '@media print': { display: 'none' } }}>
-        <CardContent>
-          <form onSubmit={apply}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={3}>
-                <TextField name="search" label="Search invoice/member" defaultValue={filters?.search || ''} fullWidth />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField select name="source" label="Source" defaultValue={filters?.source || ''} fullWidth>
-                  <MenuItem value="">All Sources</MenuItem>
-                  {sourceOptions.map((source) => (
-                    <MenuItem key={source} value={source}>{source}</MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField select name="bucket" label="Bucket" defaultValue={filters?.bucket || ''} fullWidth>
-                  <MenuItem value="">All Buckets</MenuItem>
-                  <MenuItem value="current">Current</MenuItem>
-                  <MenuItem value="1-30">1-30</MenuItem>
-                  <MenuItem value="31-60">31-60</MenuItem>
-                  <MenuItem value="61-90">61-90</MenuItem>
-                  <MenuItem value="90+">90+</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField name="from" label="From" type="date" defaultValue={filters?.from || ''} InputLabelProps={{ shrink: true }} fullWidth />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField name="to" label="To" type="date" defaultValue={filters?.to || ''} InputLabelProps={{ shrink: true }} fullWidth />
-              </Grid>
-              <Grid item xs={12} md={1}>
-                <Button type="submit" variant="contained" fullWidth>Apply</Button>
-              </Grid>
+    return (
+        <AppPage
+            eyebrow="Accounting Reports"
+            title="Receivables by Source"
+            subtitle="Unified source-wise receivables for membership, subscriptions, POS, room bookings, and events in the standardized reporting shell."
+            actions={[
+                <Button
+                    key="csv"
+                    variant="outlined"
+                    onClick={() => {
+                        window.location.href = route('accounting.reports.receivables-by-source', {
+                            ...localFilters,
+                            export: 'csv',
+                        });
+                    }}
+                >
+                    Export CSV
+                </Button>,
+                <Button key="print" variant="outlined" onClick={() => window.print()}>
+                    Print
+                </Button>,
+            ]}
+        >
+            <Grid container spacing={2.25}>
+                <Grid item xs={12} md={3}><StatCard label="Open Receivables" value={summary.records || 0} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Outstanding" value={formatNumber(summary.total_balance)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Average Age" value={`${formatNumber(summary.average_age, 1)} days`} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="90+ Bucket" value={formatNumber(summary?.bucket_balance?.['90+'])} tone="muted" /></Grid>
             </Grid>
-          </form>
-          <Box sx={{ mt: 1.5, display: 'flex', gap: 1 }}>
-            <Button size="small" variant="outlined" onClick={reset}>Reset</Button>
-            <Button size="small" variant="outlined" onClick={printView}>Print</Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => {
-                window.location.href = route('accounting.reports.receivables-by-source', { ...filters, export: 'csv' });
-              }}
-            >
-              CSV
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
 
-      <Card sx={{ mb: 2, '@media print': { display: 'none' } }}>
-        <CardContent>
-          <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>Source Exposure</Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {Object.keys(sourceTotals).length === 0 && (
-              <Typography variant="body2" color="text.secondary">No source exposure data.</Typography>
-            )}
-            {Object.entries(sourceTotals).map(([source, stats]) => (
-              <Chip
-                key={source}
-                label={`${source}: ${Number(stats.balance || 0).toFixed(2)} (${stats.count || 0})`}
-                sx={{ bgcolor: 'rgba(6,52,85,0.08)', color: 'primary.main', border: '1px solid rgba(6,52,85,0.2)' }}
-              />
-            ))}
-          </Box>
-        </CardContent>
-      </Card>
+            <SurfaceCard title="Live Filters" subtitle="Filter by source, bucket, period, or party without using the older manual report form.">
+                <FilterToolbar onReset={() => router.get(route('accounting.reports.receivables-by-source'))}>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={3}>
+                            <TextField label="Search invoice or party" value={localFilters.search} onChange={(event) => setLocalFilters((current) => ({ ...current, search: event.target.value }))} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Source" value={localFilters.source} onChange={(event) => setLocalFilters((current) => ({ ...current, source: event.target.value }))} fullWidth>
+                                <MenuItem value="">All Sources</MenuItem>
+                                {sourceOptions.map((source) => (
+                                    <MenuItem key={source} value={source}>{source}</MenuItem>
+                                ))}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Bucket" value={localFilters.bucket} onChange={(event) => setLocalFilters((current) => ({ ...current, bucket: event.target.value }))} fullWidth>
+                                <MenuItem value="">All Buckets</MenuItem>
+                                <MenuItem value="current">Current</MenuItem>
+                                <MenuItem value="1-30">1-30</MenuItem>
+                                <MenuItem value="31-60">31-60</MenuItem>
+                                <MenuItem value="61-90">61-90</MenuItem>
+                                <MenuItem value="90+">90+</MenuItem>
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="From" type="date" value={localFilters.from} onChange={(event) => setLocalFilters((current) => ({ ...current, from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="To" type="date" value={localFilters.to} onChange={(event) => setLocalFilters((current) => ({ ...current, to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
+                        </Grid>
+                        <Grid item xs={12} md={1}>
+                            <Button variant="contained" fullWidth onClick={() => applyFilters()}>
+                                Apply
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </FilterToolbar>
 
-      <Card>
-        <CardContent>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Invoice</TableCell>
-                <TableCell>Source</TableCell>
-                <TableCell>Party</TableCell>
-                <TableCell>Due Date</TableCell>
-                <TableCell>Bucket</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell align="right">Paid</TableCell>
-                <TableCell align="right">Balance</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {list.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={8} align="center">No receivables found.</TableCell>
-                </TableRow>
-              )}
-              {list.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.document_no}</TableCell>
-                  <TableCell>{row.source}</TableCell>
-                  <TableCell>{row.party}</TableCell>
-                  <TableCell>{row.due_date || '-'}</TableCell>
-                  <TableCell>{row.bucket}</TableCell>
-                  <TableCell align="right">{Number(row.total || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{Number(row.paid || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{Number(row.balance || 0).toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Pagination data={rows} />
-        </CardContent>
-      </Card>
-    </Box>
-  );
+                <Grid container spacing={1.25} sx={{ mt: 0.5 }}>
+                    {Object.keys(sourceTotals).length === 0 ? (
+                        <Grid item xs={12}>
+                            <Typography variant="body2" color="text.secondary">No source exposure data found.</Typography>
+                        </Grid>
+                    ) : Object.entries(sourceTotals).map(([source, stats]) => (
+                        <Grid item key={source}>
+                            <Chip
+                                label={`${source}: ${formatNumber(stats.balance)} (${stats.count || 0})`}
+                                sx={{ bgcolor: 'rgba(6,52,85,0.08)', color: 'primary.main', border: '1px solid rgba(6,52,85,0.18)' }}
+                            />
+                        </Grid>
+                    ))}
+                </Grid>
+            </SurfaceCard>
+
+            <SurfaceCard title="Receivables Register" subtitle="Source-level receivables aging with the same density, pagination, and brand treatment as the upgraded operational tables.">
+                <AdminDataTable
+                    columns={[
+                        { key: 'invoice', label: 'Invoice', minWidth: 140 },
+                        { key: 'source', label: 'Source', minWidth: 150 },
+                        { key: 'restaurant', label: 'Restaurant', minWidth: 160 },
+                        { key: 'party', label: 'Party', minWidth: 220 },
+                        { key: 'due_date', label: 'Due Date', minWidth: 130 },
+                        { key: 'bucket', label: 'Bucket', minWidth: 110 },
+                        { key: 'total', label: 'Total', minWidth: 120, align: 'right' },
+                        { key: 'paid', label: 'Paid', minWidth: 120, align: 'right' },
+                        { key: 'balance', label: 'Balance', minWidth: 120, align: 'right' },
+                        { key: 'action', label: 'Action', minWidth: 150, align: 'right' },
+                    ]}
+                    rows={list}
+                    pagination={rows}
+                    tableMinWidth={1240}
+                    emptyMessage="No receivables found."
+                    renderRow={(row) => (
+                        <TableRow key={row.id} hover>
+                            <TableCell sx={{ fontWeight: 700 }}>{row.document_no}</TableCell>
+                            <TableCell>{row.source}</TableCell>
+                            <TableCell>{row.restaurant_name || '-'}</TableCell>
+                            <TableCell>{row.party}</TableCell>
+                            <TableCell>{row.due_date || '-'}</TableCell>
+                            <TableCell>{row.bucket}</TableCell>
+                            <TableCell align="right">{formatNumber(row.total)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.paid)}</TableCell>
+                            <TableCell align="right">{formatNumber(row.balance)}</TableCell>
+                            <TableCell align="right">
+                                {row.document_url ? (
+                                    <Button size="small" variant="outlined" onClick={() => router.visit(row.document_url)}>
+                                        Open Source
+                                    </Button>
+                                ) : (
+                                    <Button size="small" variant="outlined" disabled>
+                                        Unavailable
+                                    </Button>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
+            </SurfaceCard>
+        </AppPage>
+    );
 }

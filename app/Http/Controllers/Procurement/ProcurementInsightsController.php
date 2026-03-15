@@ -23,6 +23,7 @@ class ProcurementInsightsController extends Controller
 {
     public function discrepancies(Request $request)
     {
+        $perPage = $this->resolvePerPage($request);
         if (
             !Schema::hasTable('goods_receipts')
             || !Schema::hasTable('goods_receipt_items')
@@ -41,7 +42,7 @@ class ProcurementInsightsController extends Controller
                     'matched' => 0,
                 ],
                 'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
-                'filters' => $request->only(['search', 'vendor_id', 'type', 'from', 'to', 'show_matched']),
+                'filters' => $request->only(['search', 'vendor_id', 'type', 'from', 'to', 'show_matched', 'per_page']),
                 'error' => 'Required procurement tables are not available yet. Please run migrations.',
             ]);
         }
@@ -166,15 +167,16 @@ class ProcurementInsightsController extends Controller
         ];
 
         return Inertia::render('App/Admin/Procurement/Insights/Discrepancies', [
-            'rows' => $this->paginateCollection($rows, $request, 25),
+            'rows' => $this->paginateCollection($rows, $request, $perPage),
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
-            'filters' => $request->only(['search', 'vendor_id', 'type', 'from', 'to', 'show_matched']),
+            'filters' => $request->only(['search', 'vendor_id', 'type', 'from', 'to', 'show_matched', 'per_page']),
         ]);
     }
 
     public function paymentRun(Request $request)
     {
+        $perPage = $this->resolvePerPage($request);
         $query = VendorBill::query()
             ->with('vendor:id,name')
             ->whereIn('status', ['posted', 'partially_paid'])
@@ -216,7 +218,7 @@ class ProcurementInsightsController extends Controller
         }
 
         $summaryQuery = clone $query;
-        $bills = $query->orderBy('due_date')->orderBy('bill_date')->paginate(25)->withQueryString();
+        $bills = $query->orderBy('due_date')->orderBy('bill_date')->paginate($perPage)->withQueryString();
 
         $today = Carbon::today();
         $bills->getCollection()->transform(function ($bill) use ($today) {
@@ -245,7 +247,7 @@ class ProcurementInsightsController extends Controller
             'summary' => $summary,
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'paymentAccounts' => PaymentAccount::query()->orderBy('name')->get(['id', 'name', 'payment_method']),
-            'filters' => $request->only(['search', 'vendor_id', 'due_to', 'min_age_days', 'bucket']),
+            'filters' => $request->only(['search', 'vendor_id', 'due_to', 'min_age_days', 'bucket', 'per_page']),
         ]);
     }
 
@@ -413,5 +415,12 @@ class ProcurementInsightsController extends Controller
             $page,
             ['path' => $request->url(), 'query' => $request->query()]
         );
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25): int
+    {
+        $perPage = (int) $request->integer('per_page', $default);
+
+        return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : $default;
     }
 }
