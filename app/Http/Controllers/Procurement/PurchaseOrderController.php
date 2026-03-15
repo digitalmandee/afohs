@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
-use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Tenant;
@@ -78,16 +77,9 @@ class PurchaseOrderController extends Controller
             ->get()
             ->unique('document_id')
             ->keyBy('document_id');
-        $postedIds = JournalEntry::query()
-            ->where('module_type', 'purchase_order')
-            ->whereIn('module_id', $orders->getCollection()->pluck('id'))
-            ->pluck('module_id')
-            ->all();
-        $postedLookup = array_fill_keys($postedIds, true);
-
-        $orders->getCollection()->transform(function ($order) use ($latestActions, $postedLookup) {
+        $orders->getCollection()->transform(function ($order) use ($latestActions) {
             $action = $latestActions->get($order->id);
-            $order->gl_posted = (bool) ($postedLookup[$order->id] ?? false);
+            $order->accounting_status = 'non_posting';
             $order->latest_approval_action = $action ? [
                 'action' => $action->action,
                 'remarks' => $action->remarks,

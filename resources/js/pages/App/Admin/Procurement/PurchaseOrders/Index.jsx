@@ -17,7 +17,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
         { key: 'warehouse', label: 'Warehouse', sx: { minWidth: 180 } },
         { key: 'status', label: 'Status' },
         { key: 'approval', label: 'Approval' },
-        { key: 'gl', label: 'GL' },
+        { key: 'accounting', label: 'Accounting' },
         { key: 'total', label: 'Total', align: 'right' },
         { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 240 } },
     ];
@@ -144,7 +144,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
         <AppPage
             eyebrow="Procurement"
             title="Purchase Orders"
-            subtitle="Track approvals, warehouse destinations, vendor commitments, and GL readiness in a cleaner procurement workspace."
+            subtitle="Track approvals, warehouse destinations, vendor commitments, and downstream accounting readiness in a cleaner procurement workspace."
             actions={[
                 <Button key="create" variant="contained" component={Link} href={route('procurement.purchase-orders.create')}>
                     New PO
@@ -258,7 +258,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                 </FilterToolbar>
             </SurfaceCard>
 
-            <SurfaceCard title="Purchase Order Register" subtitle="Operational view of procurement status, approvals, and posting readiness.">
+            <SurfaceCard title="Purchase Order Register" subtitle="Operational view of procurement status, approvals, and the receipt-to-bill accounting handoff.">
                 <AdminDataTable
                     columns={columns}
                     rows={data}
@@ -291,9 +291,9 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             <TableCell>
                                 <Chip
                                     size="small"
-                                    label={po.gl_posted ? 'Posted' : 'Pending'}
-                                    color={po.gl_posted ? 'success' : 'warning'}
-                                    variant={po.gl_posted ? 'filled' : 'outlined'}
+                                    label={po.accounting_status === 'non_posting' ? 'Non-posting' : 'Operational'}
+                                    color="default"
+                                    variant="outlined"
                                 />
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(po.grand_total || 0).toFixed(2)}</TableCell>

@@ -34,6 +34,8 @@ use App\Models\Transaction;
 use App\Models\TransactionRelation;
 use App\Models\User;
 use App\Models\Variant;
+use App\Models\Warehouse;
+use App\Services\Inventory\InventoryMovementService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1068,7 +1070,7 @@ class OrderController extends Controller
         return (bool) $this->getActiveShift();
     }
 
-    public function sendToKitchen(Request $request)
+    public function sendToKitchen(Request $request, InventoryMovementService $inventoryMovementService)
     {
         // Enforce Active Shift (Global)
         $activeShift = $this->getActiveShift();
@@ -1137,6 +1139,7 @@ class OrderController extends Controller
             }
 
             $restaurantId = (string) $restaurantId;
+            $inventoryContext = $this->resolveRestaurantInventoryContext((int) $restaurantId);
 
             $orderData = [
                 'waiter_id' => $request->input('waiter.id'),
@@ -1255,15 +1258,26 @@ class OrderController extends Controller
                     $prodId = $itemData['id'] ?? null;
 
                     if ($prodId) {
-                        $prod = \App\Models\Product::find($prodId);
+                        $prod = Product::find($prodId);
                         if ($prod && $prod->manage_stock) {
-                            $prod->increment('current_stock', $qty);
+                            $this->recordOrderInventoryMovement(
+                                inventoryMovementService: $inventoryMovementService,
+                                product: $prod,
+                                quantity: (float) $qty,
+                                orderId: (int) $existingOrder->id,
+                                restaurantId: (int) $restaurantId,
+                                inventoryContext: $inventoryContext,
+                                transactionDate: $orderData['start_date'],
+                                reason: 'POS saved-order rewrite restore',
+                                direction: 'in',
+                                createdBy: $request->user()?->id,
+                            );
 
                             if (!empty($itemData['variants'])) {
                                 foreach ($itemData['variants'] as $variant) {
                                     $vId = $variant['id'] ?? null;
                                     if ($vId) {
-                                        \App\Models\ProductVariantValue::where('id', $vId)->increment('stock', 1);
+                                        ProductVariantValue::where('id', $vId)->increment('stock', 1);
                                     }
                                 }
                             }
@@ -1346,10 +1360,28 @@ class OrderController extends Controller
 
                     // Only check stock if management is enabled
                     if ($product && $product->manage_stock) {
-                        if ($product->current_stock < $productQty || $product->minimal_stock > $product->current_stock - $productQty) {
+                        $availableStock = $inventoryMovementService->availableQuantity(
+                            (int) $productId,
+                            (int) $inventoryContext['warehouse_id'],
+                            $inventoryContext['warehouse_location_id'],
+                        );
+
+                        if ($availableStock < $productQty || $product->minimal_stock > $availableStock - $productQty) {
                             throw new \Exception('Insufficient stock for product: ' . ($product->name ?? 'Unknown'));
                         }
-                        $product->decrement('current_stock', $productQty);
+
+                        $this->recordOrderInventoryMovement(
+                            inventoryMovementService: $inventoryMovementService,
+                            product: $product,
+                            quantity: (float) $productQty,
+                            orderId: (int) $order->id,
+                            restaurantId: (int) $restaurantId,
+                            inventoryContext: $inventoryContext,
+                            transactionDate: $orderData['start_date'],
+                            reason: 'POS sale consumption',
+                            direction: 'out',
+                            createdBy: $request->user()?->id,
+                        );
                     }
 
                     if (!empty($item['variants'])) {
@@ -1378,12 +1410,13 @@ class OrderController extends Controller
 
                     $totalCostPrice += $product->cost_of_goods_sold * $productQty;
 
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'tenant_id' => $safeKitchenId,
-                        'order_item' => $item,
-                        'status' => 'in_progress',
-                    ]);
+                        OrderItem::create([
+                            'order_id' => $order->id,
+                            'tenant_id' => $safeKitchenId,
+                            'location_id' => $posLocationId,
+                            'order_item' => $item,
+                            'status' => 'in_progress',
+                        ]);
                 }
             }
 
@@ -1411,15 +1444,36 @@ class OrderController extends Controller
                             $productQty = $item['quantity'] ?? 1;
 
                             if ($productId) {
-                                $product = \App\Models\Product::find($productId);
+                                $product = Product::find($productId);
                                 if ($product && $product->manage_stock) {
-                                    $product->decrement('current_stock', $productQty);
+                                    $availableStock = $inventoryMovementService->availableQuantity(
+                                        (int) $productId,
+                                        (int) $inventoryContext['warehouse_id'],
+                                        $inventoryContext['warehouse_location_id'],
+                                    );
+
+                                    if ($availableStock < $productQty) {
+                                        throw new \Exception('Insufficient stock for cancelled item: ' . ($product->name ?? 'Unknown'));
+                                    }
+
+                                    $this->recordOrderInventoryMovement(
+                                        inventoryMovementService: $inventoryMovementService,
+                                        product: $product,
+                                        quantity: (float) $productQty,
+                                        orderId: (int) $order->id,
+                                        restaurantId: (int) $restaurantId,
+                                        inventoryContext: $inventoryContext,
+                                        transactionDate: $orderData['start_date'],
+                                        reason: 'POS cancelled-item consumption',
+                                        direction: 'out',
+                                        createdBy: $request->user()?->id,
+                                    );
 
                                     if (!empty($item['variants'])) {
                                         foreach ($item['variants'] as $variant) {
                                             $vId = $variant['id'] ?? null;
                                             if ($vId) {
-                                                \App\Models\ProductVariantValue::where('id', $vId)->decrement('stock', 1);
+                                                ProductVariantValue::where('id', $vId)->decrement('stock', 1);
                                             }
                                         }
                                     }
@@ -1430,6 +1484,7 @@ class OrderController extends Controller
                         OrderItem::create([
                             'order_id' => $order->id,
                             'tenant_id' => $safeKitchenId,
+                            'location_id' => $posLocationId,
                             'order_item' => $item,
                             'status' => 'cancelled',  // Explicitly marked
                             'remark' => $item['remark'] ?? null,
@@ -1542,6 +1597,76 @@ class OrderController extends Controller
         }
 
         return $orderItems;
+    }
+
+    private function resolveRestaurantInventoryContext(int $restaurantId): array
+    {
+        $restaurantWarehouses = Warehouse::query()
+            ->with(['locations' => function ($query) {
+                $query->where('status', 'active')->orderByDesc('is_primary')->orderBy('name');
+            }])
+            ->where('status', 'active')
+            ->where('tenant_id', $restaurantId)
+            ->orderBy('name')
+            ->get();
+
+        $warehouse = null;
+
+        if ($restaurantWarehouses->count() === 1) {
+            $warehouse = $restaurantWarehouses->first();
+        } else {
+            $withPrimaryLocation = $restaurantWarehouses->filter(function ($candidate) {
+                return $candidate->locations->contains(fn ($location) => (bool) $location->is_primary);
+            })->values();
+
+            if ($withPrimaryLocation->count() === 1) {
+                $warehouse = $withPrimaryLocation->first();
+            }
+        }
+
+        if (!$warehouse) {
+            throw new \RuntimeException('No unambiguous active warehouse is configured for this restaurant. Configure one active warehouse before consuming POS stock.');
+        }
+
+        $location = $warehouse->locations->firstWhere('is_primary', true) ?? $warehouse->locations->first();
+
+        return [
+            'warehouse_id' => (int) $warehouse->id,
+            'warehouse_location_id' => $location?->id ? (int) $location->id : null,
+        ];
+    }
+
+    private function recordOrderInventoryMovement(
+        InventoryMovementService $inventoryMovementService,
+        Product $product,
+        float $quantity,
+        int $orderId,
+        int $restaurantId,
+        array $inventoryContext,
+        string $transactionDate,
+        string $reason,
+        string $direction,
+        ?int $createdBy = null,
+    ): void {
+        $unitCost = (float) ($product->cost_of_goods_sold ?? 0);
+
+        $inventoryMovementService->record([
+            'product_id' => $product->id,
+            'tenant_id' => $restaurantId,
+            'warehouse_id' => $inventoryContext['warehouse_id'],
+            'warehouse_location_id' => $inventoryContext['warehouse_location_id'],
+            'transaction_date' => $transactionDate,
+            'type' => $direction === 'out' ? 'sale' : 'return_in',
+            'qty_in' => $direction === 'in' ? $quantity : 0,
+            'qty_out' => $direction === 'out' ? $quantity : 0,
+            'unit_cost' => $unitCost,
+            'total_cost' => $unitCost * $quantity,
+            'reference_type' => Order::class,
+            'reference_id' => $orderId,
+            'reason' => $reason,
+            'status' => 'posted',
+            'created_by' => $createdBy,
+        ]);
     }
 
     protected function printItem($printer, $item)
