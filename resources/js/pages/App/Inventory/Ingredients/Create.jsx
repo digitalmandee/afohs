@@ -9,10 +9,11 @@ import { routeNameForContext } from '@/lib/utils';
 // const drawerWidthOpen = 240;
 // const drawerWidthClosed = 110;
 
-const CreateIngredient = () => {
+const CreateIngredient = ({ rawMaterialProducts = [] }) => {
     const [open, setOpen] = useState(true);
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
+        inventory_product_id: '',
         description: '',
         total_quantity: '',
         unit: 'grams',
@@ -86,6 +87,25 @@ const CreateIngredient = () => {
                                 </Grid>
 
                                 <Grid item xs={12}>
+                                    <TextField
+                                        fullWidth
+                                        select
+                                        label="Linked Raw-Material Inventory Item"
+                                        value={data.inventory_product_id}
+                                        onChange={(e) => setData('inventory_product_id', e.target.value)}
+                                        error={!!errors.inventory_product_id}
+                                        helperText={errors.inventory_product_id || 'Link this ingredient to a warehouse-managed raw material product for unified recipe stock deduction.'}
+                                    >
+                                        <MenuItem value="">Not linked yet</MenuItem>
+                                        {rawMaterialProducts.map((product) => (
+                                            <MenuItem key={product.id} value={product.id}>
+                                                {product.menu_code ? `${product.menu_code} · ` : ''}{product.name}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                </Grid>
+
+                                <Grid item xs={12}>
                                     <TextField fullWidth label="Description" multiline rows={3} value={data.description} onChange={(e) => setData('description', e.target.value)} error={!!errors.description} helperText={errors.description} />
                                 </Grid>
 
@@ -129,7 +149,7 @@ const CreateIngredient = () => {
                                 <Grid item xs={12}>
                                     <Alert severity="info">
                                         <Typography variant="body2">
-                                            <strong>Note:</strong> The remaining quantity will be automatically set to the total quantity. You can add more stock later or track usage when ingredients are used in products.
+                                            <strong>Note:</strong> Linked ingredients should be replenished through warehouse operations. Direct ingredient stock is now only a fallback for legacy, non-linked ingredients.
                                         </Typography>
                                     </Alert>
                                 </Grid>

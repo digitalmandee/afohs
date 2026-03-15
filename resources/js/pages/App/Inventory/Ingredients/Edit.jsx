@@ -9,10 +9,11 @@ import { routeNameForContext } from '@/lib/utils';
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
 
-const EditIngredient = ({ ingredient }) => {
+const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
     const [open, setOpen] = useState(true);
     const { data, setData, put, processing, errors, reset } = useForm({
         name: ingredient.name || '',
+        inventory_product_id: ingredient.inventory_product_id || '',
         description: ingredient.description || '',
         total_quantity: ingredient.total_quantity || '',
         unit: ingredient.unit || 'grams',
@@ -83,6 +84,25 @@ const EditIngredient = ({ ingredient }) => {
                                             <MenuItem value="active">Active</MenuItem>
                                             <MenuItem value="inactive">Inactive</MenuItem>
                                             <MenuItem value="expired">Expired</MenuItem>
+                                        </TextField>
+                                    </Grid>
+
+                                    <Grid item xs={12}>
+                                        <TextField
+                                            fullWidth
+                                            select
+                                            label="Linked Raw-Material Inventory Item"
+                                            value={data.inventory_product_id}
+                                            onChange={(e) => setData('inventory_product_id', e.target.value)}
+                                            error={!!errors.inventory_product_id}
+                                            helperText={errors.inventory_product_id || 'Linked ingredients use warehouse inventory as the stock source for recipe deduction.'}
+                                        >
+                                            <MenuItem value="">Not linked yet</MenuItem>
+                                            {rawMaterialProducts.map((product) => (
+                                                <MenuItem key={product.id} value={product.id}>
+                                                    {product.menu_code ? `${product.menu_code} · ` : ''}{product.name}
+                                                </MenuItem>
+                                            ))}
                                         </TextField>
                                     </Grid>
 

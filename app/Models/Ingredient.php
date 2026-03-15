@@ -11,6 +11,7 @@ class Ingredient extends BaseModel
 
     protected $fillable = [
         'name',
+        'inventory_product_id',
         'description',
         'total_quantity',
         'used_quantity',
@@ -37,6 +38,11 @@ class Ingredient extends BaseModel
         return $this->belongsToMany(Product::class, 'product_ingredients', 'ingredient_id', 'product_id')
                     ->withPivot('quantity_used', 'cost')
                     ->withTimestamps();
+    }
+
+    public function inventoryProduct()
+    {
+        return $this->belongsTo(Product::class, 'inventory_product_id');
     }
 
     /**

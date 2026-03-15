@@ -1626,6 +1626,8 @@ Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
     Route::post('warehouses/{warehouse}/locations', [WarehouseController::class, 'storeLocation'])->name('inventory.warehouses.locations.store');
     Route::put('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'updateLocation'])->name('inventory.warehouses.locations.update');
     Route::delete('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'destroyLocation'])->name('inventory.warehouses.locations.destroy');
+    Route::post('warehouse-assignments', [WarehouseController::class, 'storeAssignment'])->name('inventory.warehouse-assignments.store');
+    Route::delete('warehouse-assignments/{assignment}', [WarehouseController::class, 'destroyAssignment'])->name('inventory.warehouse-assignments.destroy');
     Route::get('operations', [InventoryOperationController::class, 'index'])->name('inventory.operations.index');
     Route::post('operations/opening-balances', [InventoryOperationController::class, 'storeOpeningBalance'])->name('inventory.operations.opening-balances.store');
     Route::post('operations/adjustments', [InventoryOperationController::class, 'storeAdjustment'])->name('inventory.operations.adjustments.store');

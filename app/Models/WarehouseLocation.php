@@ -36,4 +36,9 @@ class WarehouseLocation extends Model
     {
         return $this->hasMany(InventoryTransaction::class, 'warehouse_location_id');
     }
+
+    public function restaurantAssignments()
+    {
+        return $this->hasMany(RestaurantWarehouseAssignment::class, 'warehouse_location_id');
+    }
 }

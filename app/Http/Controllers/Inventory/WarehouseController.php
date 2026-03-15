@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\InventoryTransaction;
+use App\Models\RestaurantWarehouseAssignment;
 use App\Models\Tenant;
 use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
@@ -43,11 +44,37 @@ class WarehouseController extends Controller
 
         return Inertia::render('App/Admin/Inventory/Warehouses/Index', [
             'warehouses' => $query->orderBy('name')->paginate($perPage)->withQueryString(),
+            'assignmentWarehouses' => Warehouse::query()
+                ->with(['tenant:id,name', 'locations'])
+                ->orderBy('name')
+                ->get(),
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'assignments' => RestaurantWarehouseAssignment::query()
+                ->with([
+                    'restaurant:id,name',
+                    'warehouse:id,name,code',
+                    'warehouseLocation:id,warehouse_id,name,code',
+                ])
+                ->orderByDesc('is_primary')
+                ->orderBy('restaurant_id')
+                ->orderBy('role')
+                ->get(),
             'locationSummary' => [
                 'total_locations' => WarehouseLocation::query()->count(),
                 'active_locations' => WarehouseLocation::query()->where('status', 'active')->count(),
                 'tracked_products' => InventoryTransaction::query()->distinct('product_id')->count('product_id'),
+                'sellable_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'sellable')->count(),
+                'back_store_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'back_store')->count(),
+                'assignments' => RestaurantWarehouseAssignment::query()
+                    ->with([
+                        'restaurant:id,name',
+                        'warehouse:id,name,code',
+                        'warehouseLocation:id,warehouse_id,name,code',
+                    ])
+                    ->orderByDesc('is_primary')
+                    ->orderBy('restaurant_id')
+                    ->orderBy('role')
+                    ->get(),
             ],
             'filters' => $request->only(['search', 'status', 'scope', 'tenant_id', 'per_page']),
         ]);
@@ -163,5 +190,57 @@ class WarehouseController extends Controller
         $location->delete();
 
         return redirect()->back()->with('success', 'Warehouse location removed.');
+    }
+
+    public function storeAssignment(Request $request)
+    {
+        $data = $request->validate([
+            'restaurant_id' => 'required|exists:tenants,id',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
+            'role' => 'required|in:sellable,back_store,primary_issue_source',
+            'is_primary' => 'boolean',
+            'is_active' => 'boolean',
+        ]);
+
+        $warehouse = Warehouse::query()->with('locations')->findOrFail($data['warehouse_id']);
+
+        if ($data['warehouse_location_id']) {
+            abort_unless(
+                $warehouse->locations->contains('id', (int) $data['warehouse_location_id']),
+                422
+            );
+        }
+
+        if (!empty($data['is_primary'])) {
+            RestaurantWarehouseAssignment::query()
+                ->where('restaurant_id', $data['restaurant_id'])
+                ->where('role', $data['role'])
+                ->update(['is_primary' => false]);
+        }
+
+        RestaurantWarehouseAssignment::updateOrCreate(
+            [
+                'restaurant_id' => $data['restaurant_id'],
+                'warehouse_id' => $data['warehouse_id'],
+                'warehouse_location_id' => $data['warehouse_location_id'] ?? null,
+                'role' => $data['role'],
+            ],
+            [
+                'is_primary' => (bool) ($data['is_primary'] ?? false),
+                'is_active' => (bool) ($data['is_active'] ?? true),
+                'created_by' => $request->user()?->id,
+                'updated_by' => $request->user()?->id,
+            ]
+        );
+
+        return redirect()->back()->with('success', 'Restaurant warehouse assignment saved.');
+    }
+
+    public function destroyAssignment(RestaurantWarehouseAssignment $assignment)
+    {
+        $assignment->delete();
+
+        return redirect()->back()->with('success', 'Restaurant warehouse assignment removed.');
     }
 }

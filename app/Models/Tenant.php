@@ -52,4 +52,9 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     {
         $this->attributes['password'] = bcrypt($value);
     }
+
+    public function warehouseAssignments()
+    {
+        return $this->hasMany(RestaurantWarehouseAssignment::class, 'restaurant_id');
+    }
 }

@@ -24,10 +24,11 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-export default function Index({ warehouses, filters, tenants = [], locationSummary = {} }) {
+export default function Index({ warehouses, assignmentWarehouses: allAssignmentWarehouses = [], filters, tenants = [], locationSummary = {} }) {
     const list = warehouses?.data || [];
     const [openWarehouseModal, setOpenWarehouseModal] = React.useState(false);
     const [locationWarehouse, setLocationWarehouse] = React.useState(null);
+    const [openAssignmentModal, setOpenAssignmentModal] = React.useState(false);
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
         status: filters?.status || '',
@@ -53,6 +54,15 @@ export default function Index({ warehouses, filters, tenants = [], locationSumma
         description: '',
         is_primary: false,
         status: 'active',
+    });
+
+    const assignmentForm = useForm({
+        restaurant_id: '',
+        warehouse_id: '',
+        warehouse_location_id: '',
+        role: 'sellable',
+        is_primary: false,
+        is_active: true,
     });
 
     const submitFilters = React.useCallback((nextFilters) => {
@@ -152,6 +162,31 @@ export default function Index({ warehouses, filters, tenants = [], locationSumma
         });
     };
 
+    const availableAssignmentWarehouses = React.useMemo(() => {
+        if (!assignmentForm.data.restaurant_id) {
+            return allAssignmentWarehouses;
+        }
+
+        return allAssignmentWarehouses.filter((warehouse) => String(warehouse.tenant_id || '') === String(assignmentForm.data.restaurant_id) || warehouse.is_global);
+    }, [assignmentForm.data.restaurant_id, allAssignmentWarehouses]);
+
+    const assignmentLocations = React.useMemo(() => {
+        const selectedWarehouse = availableAssignmentWarehouses.find((warehouse) => String(warehouse.id) === String(assignmentForm.data.warehouse_id));
+        return selectedWarehouse?.locations || [];
+    }, [assignmentForm.data.warehouse_id, availableAssignmentWarehouses]);
+
+    const submitAssignment = (event) => {
+        event.preventDefault();
+        assignmentForm.post(route('inventory.warehouse-assignments.store'), {
+            onSuccess: () => {
+                assignmentForm.reset();
+                assignmentForm.setData('role', 'sellable');
+                assignmentForm.setData('is_active', true);
+                setOpenAssignmentModal(false);
+            },
+        });
+    };
+
     const columns = [
         { key: 'code', label: 'Code', minWidth: 110 },
         { key: 'name', label: 'Warehouse', minWidth: 220 },
@@ -209,6 +244,64 @@ export default function Index({ warehouses, filters, tenants = [], locationSumma
                             </Box>
                         </Grid>
                     </Grid>
+                </SurfaceCard>
+
+                <SurfaceCard
+                    title="Restaurant Inventory Assignments"
+                    subtitle="Control which warehouse/location is sellable in POS and which remains a back-store source until stock is transferred."
+                    actions={<Button variant="contained" onClick={() => setOpenAssignmentModal(true)}>Assign Warehouse</Button>}
+                >
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                        <Grid item xs={12} md={4}><StatCard label="Sellable Sources" value={locationSummary.sellable_assignments || 0} tone="light" /></Grid>
+                        <Grid item xs={12} md={4}><StatCard label="Back Stores" value={locationSummary.back_store_assignments || 0} tone="light" /></Grid>
+                        <Grid item xs={12} md={4}>
+                            <Box sx={{ p: 2.25, borderRadius: 4, border: '1px solid', borderColor: 'divider', backgroundColor: 'rgba(6, 52, 85, 0.04)', height: '100%' }}>
+                                <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                                    POS Rule
+                                </Typography>
+                                <Typography sx={{ mt: 1, fontSize: 18, fontWeight: 800, color: 'text.primary' }}>
+                                    Back store requires transfer
+                                </Typography>
+                                <Typography sx={{ mt: 1, color: 'text.secondary' }}>
+                                    POS can only sell from assigned sellable or primary issue sources for the active restaurant.
+                                </Typography>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                    <AdminDataTable
+                        columns={[
+                            { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
+                            { key: 'warehouse', label: 'Warehouse', minWidth: 220 },
+                            { key: 'location', label: 'Location', minWidth: 200 },
+                            { key: 'role', label: 'Role', minWidth: 160 },
+                            { key: 'state', label: 'State', minWidth: 180 },
+                            { key: 'action', label: 'Action', align: 'right', minWidth: 120 },
+                        ]}
+                        rows={locationSummary.assignments || []}
+                        emptyMessage="No restaurant inventory assignments yet."
+                        tableMinWidth={980}
+                        renderRow={(assignment) => (
+                            <TableRow key={assignment.id} hover>
+                                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{assignment.restaurant?.name || '-'}</TableCell>
+                                <TableCell>{assignment.warehouse ? `${assignment.warehouse.code} · ${assignment.warehouse.name}` : '-'}</TableCell>
+                                <TableCell>{assignment.warehouse_location ? `${assignment.warehouse_location.code} · ${assignment.warehouse_location.name}` : 'Whole warehouse'}</TableCell>
+                                <TableCell>
+                                    <Chip size="small" label={String(assignment.role || '').replace(/_/g, ' ')} color={assignment.role === 'back_store' ? 'warning' : 'primary'} variant="outlined" />
+                                </TableCell>
+                                <TableCell>
+                                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                                        <Chip size="small" label={assignment.is_active ? 'Active' : 'Inactive'} color={assignment.is_active ? 'success' : 'default'} variant="outlined" />
+                                        {assignment.is_primary && <Chip size="small" label="Primary" color="primary" />}
+                                    </Stack>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Button size="small" color="error" variant="outlined" onClick={() => router.delete(route('inventory.warehouse-assignments.destroy', assignment.id))}>
+                                        Remove
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    />
                 </SurfaceCard>
 
                 <SurfaceCard title="Live Filters" subtitle="Refine warehouse records by code, scope, operational status, and restaurant.">
@@ -487,6 +580,116 @@ export default function Index({ warehouses, filters, tenants = [], locationSumma
                         <Button onClick={() => setLocationWarehouse(null)}>Cancel</Button>
                         <Button type="submit" variant="contained" disabled={locationForm.processing}>
                             Create Location
+                        </Button>
+                    </DialogActions>
+                </form>
+            </Dialog>
+
+            <Dialog open={openAssignmentModal} onClose={() => setOpenAssignmentModal(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Assign Restaurant Inventory Source</DialogTitle>
+                <form onSubmit={submitAssignment}>
+                    <DialogContent>
+                        <Grid container spacing={2} sx={{ mt: 0 }}>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Restaurant"
+                                    value={assignmentForm.data.restaurant_id}
+                                    onChange={(event) => {
+                                        assignmentForm.setData('restaurant_id', event.target.value);
+                                        assignmentForm.setData('warehouse_id', '');
+                                        assignmentForm.setData('warehouse_location_id', '');
+                                    }}
+                                    error={!!assignmentForm.errors.restaurant_id}
+                                    helperText={assignmentForm.errors.restaurant_id}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">Select restaurant</MenuItem>
+                                    {tenants.map((tenant) => (
+                                        <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Warehouse"
+                                    value={assignmentForm.data.warehouse_id}
+                                    onChange={(event) => {
+                                        assignmentForm.setData('warehouse_id', event.target.value);
+                                        assignmentForm.setData('warehouse_location_id', '');
+                                    }}
+                                    error={!!assignmentForm.errors.warehouse_id}
+                                    helperText={assignmentForm.errors.warehouse_id}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">Select warehouse</MenuItem>
+                                    {availableAssignmentWarehouses.map((warehouse) => (
+                                        <MenuItem key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Location"
+                                    value={assignmentForm.data.warehouse_location_id}
+                                    onChange={(event) => assignmentForm.setData('warehouse_location_id', event.target.value)}
+                                    error={!!assignmentForm.errors.warehouse_location_id}
+                                    helperText={assignmentForm.errors.warehouse_location_id || 'Optional. Leave empty to use the warehouse scope.'}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">Whole warehouse</MenuItem>
+                                    {assignmentLocations.map((location) => (
+                                        <MenuItem key={location.id} value={location.id}>{location.code} · {location.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Role"
+                                    value={assignmentForm.data.role}
+                                    onChange={(event) => assignmentForm.setData('role', event.target.value)}
+                                    error={!!assignmentForm.errors.role}
+                                    helperText={assignmentForm.errors.role}
+                                    fullWidth
+                                >
+                                    <MenuItem value="sellable">Sellable / POS usable</MenuItem>
+                                    <MenuItem value="back_store">Back store</MenuItem>
+                                    <MenuItem value="primary_issue_source">Primary issue source</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Primary"
+                                    value={assignmentForm.data.is_primary ? 'yes' : 'no'}
+                                    onChange={(event) => assignmentForm.setData('is_primary', event.target.value === 'yes')}
+                                    fullWidth
+                                >
+                                    <MenuItem value="no">Standard assignment</MenuItem>
+                                    <MenuItem value="yes">Primary assignment</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Status"
+                                    value={assignmentForm.data.is_active ? 'active' : 'inactive'}
+                                    onChange={(event) => assignmentForm.setData('is_active', event.target.value === 'active')}
+                                    fullWidth
+                                >
+                                    <MenuItem value="active">Active</MenuItem>
+                                    <MenuItem value="inactive">Inactive</MenuItem>
+                                </TextField>
+                            </Grid>
+                        </Grid>
+                    </DialogContent>
+                    <DialogActions sx={{ px: 3, pb: 2 }}>
+                        <Button onClick={() => setOpenAssignmentModal(false)}>Cancel</Button>
+                        <Button type="submit" variant="contained" disabled={assignmentForm.processing}>
+                            Save Assignment
                         </Button>
                     </DialogActions>
                 </form>

@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ProductVariantValue;
 use App\Rules\KitchenRole;
+use App\Services\Inventory\RestaurantInventoryResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,9 +35,15 @@ class InventoryController extends Controller
         }
 
         $productLists = $query->paginate(15);
+        $inventorySummary = null;
+
+        if ($request->routeIs('pos.*')) {
+            $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
+            $inventorySummary = $this->hydrateAssignedProductBalances($productLists->getCollection(), $restaurantId);
+        }
         $categoriesList = Category::select('id', 'name')->get();
 
-        return Inertia::render('App/Inventory/Dashboard', compact('productLists', 'categoriesList'));
+        return Inertia::render('App/Inventory/Dashboard', compact('productLists', 'categoriesList', 'inventorySummary'));
     }
 
     public function getCategories(Request $request)
@@ -126,6 +133,9 @@ class InventoryController extends Controller
         }
 
         $products = $query->latest()->paginate(15);
+        if ($request->routeIs('pos.*')) {
+            $this->hydrateAssignedProductBalances($products->getCollection(), (int) ($request->session()->get('active_restaurant_id') ?? 0));
+        }
 
         return response()->json([
             'success' => true,
@@ -266,17 +276,10 @@ class InventoryController extends Controller
         // Handle ingredients if provided
         if ($request->has('ingredients') && is_array($request->input('ingredients'))) {
             foreach ($request->input('ingredients') as $ingredientData) {
-                // Validate ingredient availability
-                $ingredient = Ingredient::find($ingredientData['id']);
-                if ($ingredient && $ingredient->hasEnoughQuantity($ingredientData['quantity_used'])) {
-                    // Attach ingredient to product with pivot data
-                    $product->ingredients()->attach($ingredientData['id'], [
-                        'quantity_used' => $ingredientData['quantity_used'],
-                        'cost' => $ingredientData['cost'] ?? 0
-                    ]);
-
-                    // Don't deduct from ingredient stock yet - only when product is actually made/sold
-                }
+                $product->ingredients()->attach($ingredientData['id'], [
+                    'quantity_used' => $ingredientData['quantity_used'],
+                    'cost' => $ingredientData['cost'] ?? 0
+                ]);
             }
         }
 
@@ -556,5 +559,35 @@ class InventoryController extends Controller
         $product->forceDelete();
 
         return redirect()->back()->with('success', 'Product permanently deleted.');
+    }
+
+    protected function hydrateAssignedProductBalances($products, int $restaurantId): ?array
+    {
+        if ($restaurantId <= 0 || empty($products) || count($products) === 0) {
+            return null;
+        }
+
+        $resolver = app(RestaurantInventoryResolver::class);
+        $sellableAssignments = $resolver->assignmentsForRestaurant($restaurantId, ['sellable']);
+        $backStoreAssignments = $resolver->assignmentsForRestaurant($restaurantId, ['back_store']);
+
+        $productIds = collect($products)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all();
+        $sellableBalances = $resolver->aggregateBalancesForAssignments($productIds, $sellableAssignments);
+        $backStoreBalances = $resolver->aggregateBalancesForAssignments($productIds, $backStoreAssignments);
+
+        foreach ($products as $product) {
+            $sellable = (float) $sellableBalances->get((int) $product->id, 0.0);
+            $backStore = (float) $backStoreBalances->get((int) $product->id, 0.0);
+            $product->assigned_sellable_stock = $sellable;
+            $product->assigned_back_store_stock = $backStore;
+            $product->current_stock = $sellable;
+        }
+
+        return [
+            'sellable_sources' => $sellableAssignments->count(),
+            'back_store_sources' => $backStoreAssignments->count(),
+            'sellable_items_in_scope' => $sellableBalances->filter(fn ($balance) => $balance > 0)->count(),
+            'back_store_items_in_scope' => $backStoreBalances->filter(fn ($balance) => $balance > 0)->count(),
+        ];
     }
 }

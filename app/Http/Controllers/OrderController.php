@@ -14,6 +14,7 @@ use App\Models\FinancialInvoiceItem;
 use App\Models\FinancialReceipt;
 use App\Models\Floor;
 use App\Models\GuestType;
+use App\Models\Ingredient;
 use App\Models\Invoices;
 use App\Models\Member;
 use App\Models\MemberType;
@@ -36,6 +37,7 @@ use App\Models\User;
 use App\Models\Variant;
 use App\Models\Warehouse;
 use App\Services\Inventory\InventoryMovementService;
+use App\Services\Inventory\RestaurantInventoryResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1258,7 +1260,7 @@ class OrderController extends Controller
                     $prodId = $itemData['id'] ?? null;
 
                     if ($prodId) {
-                        $prod = Product::find($prodId);
+                        $prod = Product::with(['ingredients.inventoryProduct'])->find($prodId);
                         if ($prod && $prod->manage_stock) {
                             $this->recordOrderInventoryMovement(
                                 inventoryMovementService: $inventoryMovementService,
@@ -1281,6 +1283,20 @@ class OrderController extends Controller
                                     }
                                 }
                             }
+                        }
+
+                        if ($prod) {
+                            $this->syncRecipeInventoryForOrderItem(
+                                inventoryMovementService: $inventoryMovementService,
+                                product: $prod,
+                                quantity: (float) $qty,
+                                orderId: (int) $existingOrder->id,
+                                restaurantId: (int) $restaurantId,
+                                inventoryContext: $inventoryContext,
+                                transactionDate: $orderData['start_date'],
+                                direction: 'in',
+                                createdBy: $request->user()?->id,
+                            );
                         }
                     }
                     $existingItem->delete();
@@ -1356,7 +1372,7 @@ class OrderController extends Controller
 
                     $productQty = $item['quantity'] ?? 1;
 
-                    $product = Product::find($productId);
+                    $product = Product::with(['ingredients.inventoryProduct'])->find($productId);
 
                     // Only check stock if management is enabled
                     if ($product && $product->manage_stock) {
@@ -1379,6 +1395,20 @@ class OrderController extends Controller
                             inventoryContext: $inventoryContext,
                             transactionDate: $orderData['start_date'],
                             reason: 'POS sale consumption',
+                            direction: 'out',
+                            createdBy: $request->user()?->id,
+                        );
+                    }
+
+                    if ($product) {
+                        $this->syncRecipeInventoryForOrderItem(
+                            inventoryMovementService: $inventoryMovementService,
+                            product: $product,
+                            quantity: (float) $productQty,
+                            orderId: (int) $order->id,
+                            restaurantId: (int) $restaurantId,
+                            inventoryContext: $inventoryContext,
+                            transactionDate: $orderData['start_date'],
                             direction: 'out',
                             createdBy: $request->user()?->id,
                         );
@@ -1444,7 +1474,7 @@ class OrderController extends Controller
                             $productQty = $item['quantity'] ?? 1;
 
                             if ($productId) {
-                                $product = Product::find($productId);
+                                $product = Product::with(['ingredients.inventoryProduct'])->find($productId);
                                 if ($product && $product->manage_stock) {
                                     $availableStock = $inventoryMovementService->availableQuantity(
                                         (int) $productId,
@@ -1477,6 +1507,20 @@ class OrderController extends Controller
                                             }
                                         }
                                     }
+                                }
+
+                                if ($product) {
+                                    $this->syncRecipeInventoryForOrderItem(
+                                        inventoryMovementService: $inventoryMovementService,
+                                        product: $product,
+                                        quantity: (float) $productQty,
+                                        orderId: (int) $order->id,
+                                        restaurantId: (int) $restaurantId,
+                                        inventoryContext: $inventoryContext,
+                                        transactionDate: $orderData['start_date'],
+                                        direction: 'out',
+                                        createdBy: $request->user()?->id,
+                                    );
                                 }
                             }
                         }
@@ -1601,38 +1645,11 @@ class OrderController extends Controller
 
     private function resolveRestaurantInventoryContext(int $restaurantId): array
     {
-        $restaurantWarehouses = Warehouse::query()
-            ->with(['locations' => function ($query) {
-                $query->where('status', 'active')->orderByDesc('is_primary')->orderBy('name');
-            }])
-            ->where('status', 'active')
-            ->where('tenant_id', $restaurantId)
-            ->orderBy('name')
-            ->get();
-
-        $warehouse = null;
-
-        if ($restaurantWarehouses->count() === 1) {
-            $warehouse = $restaurantWarehouses->first();
-        } else {
-            $withPrimaryLocation = $restaurantWarehouses->filter(function ($candidate) {
-                return $candidate->locations->contains(fn ($location) => (bool) $location->is_primary);
-            })->values();
-
-            if ($withPrimaryLocation->count() === 1) {
-                $warehouse = $withPrimaryLocation->first();
-            }
-        }
-
-        if (!$warehouse) {
-            throw new \RuntimeException('No unambiguous active warehouse is configured for this restaurant. Configure one active warehouse before consuming POS stock.');
-        }
-
-        $location = $warehouse->locations->firstWhere('is_primary', true) ?? $warehouse->locations->first();
+        $assignment = app(RestaurantInventoryResolver::class)->resolvePrimaryIssueSource($restaurantId);
 
         return [
-            'warehouse_id' => (int) $warehouse->id,
-            'warehouse_location_id' => $location?->id ? (int) $location->id : null,
+            'warehouse_id' => (int) $assignment->warehouse_id,
+            'warehouse_location_id' => $assignment->warehouse_location_id ? (int) $assignment->warehouse_location_id : null,
         ];
     }
 
@@ -1667,6 +1684,61 @@ class OrderController extends Controller
             'status' => 'posted',
             'created_by' => $createdBy,
         ]);
+    }
+
+    private function syncRecipeInventoryForOrderItem(
+        InventoryMovementService $inventoryMovementService,
+        Product $product,
+        float $quantity,
+        int $orderId,
+        int $restaurantId,
+        array $inventoryContext,
+        string $transactionDate,
+        string $direction,
+        ?int $createdBy = null,
+    ): void {
+        if (!$product->relationLoaded('ingredients')) {
+            $product->load('ingredients.inventoryProduct');
+        }
+
+        foreach ($product->ingredients as $ingredient) {
+            $inventoryProduct = $ingredient->inventoryProduct;
+
+            if (!$inventoryProduct) {
+                throw new \RuntimeException("Ingredient '{$ingredient->name}' is not linked to a warehouse raw-material item.");
+            }
+
+            $requiredQuantity = round((float) $ingredient->pivot->quantity_used * $quantity, 3);
+
+            if ($requiredQuantity <= 0) {
+                continue;
+            }
+
+            if ($direction === 'out') {
+                $available = $inventoryMovementService->availableQuantity(
+                    (int) $inventoryProduct->id,
+                    (int) $inventoryContext['warehouse_id'],
+                    $inventoryContext['warehouse_location_id'],
+                );
+
+                if ($available + 0.0001 < $requiredQuantity) {
+                    throw new \RuntimeException("Insufficient raw-material stock for ingredient '{$ingredient->name}'.");
+                }
+            }
+
+            $this->recordOrderInventoryMovement(
+                inventoryMovementService: $inventoryMovementService,
+                product: $inventoryProduct,
+                quantity: $requiredQuantity,
+                orderId: $orderId,
+                restaurantId: $restaurantId,
+                inventoryContext: $inventoryContext,
+                transactionDate: $transactionDate,
+                reason: 'POS recipe consumption · ' . $product->name . ' · ' . $ingredient->name,
+                direction: $direction,
+                createdBy: $createdBy,
+            );
+        }
     }
 
     protected function printItem($printer, $item)
