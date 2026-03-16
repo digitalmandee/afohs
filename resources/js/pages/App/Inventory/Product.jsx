@@ -131,6 +131,14 @@ const AddProduct = ({ product, id }) => {
                 enqueueSnackbar('Please fix the errors before proceeding', { variant: 'error' });
                 return;
             }
+            if (data.manage_stock && hasConfiguredActiveVariants(data.variants)) {
+                setFieldErrors((prev) => ({
+                    ...prev,
+                    variants: 'Warehouse-managed products cannot use variant-level stock yet.',
+                }));
+                enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+                return;
+            }
             setFieldErrors({}); // Clear errors if validation passes
         }
         setAddMenuStep(addMenuStep + 1);
@@ -162,6 +170,8 @@ const AddProduct = ({ product, id }) => {
         const n = Number.parseInt(String(value), 10);
         return Number.isNaN(n) ? 0 : n;
     };
+
+    const hasConfiguredActiveVariants = (variants = []) => variants.some((variant) => variant?.active && Array.isArray(variant.items) && variant.items.some((item) => item?.name));
 
     // Handle form input changes
     const handleInputChange = (e) => {
@@ -349,7 +359,8 @@ const AddProduct = ({ product, id }) => {
                     unit: ingredient.unit,
                     remaining_quantity: ingredient.remaining_quantity,
                     quantity_used: 0,
-                    cost: ingredient.price || 0, // Auto-populate with ingredient price
+                    cost: ingredient.cost_per_unit || 0,
+                    balance_source: ingredient.balance_source || (ingredient.inventory_product_id ? 'warehouse' : 'legacy'),
                 },
             ]);
         }
@@ -379,7 +390,7 @@ const AddProduct = ({ product, id }) => {
             ...data,
             deleted_images: deletedImages, // Include deleted images for backend processing
             manage_stock: Boolean(data.manage_stock),
-            current_stock: data.manage_stock ? normalizeInt(data.current_stock) : 0,
+            current_stock: data.manage_stock ? 0 : normalizeInt(data.current_stock),
             minimal_stock: data.manage_stock ? normalizeInt(data.minimal_stock) : 0,
             notify_when_out_of_stock: data.manage_stock ? Boolean(data.notify_when_out_of_stock) : false,
             ingredients: selectedIngredients.map((ing) => ({
@@ -484,7 +495,8 @@ const AddProduct = ({ product, id }) => {
                     unit: ing.unit,
                     remaining_quantity: ing.remaining_quantity,
                     quantity_used: ing.pivot?.quantity_used || 0,
-                    cost: ing.pivot?.cost || ing.price || 0, // Use saved cost or ingredient price as fallback
+                    cost: ing.pivot?.cost || ing.cost_per_unit || 0,
+                    balance_source: ing.balance_source || (ing.inventory_product_id ? 'warehouse' : 'legacy'),
                 })),
             );
         }
@@ -737,35 +749,10 @@ const AddProduct = ({ product, id }) => {
                                     </Grid>
                                     {Boolean(data.manage_stock) && (
                                         <>
-                                            <Grid item xs={6}>
-                                                <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
-                                                    Current Ready Stock
-                                                </Typography>
-                                                <Box>
-                                                    <Box sx={{ display: 'flex' }}>
-                                                        <TextField fullWidth placeholder="10" name="current_stock" value={data.current_stock} onChange={handleInputChange} variant="outlined" size="small" type="number" error={!!fieldErrors.current_stock} />
-                                                        <Box
-                                                            sx={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                border: '1px solid #e0e0e0',
-                                                                borderLeft: 'none',
-                                                                px: 2,
-                                                                borderTopRightRadius: 4,
-                                                                borderBottomRightRadius: 4,
-                                                                borderColor: fieldErrors.current_stock ? 'error.main' : '#e0e0e0', // Highlight border if error
-                                                            }}
-                                                        >
-                                                            <Typography variant="body2">Pcs</Typography>
-                                                        </Box>
-                                                    </Box>
-                                                    {fieldErrors.current_stock && (
-                                                        <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1 }}>
-                                                            {fieldErrors.current_stock}
-                                                        </Typography>
-                                                    )}
-                                                </Box>
+                                            <Grid item xs={12}>
+                                                <Alert severity="info">
+                                                    Warehouse-managed stock is updated through opening balance, goods receipt, adjustment, and transfer. Direct product stock entry is disabled here.
+                                                </Alert>
                                             </Grid>
                                             <Grid item xs={6}>
                                                 <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
@@ -1044,6 +1031,16 @@ const AddProduct = ({ product, id }) => {
 
                                     {/* Product Variant */}
                                     <Grid item xs={12}>
+                                        {errors.variants && (
+                                            <Alert severity="error" sx={{ mb: 2 }}>
+                                                {errors.variants}
+                                            </Alert>
+                                        )}
+                                        {Boolean(data.manage_stock) && (
+                                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                                Warehouse-managed products cannot use variant-level stock yet. Keep variants for pricing only, or disable stock management until warehouse-backed variants are added.
+                                            </Alert>
+                                        )}
                                         <Box sx={{ mb: 2 }}>
                                             <Typography
                                                 variant="h6"
@@ -1085,7 +1082,7 @@ const AddProduct = ({ product, id }) => {
                                                             </Grid>
                                                             <Grid item xs={3}>
                                                                 <Typography variant="body2" color="text.secondary">
-                                                                    Stock
+                                                                    {data.manage_stock ? 'Stock (Unsupported)' : 'Stock'}
                                                                 </Typography>
                                                             </Grid>
                                                         </Grid>
@@ -1099,7 +1096,7 @@ const AddProduct = ({ product, id }) => {
                                                                     <TextField size="small" type="number" placeholder="Price" value={item.additional_price} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'additional_price', e.target.value)} sx={{ width: 130, mr: 1 }} />
                                                                 </Grid>
                                                                 <Grid item xs={3}>
-                                                                    <TextField size="small" type="number" placeholder="Stock" value={item.stock} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} />
+                                                                    <TextField size="small" type="number" placeholder="Stock" value={item.stock} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} disabled={Boolean(data.manage_stock)} />
                                                                 </Grid>
                                                                 <Grid item xs={1}>
                                                                     <IconButton size="small" onClick={() => removeVariantItem(variantIndex, itemIndex)} color="error">
@@ -1124,7 +1121,7 @@ const AddProduct = ({ product, id }) => {
                                                                         </Box>
                                                                     </Grid>
                                                                     <Grid item xs={3}>
-                                                                        <TextField type="number" placeholder="0" size="small" value={variant.newItem?.stock || ''} onChange={(e) => updateNewVariantField(variantIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} inputProps={{ min: 0 }} />
+                                                                        <TextField type="number" placeholder="0" size="small" value={variant.newItem?.stock || ''} onChange={(e) => updateNewVariantField(variantIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} inputProps={{ min: 0 }} disabled={Boolean(data.manage_stock)} />
                                                                     </Grid>
                                                                     <Grid item xs={1}>
                                                                         <IconButton size="small" onClick={() => addVariantItem(variantIndex)} color="primary">
@@ -1132,7 +1129,7 @@ const AddProduct = ({ product, id }) => {
                                                                         </IconButton>
                                                                     </Grid>
                                                                 </Grid>
-                                                                <Button variant="text" startIcon={<AddIcon />} onClick={() => addVariantItem(variantIndex)} sx={{ mt: 1 }}>
+                                                                <Button variant="text" startIcon={<AddIcon />} onClick={() => addVariantItem(variantIndex)} sx={{ mt: 1 }} disabled={Boolean(data.manage_stock)}>
                                                                     Add Variant Item
                                                                 </Button>
                                                             </>
@@ -1160,7 +1157,7 @@ const AddProduct = ({ product, id }) => {
                                 {/* Header */}
                                 <Box sx={{ mb: 2 }}>
                                     <Typography variant="body1" sx={{ color: '#121212', fontSize: '14px' }}>
-                                        Select ingredients used in this product (Recipe only - no stock deduction)
+                                        Select recipe ingredients. Linked ingredients deduct warehouse-managed raw-material stock during POS orders.
                                     </Typography>
                                 </Box>
 
@@ -1168,7 +1165,7 @@ const AddProduct = ({ product, id }) => {
                                 <Box sx={{ mb: 3 }}>
                                     <Autocomplete
                                         options={ingredients.filter((ing) => !selectedIngredients.find((sel) => sel.id === ing.id))}
-                                        getOptionLabel={(option) => `${option.name} (${option.remaining_quantity} ${option.unit}) - Rs ${option.price || 0}`}
+                                        getOptionLabel={(option) => `${option.name} (${option.remaining_quantity} ${option.unit}, ${option.balance_source === 'warehouse' ? 'warehouse' : 'legacy'}) - Rs ${option.cost_per_unit || 0}`}
                                         onChange={(event, newValue) => {
                                             if (newValue) {
                                                 addIngredient(newValue);
@@ -1208,7 +1205,16 @@ const AddProduct = ({ product, id }) => {
                                                 {selectedIngredients.map((ingredient) => {
                                                     return (
                                                         <TableRow key={ingredient.id}>
-                                                            <TableCell>{ingredient.name}</TableCell>
+                                                            <TableCell>
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                    <span>{ingredient.name}</span>
+                                                                    <Chip
+                                                                        size="small"
+                                                                        label={ingredient.balance_source === 'warehouse' ? 'Warehouse' : 'Legacy'}
+                                                                        color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'}
+                                                                    />
+                                                                </Box>
+                                                            </TableCell>
                                                             <TableCell>
                                                                 {ingredient.remaining_quantity} {ingredient.unit}
                                                             </TableCell>

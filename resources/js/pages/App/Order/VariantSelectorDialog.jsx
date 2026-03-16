@@ -1,4 +1,4 @@
-import { Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { routeNameForContext } from '@/lib/utils';
@@ -56,6 +56,11 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
     };
 
     const handleConfirm = () => {
+        if (product.manage_stock && product.variant_stock_supported === false) {
+            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+            return;
+        }
+
         const resolvedMinQty = Number(minQuantity) > 0 ? Number(minQuantity) : 1;
         const safeQty = Number(quantity) > 0 ? Number(quantity) : resolvedMinQty;
         if (safeQty < resolvedMinQty) {
@@ -139,6 +144,12 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
                             </Box>
                         ))}
 
+                        {product.manage_stock && product.variant_stock_supported === false && (
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                This product is warehouse-managed, so variant-level stock is unavailable. Remove variants or disable stock management before ordering it.
+                            </Alert>
+                        )}
+
                         <Box mt={2}>
                             <TextField
                                 label="Quantity"
@@ -181,7 +192,7 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
 
                     <DialogActions>
                         <Button onClick={onClose}>Cancel</Button>
-                        <Button variant="contained" disabled={Object.values(selectedValues).some((v) => !v || (product.manage_stock && v.stock === 0))} onClick={handleConfirm}>
+                        <Button variant="contained" disabled={product.manage_stock && product.variant_stock_supported === false ? true : Object.values(selectedValues).some((v) => !v || (product.manage_stock && v.stock === 0))} onClick={handleConfirm}>
                             {initialItem ? 'Update' : 'Add'}
                         </Button>
                     </DialogActions>

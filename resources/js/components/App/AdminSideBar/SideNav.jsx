@@ -408,8 +408,14 @@ const topLevelMenu = (permissions) => {
             permission: 'financial.view',
             group: 'operations',
             children: [
+                { text: 'Dashboard', path: route('inventory.dashboard'), permission: 'financial.view' },
                 { text: 'Warehouse Master', path: route('inventory.warehouses.index'), permission: 'financial.view' },
+                { text: 'Warehouse Coverage', path: route('inventory.coverage.index'), permission: 'financial.view' },
+                { text: 'Warehouse Categories', path: route('inventory.categories.index'), permission: 'financial.view' },
+                { text: 'Locations', path: route('inventory.locations.index'), permission: 'financial.view' },
                 { text: 'Stock Operations', path: route('inventory.operations.index'), permission: 'financial.view' },
+                { text: 'Stock Documents', path: route('inventory.documents.index'), permission: 'financial.view' },
+                { text: 'Valuation & Reconcile', path: route('inventory.valuation.index'), permission: 'financial.view' },
             ],
         },
         {

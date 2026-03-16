@@ -48,7 +48,8 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
 
     // Get stock level color and icon
     const getStockInfo = (remaining, total) => {
-        const percentage = (remaining / total) * 100;
+        const safeTotal = Number(total) > 0 ? Number(total) : Number(remaining);
+        const percentage = safeTotal > 0 ? (remaining / safeTotal) * 100 : 0;
         if (remaining <= 0) {
             return { color: 'error', icon: <WarningIcon />, text: 'Out of Stock' };
         } else if (percentage <= 20) {
@@ -172,6 +173,23 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                 </Typography>
                                 <Typography sx={{ color: '#fff', fontSize: '20px', fontWeight: 600 }}>
                                     {stats.out_of_stock}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: '#063455', borderRadius: '16px' }}>
+                            <CardContent
+                                sx={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                }}>
+                                <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 500 }}>
+                                    Warehouse Managed
+                                </Typography>
+                                <Typography sx={{ color: '#fff', fontSize: '20px', fontWeight: 600 }}>
+                                    {stats.warehouse_managed || 0}
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -367,6 +385,13 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                                 <Typography variant="subtitle2" fontWeight="bold">
                                                     {ingredient.name}
                                                 </Typography>
+                                                <Box sx={{ mt: 0.5, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                                    <Chip
+                                                        label={ingredient.balance_source === 'warehouse' ? 'Warehouse balance' : 'Legacy balance'}
+                                                        size="small"
+                                                        color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'}
+                                                    />
+                                                </Box>
                                                 {ingredient.description && (
                                                     <Typography variant="caption" color="textSecondary">
                                                         {ingredient.description}
@@ -374,8 +399,8 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                                 )}
                                             </Box>
                                         </TableCell>
-                                        <TableCell>{ingredient.total_quantity}</TableCell>
-                                        <TableCell>{ingredient.used_quantity}</TableCell>
+                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Warehouse-managed' : ingredient.total_quantity}</TableCell>
+                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Warehouse-managed' : ingredient.used_quantity}</TableCell>
                                         <TableCell>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 {stockInfo.icon}

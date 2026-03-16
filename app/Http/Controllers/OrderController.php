@@ -1376,6 +1376,10 @@ class OrderController extends Controller
 
                     // Only check stock if management is enabled
                     if ($product && $product->manage_stock) {
+                        if ($this->productUsesUnsupportedVariantStock($product)) {
+                            throw new \RuntimeException("Warehouse-managed product '{$product->name}' still uses variant stock. Remove variant stock or disable stock management before ordering.");
+                        }
+
                         $availableStock = $inventoryMovementService->availableQuantity(
                             (int) $productId,
                             (int) $inventoryContext['warehouse_id'],
@@ -1415,6 +1419,10 @@ class OrderController extends Controller
                     }
 
                     if (!empty($item['variants'])) {
+                        if ($product && $product->manage_stock) {
+                            throw new \RuntimeException("Warehouse-managed product '{$product->name}' cannot use variant-level stock yet.");
+                        }
+
                         foreach ($item['variants'] as $variant) {
                             $variantId = $variant['id'] ?? null;
                             if (!$variantId)
@@ -1476,6 +1484,10 @@ class OrderController extends Controller
                             if ($productId) {
                                 $product = Product::with(['ingredients.inventoryProduct'])->find($productId);
                                 if ($product && $product->manage_stock) {
+                                    if ($this->productUsesUnsupportedVariantStock($product)) {
+                                        throw new \RuntimeException("Warehouse-managed product '{$product->name}' still uses variant stock. Remove variant stock or disable stock management before ordering.");
+                                    }
+
                                     $availableStock = $inventoryMovementService->availableQuantity(
                                         (int) $productId,
                                         (int) $inventoryContext['warehouse_id'],
@@ -1500,6 +1512,10 @@ class OrderController extends Controller
                                     );
 
                                     if (!empty($item['variants'])) {
+                                        if ($product && $product->manage_stock) {
+                                            throw new \RuntimeException("Warehouse-managed product '{$product->name}' cannot use variant-level stock yet.");
+                                        }
+
                                         foreach ($item['variants'] as $variant) {
                                             $vId = $variant['id'] ?? null;
                                             if ($vId) {
@@ -2415,14 +2431,15 @@ class OrderController extends Controller
 
         $productsQuery->where('is_salable', true);
 
-        // Filter by stock: Show if stock > 0 OR if strict stock management is disabled
-        $productsQuery->where(function ($q) {
-            $q
-                ->where('current_stock', '>', 0)
-                ->orWhere('manage_stock', false);
-        });
-
         $products = $productsQuery->get();
+        $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
+        if ($request->filled('restaurant_id')) {
+            $restaurantId = (int) $request->input('restaurant_id');
+        }
+        $this->hydrateRestaurantProductStocks($products, $restaurantId);
+        $products = $products
+            ->filter(fn ($product) => !$product->manage_stock || (float) $product->current_stock > 0)
+            ->values();
 
         return response()->json(['success' => true, 'products' => $products], 200);
     }
@@ -2470,12 +2487,6 @@ class OrderController extends Controller
                     ->orWhere('menu_code', 'like', "%{$searchTerm}%")
                     ->orWhere('name', 'like', "%{$searchTerm}%");
             })
-            ->where(function ($query) {
-                // Show product if stock is > 0 OR if stock management is disabled
-                $query
-                    ->where('current_stock', '>', 0)
-                    ->orWhere('manage_stock', false);
-            })
             ->where('is_salable', true)  // Only show salable products
             ->limit(20);  // Limit results for performance
 
@@ -2489,8 +2500,43 @@ class OrderController extends Controller
         }
 
         $products = $productsQuery->get();
+        $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
+        if ($requestedId !== null && $requestedId !== '') {
+            $restaurantId = (int) $requestedId;
+        }
+        $this->hydrateRestaurantProductStocks($products, $restaurantId);
+        $products = $products
+            ->filter(fn ($product) => !$product->manage_stock || (float) $product->current_stock > 0)
+            ->values();
 
         return response()->json(['success' => true, 'products' => $products], 200);
+    }
+
+    private function hydrateRestaurantProductStocks($products, int $restaurantId): void
+    {
+        if ($restaurantId <= 0 || empty($products) || count($products) === 0) {
+            return;
+        }
+
+        $resolver = app(RestaurantInventoryResolver::class);
+        $assignments = $resolver->assignmentsForRestaurant($restaurantId, ['sellable', 'primary_issue_source']);
+        $productIds = collect($products)->pluck('id')->filter()->map(fn ($id) => (int) $id)->all();
+        $balances = $resolver->aggregateBalancesForAssignments($productIds, $assignments);
+
+        foreach ($products as $product) {
+            if (!$product || !$product->manage_stock) {
+                continue;
+            }
+
+            $product->current_stock = (float) $balances->get((int) $product->id, 0.0);
+        }
+    }
+
+    private function productUsesUnsupportedVariantStock(Product $product): bool
+    {
+        return collect($product->variants ?? [])->contains(function ($variant) {
+            return collect($variant->values ?? [])->isNotEmpty();
+        });
     }
 
     /**

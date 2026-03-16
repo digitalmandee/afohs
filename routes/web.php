@@ -1619,10 +1619,20 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
 });
 
 Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
+    Route::get('dashboard', [WarehouseController::class, 'dashboard'])->name('inventory.dashboard');
     Route::get('warehouses', [WarehouseController::class, 'index'])->name('inventory.warehouses.index');
     Route::post('warehouses', [WarehouseController::class, 'store'])->name('inventory.warehouses.store');
     Route::put('warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('inventory.warehouses.update');
     Route::delete('warehouses/{warehouse}', [WarehouseController::class, 'destroy'])->name('inventory.warehouses.destroy');
+    Route::get('warehouses/{warehouse}', [WarehouseController::class, 'show'])->name('inventory.warehouses.show');
+    Route::get('categories', [WarehouseController::class, 'categories'])->name('inventory.categories.index');
+    Route::post('categories', [WarehouseController::class, 'storeCategory'])->name('inventory.categories.store');
+    Route::put('categories/{category}', [WarehouseController::class, 'updateCategory'])->name('inventory.categories.update');
+    Route::get('locations', [WarehouseController::class, 'locationsMaster'])->name('inventory.locations.index');
+    Route::get('documents', [WarehouseController::class, 'documents'])->name('inventory.documents.index');
+    Route::get('valuation', [WarehouseController::class, 'valuation'])->name('inventory.valuation.index');
+    Route::get('coverage', [WarehouseController::class, 'coverage'])->name('inventory.coverage.index');
+    Route::post('coverage', [WarehouseController::class, 'upsertCoverage'])->name('inventory.coverage.upsert');
     Route::post('warehouses/{warehouse}/locations', [WarehouseController::class, 'storeLocation'])->name('inventory.warehouses.locations.store');
     Route::put('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'updateLocation'])->name('inventory.warehouses.locations.update');
     Route::delete('warehouses/{warehouse}/locations/{location}', [WarehouseController::class, 'destroyLocation'])->name('inventory.warehouses.locations.destroy');

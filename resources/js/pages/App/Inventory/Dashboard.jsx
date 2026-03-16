@@ -387,6 +387,18 @@ const CoffeeShop = ({ productLists, categoriesList = [] }) => {
                                                             <Typography variant="body1" fontWeight="500" sx={{ fontSize: '18px' }}>
                                                                 {product.manage_stock == 1 ? product.current_stock : ''}
                                                             </Typography>
+                                                            {product.manage_stock == 1 && (
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Warehouse-managed stock
+                                                                </Typography>
+                                                            )}
+                                                            {Array.isArray(product.inventory_setup_issues) && product.inventory_setup_issues.length > 0 && (
+                                                                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                                    {product.inventory_setup_issues.map((issue) => (
+                                                                        <Chip key={issue} size="small" color="warning" label={issue} />
+                                                                    ))}
+                                                                </Box>
+                                                            )}
                                                         </Box>
                                                         <div style={{ display: 'flex', alignItems: 'center' }}>
                                                             {(product.variants || []).length > 0

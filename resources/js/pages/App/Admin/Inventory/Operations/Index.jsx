@@ -23,12 +23,6 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-const documentTone = {
-    opening_balance: 'warning',
-    adjustment: 'primary',
-    transfer: 'info',
-};
-
 const movementTone = {
     purchase: 'success',
     adjustment_in: 'success',
@@ -55,10 +49,8 @@ const createInitialFilters = (filters, ledger) => ({
 
 export default function Index({
     ledger,
-    documents = [],
     summary = {},
     filters,
-    valuationByWarehouse = [],
     tenants = [],
     warehouses = [],
     warehouseLocations = [],
@@ -283,6 +275,15 @@ export default function Index({
                     <Button key="master" variant="outlined" onClick={() => router.visit(route('inventory.warehouses.index'))}>
                         Warehouse Master
                     </Button>,
+                    <Button key="dashboard" variant="outlined" onClick={() => router.visit(route('inventory.dashboard'))}>
+                        Dashboard
+                    </Button>,
+                    <Button key="documents" variant="outlined" onClick={() => router.visit(route('inventory.documents.index'))}>
+                        Stock Documents
+                    </Button>,
+                    <Button key="valuation" variant="outlined" onClick={() => router.visit(route('inventory.valuation.index'))}>
+                        Valuation
+                    </Button>,
                     <Button key="opening" variant="outlined" onClick={() => openModal('opening')}>
                         Opening Balance
                     </Button>,
@@ -306,9 +307,7 @@ export default function Index({
                     <Grid item xs={12} md={3}><StatCard label="Valuation" value={Number(summary.valuation || 0).toFixed(2)} tone="light" /></Grid>
                 </Grid>
 
-                <Grid container spacing={2.25}>
-                    <Grid item xs={12} lg={8}>
-                        <SurfaceCard title="Stock Ledger" subtitle="Live movement history by restaurant, warehouse, location, product, and movement type.">
+                <SurfaceCard title="Stock Ledger" subtitle="Live movement history by restaurant, warehouse, location, product, and movement type.">
                             <FilterToolbar onReset={resetFilters}>
                                 <Grid container spacing={2}>
                                     <Grid item xs={12} md={4}>
@@ -460,85 +459,7 @@ export default function Index({
                                     }}
                                 />
                             </Box>
-                        </SurfaceCard>
-                    </Grid>
-
-                    <Grid item xs={12} lg={4}>
-                        <SurfaceCard title="Recent Documents" subtitle="Latest stock documents posted into the warehouse ledger.">
-                            <Stack spacing={1.25}>
-                                {documents.length ? documents.map((document) => (
-                                    <Box
-                                        key={document.id}
-                                        sx={{
-                                            p: 2,
-                                            borderRadius: 3.5,
-                                            border: '1px solid',
-                                            borderColor: 'divider',
-                                            backgroundColor: 'rgba(248,250,252,0.9)',
-                                        }}
-                                    >
-                                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
-                                            <Box>
-                                                <Typography sx={{ fontWeight: 800, color: 'text.primary' }}>{document.document_no}</Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    {document.tenant?.name || 'Global'} · {document.transaction_date}
-                                                </Typography>
-                                            </Box>
-                                            <Chip
-                                                label={String(document.type).replaceAll('_', ' ')}
-                                                color={documentTone[document.type] || 'default'}
-                                                size="small"
-                                                sx={{ textTransform: 'capitalize' }}
-                                            />
-                                        </Stack>
-                                        <Typography sx={{ mt: 1.2, color: 'text.secondary', fontSize: 13.5 }}>
-                                            {document.source_warehouse?.name || document.destination_warehouse?.name || 'Warehouse'}
-                                            {document.source_warehouse_location ? ` · ${document.source_warehouse_location.code}` : ''}
-                                            {document.destination_warehouse && document.destination_warehouse_id !== document.source_warehouse_id ? ` → ${document.destination_warehouse.name}` : ''}
-                                            {document.destination_warehouse_location ? ` · ${document.destination_warehouse_location.code}` : ''}
-                                        </Typography>
-                                        <Typography sx={{ mt: 1, color: 'text.primary' }}>
-                                            {document.remarks || 'No remarks'}
-                                        </Typography>
-                                    </Box>
-                                )) : (
-                                    <Typography color="text.secondary">No stock documents posted yet.</Typography>
-                                )}
-                            </Stack>
-                        </SurfaceCard>
-                        <SurfaceCard title="Valuation Snapshot" subtitle="Restaurant-wise and warehouse-wise stock value using the same warehouse-aware movement ledger.">
-                            <Stack spacing={1.25}>
-                                {valuationByWarehouse.length ? valuationByWarehouse.map((row, index) => (
-                                    <Box
-                                        key={`${row.warehouse_id}-${index}`}
-                                        sx={{
-                                            p: 2,
-                                            borderRadius: 3.5,
-                                            border: '1px solid',
-                                            borderColor: 'divider',
-                                            backgroundColor: 'rgba(248,250,252,0.9)',
-                                        }}
-                                    >
-                                        <Typography sx={{ fontWeight: 800, color: 'text.primary' }}>
-                                            {row.warehouse_name || 'Warehouse'}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {row.restaurant_name || 'Global'}
-                                        </Typography>
-                                        <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
-                                            <Typography color="text.secondary">Qty {Number(row.net_qty || 0).toFixed(3)}</Typography>
-                                            <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
-                                                {Number(row.valuation || 0).toFixed(2)}
-                                            </Typography>
-                                        </Stack>
-                                    </Box>
-                                )) : (
-                                    <Typography color="text.secondary">No valuation summary available yet.</Typography>
-                                )}
-                            </Stack>
-                        </SurfaceCard>
-                    </Grid>
-                </Grid>
+                </SurfaceCard>
             </AppPage>
 
             <Dialog open={modal === 'opening'} onClose={closeModal} maxWidth="sm" fullWidth>

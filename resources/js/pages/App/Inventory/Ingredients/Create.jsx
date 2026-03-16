@@ -94,7 +94,7 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
                                         value={data.inventory_product_id}
                                         onChange={(e) => setData('inventory_product_id', e.target.value)}
                                         error={!!errors.inventory_product_id}
-                                        helperText={errors.inventory_product_id || 'Link this ingredient to a warehouse-managed raw material product for unified recipe stock deduction.'}
+                                        helperText={errors.inventory_product_id || 'Only stock-managed raw-material products can be linked here for unified warehouse deduction.'}
                                     >
                                         <MenuItem value="">Not linked yet</MenuItem>
                                         {rawMaterialProducts.map((product) => (
@@ -149,7 +149,7 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
                                 <Grid item xs={12}>
                                     <Alert severity="info">
                                         <Typography variant="body2">
-                                            <strong>Note:</strong> Linked ingredients should be replenished through warehouse operations. Direct ingredient stock is now only a fallback for legacy, non-linked ingredients.
+                                            <strong>Note:</strong> Linked ingredients use warehouse stock as the source of truth. Legacy direct quantities are only for non-linked ingredients during migration.
                                         </Typography>
                                     </Alert>
                                 </Grid>

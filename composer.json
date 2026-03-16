@@ -72,6 +72,29 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@php artisan test"
+        ],
+        "inventory:schema-check": [
+            "@php artisan inventory:verify-warehouse-schema --ansi"
+        ],
+        "inventory:links-smoke": [
+            "@php artisan inventory:verify-link-targets --ansi"
+        ],
+        "inventory:route-audit": [
+            "@php artisan inventory:audit-route-map --ansi"
+        ],
+        "deploy:warehouse-strict-check": [
+            "@php artisan migrate --force --ansi",
+            "@php artisan inventory:verify-warehouse-schema --ansi",
+            "@php artisan inventory:verify-link-targets --ansi",
+            "@php artisan inventory:audit-route-map --ansi",
+            "@php artisan optimize:clear --ansi"
+        ],
+        "deploy:inventory-strict-check": [
+            "@php artisan migrate --force --ansi",
+            "@php artisan inventory:verify-warehouse-schema --ansi",
+            "@php artisan inventory:verify-link-targets --ansi",
+            "@php artisan inventory:audit-route-map --ansi",
+            "@php artisan optimize:clear --ansi"
         ]
     },
     "extra": {

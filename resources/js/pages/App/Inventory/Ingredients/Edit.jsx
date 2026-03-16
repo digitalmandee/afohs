@@ -95,7 +95,7 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
                                             value={data.inventory_product_id}
                                             onChange={(e) => setData('inventory_product_id', e.target.value)}
                                             error={!!errors.inventory_product_id}
-                                            helperText={errors.inventory_product_id || 'Linked ingredients use warehouse inventory as the stock source for recipe deduction.'}
+                                        helperText={errors.inventory_product_id || 'Only stock-managed raw-material products can be linked here for warehouse-backed recipe deduction.'}
                                         >
                                             <MenuItem value="">Not linked yet</MenuItem>
                                             {rawMaterialProducts.map((product) => (
@@ -104,6 +104,14 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
                                                 </MenuItem>
                                             ))}
                                         </TextField>
+                                    </Grid>
+
+                                    <Grid item xs={12}>
+                                        <Alert severity={data.inventory_product_id ? 'info' : 'warning'}>
+                                            {data.inventory_product_id
+                                                ? 'This ingredient is warehouse-managed. Quantity changes should come from warehouse operations, not direct ingredient stock edits.'
+                                                : 'This ingredient is still using legacy direct quantities until it is linked to a warehouse raw-material item.'}
+                                        </Alert>
                                     </Grid>
 
                                     <Grid item xs={12}>

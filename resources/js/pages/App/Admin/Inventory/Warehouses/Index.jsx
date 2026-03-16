@@ -1,6 +1,7 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
+    Autocomplete,
     Box,
     Button,
     Chip,
@@ -24,7 +25,7 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-export default function Index({ warehouses, assignmentWarehouses: allAssignmentWarehouses = [], filters, tenants = [], locationSummary = {} }) {
+export default function Index({ warehouses, assignmentWarehouses: allAssignmentWarehouses = [], filters, tenants = [], categories = [], locationSummary = {} }) {
     const list = warehouses?.data || [];
     const [openWarehouseModal, setOpenWarehouseModal] = React.useState(false);
     const [locationWarehouse, setLocationWarehouse] = React.useState(null);
@@ -32,8 +33,9 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
         status: filters?.status || '',
-        scope: filters?.scope || '',
-        tenant_id: filters?.tenant_id || '',
+        coverage_type: filters?.coverage_type || '',
+        restaurant_id: filters?.restaurant_id || '',
+        has_primary_source: filters?.has_primary_source ? 'yes' : '',
         per_page: filters?.per_page || warehouses?.per_page || 25,
         page: 1,
     });
@@ -42,9 +44,10 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
     const warehouseForm = useForm({
         code: '',
         name: '',
+        category_id: '',
         address: '',
-        is_global: false,
-        tenant_id: '',
+        all_restaurants: true,
+        restaurant_ids: [],
         status: 'active',
     });
 
@@ -70,8 +73,9 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
 
         if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
         if (nextFilters.status) payload.status = nextFilters.status;
-        if (nextFilters.scope) payload.scope = nextFilters.scope;
-        if (nextFilters.tenant_id) payload.tenant_id = nextFilters.tenant_id;
+        if (nextFilters.coverage_type) payload.coverage_type = nextFilters.coverage_type;
+        if (nextFilters.restaurant_id) payload.restaurant_id = nextFilters.restaurant_id;
+        if (nextFilters.has_primary_source === 'yes') payload.has_primary_source = 1;
         payload.per_page = nextFilters.per_page || 25;
         if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
 
@@ -90,14 +94,15 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
         const next = {
             search: filters?.search || '',
             status: filters?.status || '',
-            scope: filters?.scope || '',
-            tenant_id: filters?.tenant_id || '',
+            coverage_type: filters?.coverage_type || '',
+            restaurant_id: filters?.restaurant_id || '',
+            has_primary_source: filters?.has_primary_source ? 'yes' : '',
             per_page: filters?.per_page || warehouses?.per_page || 25,
             page: 1,
         };
         filtersRef.current = next;
         setLocalFilters(next);
-    }, [filters?.per_page, filters?.scope, filters?.search, filters?.status, filters?.tenant_id, warehouses?.per_page]);
+    }, [filters?.coverage_type, filters?.has_primary_source, filters?.per_page, filters?.restaurant_id, filters?.search, filters?.status, warehouses?.per_page]);
 
     const updateFilters = React.useCallback(
         (partial, { immediate = false } = {}) => {
@@ -125,8 +130,9 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
         const cleared = {
             search: '',
             status: '',
-            scope: '',
-            tenant_id: '',
+            coverage_type: '',
+            restaurant_id: '',
+            has_primary_source: '',
             per_page: filtersRef.current.per_page || warehouses?.per_page || 25,
             page: 1,
         };
@@ -142,7 +148,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
             onSuccess: () => {
                 warehouseForm.reset();
                 warehouseForm.setData('status', 'active');
-                warehouseForm.setData('is_global', false);
+                warehouseForm.setData('all_restaurants', true);
                 setOpenWarehouseModal(false);
             },
         });
@@ -167,7 +173,12 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
             return allAssignmentWarehouses;
         }
 
-        return allAssignmentWarehouses.filter((warehouse) => String(warehouse.tenant_id || '') === String(assignmentForm.data.restaurant_id) || warehouse.is_global);
+        return allAssignmentWarehouses.filter((warehouse) => {
+            if (!assignmentForm.data.restaurant_id) return true;
+            if (warehouse.all_restaurants) return true;
+            const coverage = warehouse.coverage_restaurants || [];
+            return coverage.some((restaurant) => String(restaurant.id) === String(assignmentForm.data.restaurant_id));
+        });
     }, [assignmentForm.data.restaurant_id, allAssignmentWarehouses]);
 
     const assignmentLocations = React.useMemo(() => {
@@ -190,7 +201,8 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
     const columns = [
         { key: 'code', label: 'Code', minWidth: 110 },
         { key: 'name', label: 'Warehouse', minWidth: 220 },
-        { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
+        { key: 'category', label: 'Category', minWidth: 160 },
+        { key: 'coverage', label: 'Coverage', minWidth: 260 },
         { key: 'locations', label: 'Locations', minWidth: 260 },
         { key: 'status', label: 'Status', minWidth: 120 },
         { key: 'address', label: 'Address', minWidth: 220 },
@@ -198,7 +210,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
     ];
 
     const activeCount = list.filter((warehouse) => warehouse.status === 'active').length;
-    const restaurantScopedCount = list.filter((warehouse) => !warehouse.is_global).length;
+    const restaurantScopedCount = list.filter((warehouse) => !warehouse.all_restaurants).length;
 
     return (
         <>
@@ -209,6 +221,15 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                 actions={[
                     <Button key="ops" variant="outlined" onClick={() => router.visit(route('inventory.operations.index'))}>
                         Stock Operations
+                    </Button>,
+                    <Button key="dashboard" variant="outlined" onClick={() => router.visit(route('inventory.dashboard'))}>
+                        Dashboard
+                    </Button>,
+                    <Button key="docs" variant="outlined" onClick={() => router.visit(route('inventory.documents.index'))}>
+                        Documents
+                    </Button>,
+                    <Button key="valuation" variant="outlined" onClick={() => router.visit(route('inventory.valuation.index'))}>
+                        Valuation
                     </Button>,
                     <Button key="add" variant="contained" onClick={() => setOpenWarehouseModal(true)}>
                         Add Warehouse
@@ -319,8 +340,8 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                 <TextField
                                     select
                                     label="Restaurant"
-                                    value={localFilters.tenant_id}
-                                    onChange={(event) => updateFilters({ tenant_id: event.target.value }, { immediate: true })}
+                                    value={localFilters.restaurant_id}
+                                    onChange={(event) => updateFilters({ restaurant_id: event.target.value }, { immediate: true })}
                                     fullWidth
                                 >
                                     <MenuItem value="">All restaurants</MenuItem>
@@ -345,14 +366,26 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             <Grid item xs={12} md={2.5}>
                                 <TextField
                                     select
-                                    label="Scope"
-                                    value={localFilters.scope}
-                                    onChange={(event) => updateFilters({ scope: event.target.value }, { immediate: true })}
+                                    label="Coverage"
+                                    value={localFilters.coverage_type}
+                                    onChange={(event) => updateFilters({ coverage_type: event.target.value }, { immediate: true })}
                                     fullWidth
                                 >
-                                    <MenuItem value="">All scopes</MenuItem>
-                                    <MenuItem value="tenant">Restaurant</MenuItem>
-                                    <MenuItem value="global">Global</MenuItem>
+                                    <MenuItem value="">All coverage</MenuItem>
+                                    <MenuItem value="selected">Selected restaurants</MenuItem>
+                                    <MenuItem value="all">All restaurants</MenuItem>
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={2.5}>
+                                <TextField
+                                    select
+                                    label="Primary source"
+                                    value={localFilters.has_primary_source}
+                                    onChange={(event) => updateFilters({ has_primary_source: event.target.value }, { immediate: true })}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">All</MenuItem>
+                                    <MenuItem value="yes">Has primary issue source</MenuItem>
                                 </TextField>
                             </Grid>
                         </Grid>
@@ -372,14 +405,22 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                 <TableCell>
                                     <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{warehouse.name}</Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        {warehouse.is_global ? 'Global warehouse' : 'Restaurant warehouse'}
+                                        {warehouse.all_restaurants ? 'All restaurants' : 'Selected restaurants'}
                                     </Typography>
                                 </TableCell>
                                 <TableCell>
-                                    {warehouse.tenant ? (
-                                        <Chip size="small" label={warehouse.tenant.name} color="primary" variant="outlined" />
+                                    {warehouse.category ? <Chip size="small" label={warehouse.category.name} color="primary" variant="outlined" /> : '-'}
+                                </TableCell>
+                                <TableCell>
+                                    {warehouse.all_restaurants ? (
+                                        <Chip size="small" label="All restaurants" color="success" variant="outlined" />
                                     ) : (
-                                        <Chip size="small" label="Global" variant="outlined" />
+                                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                                            {(warehouse.coverage_restaurants || []).slice(0, 3).map((restaurant) => (
+                                                <Chip key={restaurant.id} size="small" label={restaurant.name} variant="outlined" />
+                                            ))}
+                                            {(warehouse.coverage_restaurants || []).length > 3 && <Chip size="small" label={`+${warehouse.coverage_restaurants.length - 3} more`} variant="outlined" />}
+                                        </Stack>
                                     )}
                                 </TableCell>
                                 <TableCell>
@@ -409,6 +450,9 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                                         <Button size="small" variant="outlined" onClick={() => setLocationWarehouse(warehouse)}>
                                             Add Location
+                                        </Button>
+                                        <Button size="small" variant="outlined" onClick={() => router.visit(route('inventory.warehouses.show', warehouse.id))}>
+                                            View
                                         </Button>
                                         <Button size="small" color="error" variant="outlined" onClick={() => router.delete(route('inventory.warehouses.destroy', warehouse.id))}>
                                             Delete
@@ -457,35 +501,26 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             <Grid item xs={12} md={4}>
                                 <TextField
                                     select
-                                    label="Scope"
-                                    value={warehouseForm.data.is_global ? 'global' : 'tenant'}
-                                    onChange={(event) => {
-                                        const isGlobal = event.target.value === 'global';
-                                        warehouseForm.setData('is_global', isGlobal);
-                                        if (isGlobal) {
-                                            warehouseForm.setData('tenant_id', '');
-                                        }
-                                    }}
+                                    label="Coverage"
+                                    value={warehouseForm.data.all_restaurants ? 'all' : 'selected'}
+                                    onChange={(event) => warehouseForm.setData('all_restaurants', event.target.value === 'all')}
                                     fullWidth
                                 >
-                                    <MenuItem value="tenant">Restaurant</MenuItem>
-                                    <MenuItem value="global">Global</MenuItem>
+                                    <MenuItem value="all">All restaurants</MenuItem>
+                                    <MenuItem value="selected">Selected restaurants</MenuItem>
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={4}>
                                 <TextField
                                     select
-                                    label="Restaurant"
-                                    value={warehouseForm.data.tenant_id}
-                                    onChange={(event) => warehouseForm.setData('tenant_id', event.target.value)}
-                                    error={!!warehouseForm.errors.tenant_id}
-                                    helperText={warehouseForm.errors.tenant_id}
-                                    disabled={warehouseForm.data.is_global}
+                                    label="Category"
+                                    value={warehouseForm.data.category_id}
+                                    onChange={(event) => warehouseForm.setData('category_id', event.target.value)}
                                     fullWidth
                                 >
-                                    <MenuItem value="">Select restaurant</MenuItem>
-                                    {tenants.map((tenant) => (
-                                        <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
+                                    <MenuItem value="">No category</MenuItem>
+                                    {categories.map((category) => (
+                                        <MenuItem key={category.id} value={category.id}>{category.name}</MenuItem>
                                     ))}
                                 </TextField>
                             </Grid>
@@ -494,6 +529,24 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                     <MenuItem value="active">Active</MenuItem>
                                     <MenuItem value="inactive">Inactive</MenuItem>
                                 </TextField>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Autocomplete
+                                    multiple
+                                    options={tenants}
+                                    getOptionLabel={(option) => option.name}
+                                    value={tenants.filter((tenant) => (warehouseForm.data.restaurant_ids || []).map(String).includes(String(tenant.id)))}
+                                    onChange={(_, values) => warehouseForm.setData('restaurant_ids', values.map((item) => item.id))}
+                                    disabled={warehouseForm.data.all_restaurants}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Restaurants"
+                                            error={!!warehouseForm.errors.restaurant_ids}
+                                            helperText={warehouseForm.data.all_restaurants ? 'All restaurants selected via coverage toggle.' : (warehouseForm.errors.restaurant_ids || 'Choose one or more restaurants')}
+                                        />
+                                    )}
+                                />
                             </Grid>
                         </Grid>
                     </DialogContent>

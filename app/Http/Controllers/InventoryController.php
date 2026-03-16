@@ -13,6 +13,7 @@ use App\Models\ProductVariant;
 use App\Models\ProductVariantValue;
 use App\Rules\KitchenRole;
 use App\Services\Inventory\RestaurantInventoryResolver;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,7 @@ class InventoryController extends Controller
     {
         $category_id = $request->query('category_id');
 
-        $query = Product::latest()->with(['category', 'variants', 'variants.values']);
+        $query = Product::latest()->with(['category', 'variants', 'variants.values', 'ingredients:id,name,inventory_product_id']);
 
         if ($category_id) {
             $query->where('category_id', $category_id);
@@ -41,6 +42,7 @@ class InventoryController extends Controller
             $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
             $inventorySummary = $this->hydrateAssignedProductBalances($productLists->getCollection(), $restaurantId);
         }
+        $this->annotateInventoryReadiness($productLists->getCollection());
         $categoriesList = Category::select('id', 'name')->get();
 
         return Inertia::render('App/Inventory/Dashboard', compact('productLists', 'categoriesList', 'inventorySummary'));
@@ -94,7 +96,7 @@ class InventoryController extends Controller
             'current_stock', 'minimal_stock', 'status', 'images',
             'description'
         ])
-            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values']);
+            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values', 'ingredients:id,name,inventory_product_id']);
 
         // Filter by name (case-insensitive)
         if ($request->filled('name')) {
@@ -136,6 +138,7 @@ class InventoryController extends Controller
         if ($request->routeIs('pos.*')) {
             $this->hydrateAssignedProductBalances($products->getCollection(), (int) ($request->session()->get('active_restaurant_id') ?? 0));
         }
+        $this->annotateInventoryReadiness($products->getCollection());
 
         return response()->json([
             'success' => true,
@@ -194,6 +197,12 @@ class InventoryController extends Controller
             'manage_stock' => 'nullable|boolean',
         ]);
 
+        if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
+            return back()->withErrors([
+                'variants' => 'Warehouse-managed products cannot use variant-level stock yet. Disable stock management or remove configured variants.',
+            ])->withInput();
+        }
+
         DB::beginTransaction();
         // Handle image uploads (if any)
         $imagePaths = [];
@@ -204,9 +213,10 @@ class InventoryController extends Controller
             }
         }
 
+        $manageStock = $request->boolean('manage_stock');
         $currentStock = $request->input('current_stock');
         $minimalStock = $request->input('minimal_stock');
-        $currentStock = ($currentStock === null || $currentStock === '') ? 0 : (int) $currentStock;
+        $currentStock = $manageStock ? 0 : (($currentStock === null || $currentStock === '') ? 0 : (int) $currentStock);
         $minimalStock = ($minimalStock === null || $minimalStock === '') ? 0 : (int) $minimalStock;
 
         // Create a new product and store it in the database
@@ -235,7 +245,7 @@ class InventoryController extends Controller
             'created_by' => Auth::id(),
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
-            'manage_stock' => $request->input('manage_stock', false),
+            'manage_stock' => $manageStock,
         ]);
 
         // Auto-generate item code if not provided
@@ -288,16 +298,22 @@ class InventoryController extends Controller
     }
 
     // Get Single Product
-    public function getProduct($id)
+    public function getProduct(Request $request, $id)
     {
-        $product = Product::with(['variants:id,product_id,name', 'variants.values', 'kitchen', 'category'])
+        $product = Product::with(['variants:id,product_id,name', 'variants.values', 'kitchen', 'category', 'ingredients:id,name,inventory_product_id'])
             ->find($id);
+        if ($product && $request->routeIs('pos.*')) {
+            $this->hydrateAssignedProductBalances(new EloquentCollection([$product]), (int) ($request->session()->get('active_restaurant_id') ?? 0));
+        }
+        if ($product) {
+            $this->annotateInventoryReadiness(new EloquentCollection([$product]));
+        }
         return response()->json(['success' => true, 'product' => $product], 200);
     }
 
-    public function singleProduct($id)
+    public function singleProduct(Request $request, $id)
     {
-        return $this->getProduct($id);
+        return $this->getProduct($request, $id);
     }
 
     /**
@@ -305,8 +321,11 @@ class InventoryController extends Controller
      */
     public function show(Request $request, string $id)
     {
-        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items', 'category', 'kitchen', 'ingredients'])
+        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items', 'category', 'kitchen', 'ingredients.inventoryProduct'])
             ->find($id);
+        if ($product) {
+            $this->annotateInventoryReadiness(new EloquentCollection([$product]));
+        }
 
         return Inertia::render('App/Inventory/Product', [
             'product' => $product,
@@ -361,6 +380,12 @@ class InventoryController extends Controller
             'manage_stock' => 'nullable|boolean',
         ]);
 
+        if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
+            return back()->withErrors([
+                'variants' => 'Warehouse-managed products cannot use variant-level stock yet. Disable stock management or remove configured variants.',
+            ])->withInput();
+        }
+
         // Get current product to access existing images
         $product = Product::findOrFail($id);
         $oldImages = $product->images ?? [];
@@ -403,9 +428,10 @@ class InventoryController extends Controller
             }
         }
 
+        $manageStock = $request->boolean('manage_stock');
         $currentStock = $request->input('current_stock');
         $minimalStock = $request->input('minimal_stock');
-        $currentStock = ($currentStock === null || $currentStock === '') ? 0 : (int) $currentStock;
+        $currentStock = $manageStock ? 0 : (($currentStock === null || $currentStock === '') ? 0 : (int) $currentStock);
         $minimalStock = ($minimalStock === null || $minimalStock === '') ? 0 : (int) $minimalStock;
 
         Product::where('id', $id)
@@ -433,7 +459,7 @@ class InventoryController extends Controller
             'updated_by' => Auth::id(),
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
-            'manage_stock' => $request->input('manage_stock', false),
+            'manage_stock' => $manageStock,
         ]);
 
         if ($request->has('variants')) {
@@ -589,5 +615,49 @@ class InventoryController extends Controller
             'sellable_items_in_scope' => $sellableBalances->filter(fn ($balance) => $balance > 0)->count(),
             'back_store_items_in_scope' => $backStoreBalances->filter(fn ($balance) => $balance > 0)->count(),
         ];
+    }
+
+    protected function annotateInventoryReadiness($products): void
+    {
+        foreach ($products as $product) {
+            if (!$product) {
+                continue;
+            }
+
+            $issues = [];
+            $ingredients = collect($product->ingredients ?? []);
+            $unlinkedIngredients = $ingredients
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_product_id))
+                ->values();
+
+            if ($unlinkedIngredients->isNotEmpty()) {
+                $issues[] = 'Recipe ingredients are missing raw-material links.';
+            }
+
+            $hasConfiguredVariants = collect($product->variants ?? [])
+                ->contains(function ($variant) {
+                    return collect($variant->values ?? $variant->items ?? [])->isNotEmpty();
+                });
+
+            if ($product->manage_stock && $hasConfiguredVariants) {
+                $issues[] = 'Variant-level stock is not warehouse-backed yet.';
+            }
+
+            $product->recipe_unlinked_ingredients_count = $unlinkedIngredients->count();
+            $product->inventory_setup_issues = $issues;
+            $product->inventory_ready_for_pos = empty($issues);
+            $product->variant_stock_supported = !$product->manage_stock || !$hasConfiguredVariants;
+        }
+    }
+
+    protected function hasConfiguredVariants(array $variants): bool
+    {
+        return collect($variants)->contains(function ($variant) {
+            if (!($variant['active'] ?? false)) {
+                return false;
+            }
+
+            return collect($variant['items'] ?? [])->contains(fn ($item) => !empty($item['name']));
+        });
     }
 }

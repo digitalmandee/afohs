@@ -6,6 +6,7 @@ use App\Models\Ingredient;
 use App\Models\Product;
 use App\Services\Inventory\RestaurantInventoryResolver;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Illuminate\Validation\Rule;
 
@@ -32,36 +33,54 @@ class IngredientController extends Controller
             $query->where('status', $request->status);
         }
 
-        // Filter by stock level
-        if ($request->filled('stock_level')) {
-            switch ($request->stock_level) {
-                case 'low':
-                    $query->where('remaining_quantity', '<=', 10);
-                    break;
-                case 'out':
-                    $query->where('remaining_quantity', '<=', 0);
-                    break;
-                case 'available':
-                    $query->where('remaining_quantity', '>', 0);
-                    break;
-            }
-        }
-
         // Sort
         $sortBy = $request->input('sort_by', 'name');
         $sortDirection = $request->input('sort_direction', 'asc');
         $query->orderBy($sortBy, $sortDirection);
 
-        $ingredients = $query->paginate(15)->withQueryString();
         $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
-        $this->hydrateWarehouseBalances($ingredients->getCollection(), $restaurantId);
+        $ingredients = $query->get();
+        $this->hydrateWarehouseBalances($ingredients, $restaurantId);
+
+        if ($request->filled('stock_level')) {
+            $stockLevel = $request->input('stock_level');
+            $ingredients = $ingredients->filter(function (Ingredient $ingredient) use ($stockLevel) {
+                $remaining = (float) $ingredient->remaining_quantity;
+
+                return match ($stockLevel) {
+                    'low' => $remaining > 0 && $remaining <= 10,
+                    'out' => $remaining <= 0,
+                    'available' => $remaining > 0,
+                    default => true,
+                };
+            })->values();
+        }
+
+        $perPage = 15;
+        $currentPage = LengthAwarePaginator::resolveCurrentPage();
+        $offset = max(0, ($currentPage - 1) * $perPage);
+        $ingredients = new LengthAwarePaginator(
+            $ingredients->slice($offset, $perPage)->values(),
+            $ingredients->count(),
+            $perPage,
+            $currentPage,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
 
         // Statistics
+        $statsCollection = Ingredient::query()
+            ->with('inventoryProduct:id,name,menu_code,item_type,manage_stock')
+            ->get();
+        $this->hydrateWarehouseBalances($statsCollection, $restaurantId);
         $stats = [
-            'total_ingredients' => Ingredient::count(),
-            'active_ingredients' => Ingredient::where('status', 'active')->count(),
-            'low_stock' => Ingredient::where('remaining_quantity', '<=', 10)->count(),
-            'out_of_stock' => Ingredient::where('remaining_quantity', '<=', 0)->count(),
+            'total_ingredients' => $statsCollection->count(),
+            'active_ingredients' => $statsCollection->where('status', 'active')->count(),
+            'low_stock' => $statsCollection->filter(fn (Ingredient $ingredient) => (float) $ingredient->remaining_quantity > 0 && (float) $ingredient->remaining_quantity <= 10)->count(),
+            'out_of_stock' => $statsCollection->filter(fn (Ingredient $ingredient) => (float) $ingredient->remaining_quantity <= 0)->count(),
+            'warehouse_managed' => $statsCollection->where('balance_source', 'warehouse')->count(),
         ];
 
         return Inertia::render('App/Inventory/Ingredients/Index', [
@@ -79,6 +98,7 @@ class IngredientController extends Controller
         return Inertia::render('App/Inventory/Ingredients/Create', [
             'rawMaterialProducts' => Product::query()
                 ->where('item_type', 'raw_material')
+                ->where('manage_stock', true)
                 ->orderBy('name')
                 ->get(['id', 'name', 'menu_code']),
         ]);
@@ -91,7 +111,12 @@ class IngredientController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:ingredients,name',
-            'inventory_product_id' => 'nullable|exists:products,id',
+            'inventory_product_id' => [
+                'nullable',
+                Rule::exists('products', 'id')->where(fn ($query) => $query
+                    ->where('item_type', 'raw_material')
+                    ->where('manage_stock', true)),
+            ],
             'description' => 'nullable|string',
             'total_quantity' => 'required|numeric|min:0',
             'unit' => 'required|string|max:50',
@@ -135,6 +160,7 @@ class IngredientController extends Controller
             'ingredient' => $ingredient->load('inventoryProduct:id,name,menu_code,item_type'),
             'rawMaterialProducts' => Product::query()
                 ->where('item_type', 'raw_material')
+                ->where('manage_stock', true)
                 ->orderBy('name')
                 ->get(['id', 'name', 'menu_code']),
         ]);
@@ -147,7 +173,12 @@ class IngredientController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('ingredients')->ignore($ingredient->id)],
-            'inventory_product_id' => 'nullable|exists:products,id',
+            'inventory_product_id' => [
+                'nullable',
+                Rule::exists('products', 'id')->where(fn ($query) => $query
+                    ->where('item_type', 'raw_material')
+                    ->where('manage_stock', true)),
+            ],
             'description' => 'nullable|string',
             'total_quantity' => 'required|numeric|min:0',
             'unit' => 'required|string|max:50',
@@ -262,7 +293,8 @@ class IngredientController extends Controller
                 'required' => $ingredientData['quantity'],
                 'available' => $ingredient->remaining_quantity,
                 'sufficient' => $available,
-                'unit' => $ingredient->unit
+                'unit' => $ingredient->unit,
+                'balance_source' => $ingredient->balance_source,
             ];
 
             if (!$available) {
@@ -278,6 +310,16 @@ class IngredientController extends Controller
 
     protected function hydrateWarehouseBalances($ingredients, int $restaurantId): void
     {
+        foreach ($ingredients as $ingredient) {
+            if (!$ingredient) {
+                continue;
+            }
+
+            $ingredient->legacy_remaining_quantity = (float) $ingredient->remaining_quantity;
+            $ingredient->warehouse_managed = (bool) $ingredient->inventory_product_id;
+            $ingredient->balance_source = $ingredient->inventory_product_id ? 'warehouse' : 'legacy';
+        }
+
         if ($restaurantId <= 0) {
             return;
         }
@@ -299,13 +341,14 @@ class IngredientController extends Controller
         $balances = $resolver->aggregateBalancesForAssignments($inventoryProductIds, $assignments);
 
         foreach ($ingredients as $ingredient) {
-            if (!$ingredient || !$ingredient->inventory_product_id) {
+            if (!$ingredient->inventory_product_id) {
                 continue;
             }
 
             $balance = (float) $balances->get((int) $ingredient->inventory_product_id, 0.0);
             $ingredient->remaining_quantity = $balance;
             $ingredient->warehouse_managed = true;
+            $ingredient->balance_source = 'warehouse';
         }
     }
 }

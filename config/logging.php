@@ -89,6 +89,14 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'inventory' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/inventory.log'),
+            'level' => env('LOG_INVENTORY_LEVEL', 'debug'),
+            'days' => env('LOG_INVENTORY_DAYS', 30),
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

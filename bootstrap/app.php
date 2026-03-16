@@ -6,6 +6,7 @@ use App\Http\Middleware\RequestLogContext;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Application;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Support\Facades\Log;
@@ -51,29 +52,85 @@ return Application::configure(basePath: dirname(__DIR__))
                 return;
             }
 
+            $route = $request->route();
+            $path = (string) $request->path();
+            $routeName = $route?->getName();
+            $controllerAction = $route?->getActionName();
+            $tenantId = $request->input('tenant_id')
+                ?? $request->input('restaurant_id')
+                ?? $route?->parameter('tenant')
+                ?? $route?->parameter('tenant_id');
+
+            $sanitizeInput = function (Request $request): array {
+                return $request->except([
+                    'password',
+                    'password_confirmation',
+                    'token',
+                    '_token',
+                    'current_password',
+                    'new_password',
+                    'new_password_confirmation',
+                ]);
+            };
+
+            $extractSqlContext = function (\Throwable $exception): array {
+                if (!$exception instanceof QueryException) {
+                    return [
+                        'sql_state' => null,
+                        'error_code' => null,
+                    ];
+                }
+
+                $sqlState = null;
+                $errorCode = null;
+                $previous = $exception->getPrevious();
+
+                if ($previous instanceof \PDOException) {
+                    $sqlState = $previous->errorInfo[0] ?? $exception->getCode();
+                    $errorCode = $previous->errorInfo[1] ?? null;
+                } else {
+                    $sqlState = $exception->getCode();
+                }
+
+                return [
+                    'sql_state' => $sqlState,
+                    'error_code' => $errorCode,
+                ];
+            };
+
+            $sqlContext = $extractSqlContext($e);
+
             Log::error('Unhandled application exception', [
                 'request_id' => $request->attributes->get('request_id'),
                 'user_id' => $request->user()?->id,
-                'path' => $request->path(),
+                'tenant_id' => $tenantId,
+                'route_name' => $routeName,
+                'controller_action' => $controllerAction,
+                'path' => $path,
                 'method' => $request->method(),
                 'exception' => get_class($e),
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
+                'sql_state' => $sqlContext['sql_state'],
+                'error_code' => $sqlContext['error_code'],
             ]);
 
-            $path = (string) $request->path();
-            $input = $request->except(['password', 'password_confirmation', 'token', '_token']);
             $baseContext = [
                 'request_id' => $request->attributes->get('request_id'),
                 'user_id' => $request->user()?->id,
+                'tenant_id' => $tenantId,
+                'route_name' => $routeName,
+                'controller_action' => $controllerAction,
                 'ip' => $request->ip(),
                 'url' => $request->fullUrl(),
                 'method' => $request->method(),
                 'path' => $path,
                 'exception' => get_class($e),
                 'message' => $e->getMessage(),
-                'input' => $input,
+                'sql_state' => $sqlContext['sql_state'],
+                'error_code' => $sqlContext['error_code'],
+                'input' => $sanitizeInput($request),
             ];
 
             if (str_starts_with($path, 'admin/accounting')) {
@@ -82,6 +139,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
             if (str_starts_with($path, 'admin/procurement')) {
                 Log::channel('procurement')->error('Procurement module exception', $baseContext);
+            }
+
+            if (str_starts_with($path, 'admin/inventory')) {
+                Log::channel('inventory')->error('inventory.exception.unhandled', $baseContext);
             }
         });
 
@@ -98,6 +159,8 @@ return Application::configure(basePath: dirname(__DIR__))
             return [
                 'request_id' => $request->attributes->get('request_id'),
                 'user_id' => $request->user()?->id,
+                'route_name' => $request->route()?->getName(),
+                'controller_action' => $request->route()?->getActionName(),
                 'ip' => $request->ip(),
                 'url' => $request->fullUrl(),
                 'method' => $request->method(),
