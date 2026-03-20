@@ -11,6 +11,10 @@ use App\Models\Vendor;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class PurchaseOrderController extends Controller
@@ -102,14 +106,19 @@ class PurchaseOrderController extends Controller
     {
         return Inertia::render('App/Admin/Procurement/PurchaseOrders/Create', [
             'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
-            'warehouses' => Warehouse::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id']),
-            'products' => Product::orderBy('name')->get(['id', 'name', 'price']),
+            'warehouses' => Warehouse::with('tenant:id,name')
+                ->orderBy('name')
+                ->get(['id', 'name', 'tenant_id', 'status']),
+            'products' => Product::query()
+                ->procurementEligible()
+                ->orderBy('name')
+                ->get(['id', 'name', 'menu_code', 'base_price', 'unit_id']),
         ]);
     }
 
     public function store(Request $request)
     {
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'vendor_id' => 'required|exists:vendors,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'order_date' => 'required|date',
@@ -117,52 +126,128 @@ class PurchaseOrderController extends Controller
             'currency' => 'nullable|string|max:8',
             'remarks' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_id' => [
+                'required',
+                Rule::exists('products', 'id'),
+            ],
             'items.*.qty_ordered' => 'required|numeric|min:0.001',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
 
-        $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
-
-        $order = PurchaseOrder::create([
-            'po_no' => 'PO-' . now()->format('YmdHis'),
-            'vendor_id' => $data['vendor_id'],
-            'tenant_id' => $warehouse->tenant_id,
-            'warehouse_id' => $data['warehouse_id'],
-            'order_date' => $data['order_date'],
-            'expected_date' => $data['expected_date'] ?? null,
-            'status' => 'draft',
-            'currency' => $data['currency'] ?? 'PKR',
-            'remarks' => $data['remarks'] ?? null,
-            'created_by' => $request->user()?->id,
-        ]);
-
-        $subTotal = 0;
-        foreach ($data['items'] as $item) {
-            $lineTotal = $item['qty_ordered'] * $item['unit_cost'];
-            $subTotal += $lineTotal;
-            $order->items()->create([
-                'product_id' => $item['product_id'],
-                'qty_ordered' => $item['qty_ordered'],
-                'unit_cost' => $item['unit_cost'],
-                'line_total' => $lineTotal,
+        if ($validator->fails()) {
+            Log::channel('procurement')->warning('procurement.purchase_order.store.validation_failed', [
+                'event' => 'procurement.purchase_order.store.validation_failed',
+                'request_id' => $request->attributes->get('request_id'),
+                'user_id' => $request->user()?->id,
+                'vendor_id' => $request->input('vendor_id'),
+                'warehouse_id' => $request->input('warehouse_id'),
+                'item_count' => count($request->input('items', [])),
+                'errors' => $validator->errors()->toArray(),
             ]);
+
+            throw new ValidationException($validator);
         }
 
-        $order->update([
-            'sub_total' => $subTotal,
-            'grand_total' => $subTotal,
-        ]);
+        $data = $validator->validated();
+        $submittedItemIds = collect($data['items'] ?? [])
+            ->pluck('product_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
 
-        ApprovalAction::create([
-            'document_type' => 'purchase_order',
-            'document_id' => $order->id,
-            'action' => 'submitted',
-            'remarks' => 'PO created and submitted.',
-            'action_by' => $request->user()?->id,
-        ]);
+        $eligibleIds = Product::query()
+            ->procurementEligible()
+            ->whereIn('id', $submittedItemIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id);
 
-        return redirect()->route('procurement.purchase-orders.index')->with('success', 'Purchase order created.');
+        $invalidIds = $submittedItemIds->diff($eligibleIds)->values();
+        if ($invalidIds->isNotEmpty()) {
+            $ineligibleErrors = [];
+            foreach (($data['items'] ?? []) as $index => $item) {
+                if (in_array((int) ($item['product_id'] ?? 0), $invalidIds->all(), true)) {
+                    $ineligibleErrors["items.{$index}.product_id"] = 'Only active purchasable raw-material items can be ordered in PO.';
+                }
+            }
+
+            Log::channel('procurement')->warning('procurement.purchase_order.store.ineligible_items', [
+                'event' => 'procurement.purchase_order.store.ineligible_items',
+                'request_id' => $request->attributes->get('request_id'),
+                'user_id' => $request->user()?->id,
+                'vendor_id' => $data['vendor_id'] ?? null,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'invalid_product_ids' => $invalidIds->all(),
+            ]);
+
+            throw ValidationException::withMessages($ineligibleErrors);
+        }
+
+        try {
+            $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
+
+            if ((string) ($warehouse->status ?? 'inactive') !== 'active') {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'The selected warehouse is inactive. Activate it before creating a purchase order.',
+                ]);
+            }
+
+            $order = PurchaseOrder::create([
+                'po_no' => 'PO-' . now()->format('YmdHis'),
+                'vendor_id' => $data['vendor_id'],
+                'tenant_id' => $warehouse->tenant_id ?: null,
+                'warehouse_id' => $data['warehouse_id'],
+                'order_date' => $data['order_date'],
+                'expected_date' => $data['expected_date'] ?? null,
+                'status' => 'draft',
+                'currency' => $data['currency'] ?? 'PKR',
+                'remarks' => $data['remarks'] ?? null,
+                'created_by' => $request->user()?->id,
+            ]);
+
+            $subTotal = 0;
+            foreach ($data['items'] as $item) {
+                $lineTotal = $item['qty_ordered'] * $item['unit_cost'];
+                $subTotal += $lineTotal;
+                $order->items()->create([
+                    'product_id' => $item['product_id'],
+                    'qty_ordered' => $item['qty_ordered'],
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            $order->update([
+                'sub_total' => $subTotal,
+                'grand_total' => $subTotal,
+            ]);
+
+            ApprovalAction::create([
+                'document_type' => 'purchase_order',
+                'document_id' => $order->id,
+                'action' => 'submitted',
+                'remarks' => 'PO created and submitted.',
+                'action_by' => $request->user()?->id,
+            ]);
+
+            return redirect()->route('procurement.purchase-orders.index')->with('success', 'Purchase order created.');
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::channel('procurement')->error('procurement.purchase_order.store.failed', [
+                'event' => 'procurement.purchase_order.store.failed',
+                'request_id' => $request->attributes->get('request_id'),
+                'user_id' => $request->user()?->id,
+                'vendor_id' => $data['vendor_id'] ?? null,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'item_count' => is_array($data['items'] ?? null) ? count($data['items']) : 0,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->withInput()->withErrors([
+                'error' => 'Failed to create purchase order. Please review inputs and try again.',
+            ]);
+        }
     }
 
     public function submit(Request $request, PurchaseOrder $purchaseOrder)

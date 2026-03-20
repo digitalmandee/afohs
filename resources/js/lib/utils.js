@@ -36,6 +36,7 @@ export function routeNameForContext(routeName, pathname = undefined) {
         'settings',
         'setting.',
         'printer.',
+        'printers.',
         'members.',
         'customers.',
         'waiters.',
@@ -47,4 +48,33 @@ export function routeNameForContext(routeName, pathname = undefined) {
     if (!shouldPrefix) return routeName;
 
     return `pos.${routeName}`;
+}
+
+export function safeRoute(routeName, params = undefined, absolute = true, meta = undefined) {
+    if (!routeName || typeof route !== 'function') {
+        console.warn('navigation.route.unresolved', { routeName, params, ...meta });
+        return null;
+    }
+
+    try {
+        return route(routeName, params, absolute);
+    } catch (error) {
+        console.warn('navigation.route.unresolved', {
+            routeName,
+            params,
+            ...meta,
+            error: error?.message || 'unknown',
+        });
+        return null;
+    }
+}
+
+export function safeRouteForContext(routeName, pathname = undefined, params = undefined, absolute = true, meta = undefined) {
+    const resolvedRouteName = routeNameForContext(routeName, pathname);
+    return safeRoute(resolvedRouteName, params, absolute, {
+        source_pathname: pathname,
+        requested_route_name: routeName,
+        resolved_route_name: resolvedRouteName,
+        ...meta,
+    });
 }

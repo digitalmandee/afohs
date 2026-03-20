@@ -10,6 +10,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
     const [ingredients, setIngredients] = useState([]);
     const [selectedIngredients, setSelectedIngredients] = useState([]);
     const [availabilityCheck, setAvailabilityCheck] = useState(null);
+    const [projectionQuantity, setProjectionQuantity] = useState(1);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         name: product?.name || '',
@@ -35,6 +36,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                     name: ing.name,
                     unit: ing.unit,
                     remaining_quantity: ing.remaining_quantity,
+                    balance_source: ing.balance_source || (ing.inventory_product_id ? 'warehouse' : 'legacy'),
                     quantity_used: ing.pivot?.quantity_used || 0,
                     cost: ing.pivot?.cost || 0,
                 })),
@@ -86,7 +88,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
             const response = await axios.post(route(routeNameForContext('api.ingredients.check-availability')), {
                 ingredients: selectedIngredients.map((ing) => ({
                     id: ing.id,
-                    quantity: ing.quantity_used * (data.current_stock || 1),
+                    quantity: ing.quantity_used * projectionQuantity,
                 })),
             });
             setAvailabilityCheck(response.data);
@@ -185,9 +187,9 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                     <Grid item xs={12}>
                         <Card>
                             <CardContent>
-                                <Typography variant="h6" gutterBottom>
-                                    Pricing & Stock
-                                </Typography>
+                                    <Typography variant="h6" gutterBottom>
+                                        Pricing & Stock
+                                    </Typography>
 
                                 <Grid container spacing={2}>
                                     <Grid item xs={12} md={3}>
@@ -199,7 +201,17 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                     </Grid>
 
                                     <Grid item xs={12} md={3}>
-                                        <TextField fullWidth label="Current Stock" type="number" value={data.current_stock} onChange={(e) => setData('current_stock', e.target.value)} error={!!errors.current_stock} helperText={errors.current_stock} inputProps={{ min: 0 }} />
+                                        <TextField
+                                            fullWidth
+                                            label="Current Stock"
+                                            type="number"
+                                            value={data.current_stock}
+                                            onChange={(e) => setData('current_stock', e.target.value)}
+                                            error={!!errors.current_stock}
+                                            helperText={product?.manage_stock ? 'Warehouse-managed items use inventory ledger stock. This field is compatibility-only.' : errors.current_stock}
+                                            inputProps={{ min: 0 }}
+                                            disabled={!!product?.manage_stock}
+                                        />
                                     </Grid>
 
                                     <Grid item xs={12} md={3}>
@@ -238,6 +250,22 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                     </Button>
                                 </Box>
 
+                                <Alert severity="info" sx={{ mb: 2 }}>
+                                    Recipe availability is checked against linked warehouse-managed ingredient balances. Unlinked ingredients continue using legacy balances until migrated.
+                                </Alert>
+
+                                <Box sx={{ mb: 3, maxWidth: 240 }}>
+                                    <TextField
+                                        fullWidth
+                                        label="Projected Order Qty"
+                                        type="number"
+                                        value={projectionQuantity}
+                                        onChange={(e) => setProjectionQuantity(Math.max(1, parseInt(e.target.value || '1', 10) || 1))}
+                                        helperText="Preview raw-material consumption for this many menu items."
+                                        inputProps={{ min: 1 }}
+                                    />
+                                </Box>
+
                                 {/* Add Ingredient */}
                                 <Box sx={{ mb: 3 }}>
                                     <Autocomplete
@@ -255,7 +283,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                 {/* Availability Check Results */}
                                 {availabilityCheck && (
                                     <Alert severity={availabilityCheck.all_available ? 'success' : 'warning'} sx={{ mb: 2 }}>
-                                        {availabilityCheck.all_available ? 'All ingredients are available for the current stock quantity!' : 'Some ingredients may not have sufficient quantity!'}
+                                        {availabilityCheck.all_available ? 'All ingredients are available for the projected order quantity.' : 'Some ingredients do not have sufficient projected quantity.'}
                                     </Alert>
                                 )}
 
@@ -269,8 +297,8 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                                         <strong>Ingredient</strong>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <strong>Available</strong>
-                                                    </TableCell>
+                                                                    <strong>Available</strong>
+                                                                </TableCell>
                                                     <TableCell>
                                                         <strong>Quantity Used</strong>
                                                     </TableCell>
@@ -278,8 +306,8 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                                         <strong>Cost (PKR)</strong>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <strong>Total Needed</strong>
-                                                    </TableCell>
+                                                                    <strong>Total Needed</strong>
+                                                                </TableCell>
                                                     <TableCell>
                                                         <strong>Actions</strong>
                                                     </TableCell>
@@ -287,12 +315,22 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                                             </TableHead>
                                             <TableBody>
                                                 {selectedIngredients.map((ingredient) => {
-                                                    const totalNeeded = ingredient.quantity_used * (data.current_stock || 1);
+                                                    const totalNeeded = ingredient.quantity_used * projectionQuantity;
                                                     const hasEnough = ingredient.remaining_quantity >= totalNeeded;
 
                                                     return (
                                                         <TableRow key={ingredient.id}>
-                                                            <TableCell>{ingredient.name}</TableCell>
+                                                            <TableCell>
+                                                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                                    <Typography variant="body2">{ingredient.name}</Typography>
+                                                                    <Chip
+                                                                        size="small"
+                                                                        label={ingredient.balance_source === 'warehouse' ? 'Warehouse balance' : 'Legacy balance'}
+                                                                        color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'}
+                                                                        sx={{ width: 'fit-content' }}
+                                                                    />
+                                                                </Box>
+                                                            </TableCell>
                                                             <TableCell>
                                                                 {ingredient.remaining_quantity} {ingredient.unit}
                                                             </TableCell>

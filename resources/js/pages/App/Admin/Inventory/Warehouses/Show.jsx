@@ -71,10 +71,10 @@ export default function WarehouseShow({
             )}
 
             {tab === 'inventory' && (
-                <SurfaceCard title="Inventory" subtitle="On-hand and valuation by product and location in this warehouse.">
+                <SurfaceCard title="Inventory" subtitle="On-hand and valuation by inventory item and location in this warehouse.">
                     <AdminDataTable
                         columns={[
-                            { key: 'product', label: 'Product', minWidth: 260 },
+                            { key: 'product', label: 'Inventory Item', minWidth: 260 },
                             { key: 'location', label: 'Location', minWidth: 220 },
                             { key: 'on_hand', label: 'On Hand', minWidth: 130, align: 'right' },
                             { key: 'reserved', label: 'Reserved', minWidth: 130, align: 'right' },
@@ -155,7 +155,7 @@ export default function WarehouseShow({
                     <AdminDataTable
                         columns={[
                             { key: 'date', label: 'Date', minWidth: 120 },
-                            { key: 'product', label: 'Product', minWidth: 230 },
+                            { key: 'product', label: 'Inventory Item', minWidth: 230 },
                             { key: 'location', label: 'Location', minWidth: 180 },
                             { key: 'type', label: 'Type', minWidth: 140 },
                             { key: 'in', label: 'Qty In', minWidth: 120, align: 'right' },
@@ -229,4 +229,3 @@ export default function WarehouseShow({
         </AppPage>
     );
 }
-

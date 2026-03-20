@@ -460,8 +460,8 @@ const topLevelMenu = (permissions) => {
                 { text: 'Role Management', path: route('admin.roles.index'), permission: 'roles.view' },
                 { text: 'User Management', path: route('admin.users.index'), permission: 'users.view' },
                 { text: 'Billing', path: route('admin.billing-settings.edit'), permission: 'settings.edit' },
-                { text: 'Profile Settings', path: '/settings/profile' },
-                { text: 'Password', path: '/settings/password' },
+                { text: 'Profile Settings', path: route('profile.edit') },
+                { text: 'Password', path: route('password.edit') },
             ],
         },
         {
@@ -848,23 +848,44 @@ export default function SideNav({ open, setOpen }) {
                         {groupedMenuItems
                             .filter((group) => group.key === 'system')
                             .flatMap((group) => group.items)
-                            .map((item) => (
-                                <RailItem
-                                    key={item.text}
-                                    item={item}
-                                    open={open}
-                                    active={isItemActive(item, url)}
-                                    expanded={false}
-                                    onClick={() => {
-                                        if (!open && item.children?.length) {
-                                            setOpen(true);
-                                            setExpandedModuleKey(item.text);
-                                            return;
-                                        }
-                                        handlePrimaryAction(item);
-                                    }}
-                                />
-                            ))}
+                            .map((item) => {
+                                const itemActive = isItemActive(item, url);
+                                const expanded = open && expandedModule?.text === item.text && item.children?.length;
+
+                                return (
+                                    <Box key={item.text}>
+                                        <RailItem
+                                            item={item}
+                                            open={open}
+                                            active={itemActive || expandedModule?.text === item.text}
+                                            expanded={expanded}
+                                            onClick={() => {
+                                                if (!open && item.children?.length) {
+                                                    setOpen(true);
+                                                    setExpandedModuleKey(item.text);
+                                                    return;
+                                                }
+                                                handlePrimaryAction(item);
+                                            }}
+                                        />
+
+                                        {expanded ? (
+                                            <Box sx={{ pl: 0.2, pr: 0, py: 0.45 }}>
+                                                {panelSections.map((section) => (
+                                                    <PanelSection
+                                                        key={section.key}
+                                                        section={section}
+                                                        activePath={url}
+                                                        rememberedKey={`${expandedModule.text}:${section.key}`}
+                                                        openGroups={openGroups}
+                                                        setOpenGroups={setOpenGroups}
+                                                    />
+                                                ))}
+                                            </Box>
+                                        ) : null}
+                                    </Box>
+                                );
+                            })}
 
                         {!open ? (
                             <Tooltip title="Expand navigation" placement="right">

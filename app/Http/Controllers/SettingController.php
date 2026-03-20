@@ -11,19 +11,7 @@ class SettingController extends Controller
 {
     public function index()
     {
-        $tax = Setting::firstOrCreate(
-            ['type' => 'tax'],
-            ['value' => 12]
-        );
-        $bankCharges = Setting::firstOrCreate(
-            ['type' => 'bank_charges_percentage'],
-            ['value' => 0]
-        );
-
-        return Inertia::render('App/Settings/EditTax', [
-            'taxx' => $tax->value,
-            'bank_charges_percentage' => $bankCharges->value,
-        ]);
+        return Inertia::render('App/Settings/Dashboard');
     }
 
     public function update(Request $request)

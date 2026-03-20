@@ -156,6 +156,7 @@ Route::prefix('pos')->middleware('web')->group(function () {
         Route::post('order/{id}/move-table', [\App\Http\Controllers\OrderController::class, 'moveTable'])->name('pos.orders.move-table');
         Route::post('order/{id}/generate-invoice', [\App\Http\Controllers\OrderController::class, 'generateInvoice'])->name('pos.order.generate-invoice');
         Route::post('order/send/kitchen', [\App\Http\Controllers\OrderController::class, 'sendToKitchen'])->name('pos.order.send-to-kitchen');
+        Route::post('order/{id}/reprint-kot', [\App\Http\Controllers\OrderController::class, 'reprintKot'])->name('pos.order.reprint-kot');
 
         Route::get('product/categories', [\App\Http\Controllers\OrderController::class, 'getCategories'])->name('pos.products.categories');
         Route::get('products/{category_id}', [\App\Http\Controllers\OrderController::class, 'getProducts'])->name('pos.products.bycategory');
@@ -256,8 +257,14 @@ Route::prefix('pos')->middleware('web')->group(function () {
         Route::get('floors/get-floors', [\App\Http\Controllers\FloorController::class, 'getFloors'])->name('pos.floors.getFloors');
         Route::get('table/order/{id}', [\App\Http\Controllers\FloorController::class, 'tableOrderDetails'])->name('pos.table.order.details');
 
+        Route::get('settings/printers', [\App\Http\Controllers\PrinterTestController::class, 'index'])->name('pos.printers.index');
+        Route::get('settings/printers/discover', [\App\Http\Controllers\PrinterTestController::class, 'discover'])->name('pos.printers.discover');
+        Route::put('settings/printers', [\App\Http\Controllers\PrinterTestController::class, 'updateMappings'])->name('pos.printers.update');
+        Route::post('settings/printers/test-kitchen', [\App\Http\Controllers\PrinterTestController::class, 'testKitchenPrinter'])->name('pos.printers.test-kitchen');
+        Route::post('settings/printers/test-receipt', [\App\Http\Controllers\PrinterTestController::class, 'testReceiptPrinter'])->name('pos.printers.test-receipt');
         Route::get('settings/printer-test', [\App\Http\Controllers\PrinterTestController::class, 'index'])->name('pos.printer.index');
         Route::post('settings/printer-test', [\App\Http\Controllers\PrinterTestController::class, 'testPrint'])->name('pos.printer.test');
+        Route::get('settings/printing-health', [\App\Http\Controllers\OrderController::class, 'printHealth'])->name('pos.print.health');
 
         Route::get('kitchen', [\App\Http\Controllers\KitchenController::class, 'index'])->name('pos.kitchen.index');
         Route::post('kitchen/{order}/update-all', [\App\Http\Controllers\KitchenController::class, 'updateAll'])->name('pos.kitchen.update-all');

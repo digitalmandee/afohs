@@ -249,7 +249,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             <StatCard label="Active Locations" value={locationSummary.active_locations || 0} tone="light" />
                         </Grid>
                         <Grid item xs={12} md={4}>
-                            <StatCard label="Tracked Products" value={locationSummary.tracked_products || 0} tone="light" />
+                            <StatCard label="Tracked Inventory Items" value={locationSummary.tracked_products || 0} tone="light" />
                         </Grid>
                         <Grid item xs={12} md={4}>
                             <Box sx={{ p: 2.25, borderRadius: 4, border: '1px solid', borderColor: 'divider', backgroundColor: 'rgba(6, 52, 85, 0.04)', height: '100%' }}>

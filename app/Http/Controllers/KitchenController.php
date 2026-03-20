@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Pagination\LengthAwarePaginator;
+use App\Support\KitchenRoleSupport;
 use Spatie\Permission\Models\Role;
 
 class KitchenController extends Controller
@@ -123,7 +125,24 @@ class KitchenController extends Controller
     {
         $limit = $request->query('limit') ?? 10;
 
-        $kitchens = User::role('kitchen', 'web')->with('kitchenDetail')->latest()->paginate($limit);
+        if (!KitchenRoleSupport::exists()) {
+            KitchenRoleSupport::logMissing('kitchen.indexPage', [
+                'request_id' => $request->attributes->get('request_id'),
+                'user_id' => $request->user()?->id,
+            ]);
+
+            $kitchens = new LengthAwarePaginator([], 0, (int) $limit, 1, [
+                'path' => $request->url(),
+                'pageName' => 'page',
+            ]);
+
+            return Inertia::render('App/Kitchen/Main', [
+                'kitchens' => $kitchens,
+                'error' => KitchenRoleSupport::message(),
+            ]);
+        }
+
+        $kitchens = KitchenRoleSupport::usersQuery()->with('kitchenDetail')->latest()->paginate($limit);
 
         return Inertia::render('App/Kitchen/Main', [
             'kitchens' => $kitchens,
@@ -151,6 +170,19 @@ class KitchenController extends Controller
         ]);
 
         try {
+            $kitchenRole = KitchenRoleSupport::find();
+            if (!$kitchenRole) {
+                KitchenRoleSupport::logMissing('kitchen.store', [
+                    'request_id' => $request->attributes->get('request_id'),
+                    'user_id' => $request->user()?->id,
+                    'email' => $validated['email'] ?? null,
+                ]);
+
+                return redirect()->back()->withErrors([
+                    'error' => KitchenRoleSupport::message(),
+                ]);
+            }
+
             DB::beginTransaction();
 
             $customer = User::create([
@@ -165,7 +197,7 @@ class KitchenController extends Controller
                 $customer->update(['profile_photo' => FileHelper::saveImage($request->file('profile_pic'), 'profiles')]);
             }
 
-            $customer->assignRole(Role::findByName('kitchen', 'web'));
+            $customer->assignRole($kitchenRole);
 
             KitchenDetail::create([
                 'kitchen_id' => $customer->id,

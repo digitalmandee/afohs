@@ -45,7 +45,7 @@ import ShiftActivityScreen from './ShiftActivity';
 import LogoutScreen from './Logout';
 import NotificationsPanel from './Notification';
 import EmployeeProfileScreen from './Profile';
-import { isPosPath, routeNameForContext } from '@/lib/utils';
+import { isPosPath, safeRouteForContext } from '@/lib/utils';
 
 export const POS_DRAWER_WIDTH_OPEN = 224;
 export const POS_DRAWER_WIDTH_CLOSED = 78;
@@ -128,38 +128,38 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Dashboard',
                 icon: <DashboardRoundedIcon />,
-                path: isPosPath(url) ? route('pos.dashboard') : route('tenant.dashboard'),
+                path: isPosPath(url) ? safeRouteForContext('pos.dashboard', url) : safeRouteForContext('tenant.dashboard', url),
             },
             {
                 text: 'Orders',
                 icon: <ReceiptLongRoundedIcon />,
-                path: route(routeNameForContext('order.management', url)),
+                path: safeRouteForContext('order.management', url),
             },
             {
                 text: 'Order History',
                 icon: <HistoryRoundedIcon />,
-                path: route(routeNameForContext('order.history', url)),
+                path: safeRouteForContext('order.history', url),
             },
             {
                 text: 'Reservations',
                 icon: <EventSeatRoundedIcon />,
-                path: route(routeNameForContext('reservations.index', url)),
+                path: safeRouteForContext('reservations.index', url),
             },
             {
                 text: 'Tables',
                 icon: <TableRestaurantRoundedIcon />,
-                path: route(routeNameForContext('table.management', url)),
+                path: safeRouteForContext('table.management', url),
             },
             {
                 text: 'Kitchen',
                 icon: <KitchenRoundedIcon />,
-                path: route(routeNameForContext('kitchen.index', url)),
+                path: safeRouteForContext('kitchen.index', url),
                 permission: 'kitchen',
             },
             {
                 text: 'Transactions',
                 icon: <PaymentsRoundedIcon />,
-                path: route(routeNameForContext('transaction.history', url)),
+                path: safeRouteForContext('transaction.history', url),
             },
         ],
     },
@@ -169,32 +169,32 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Products & Menu',
                 icon: <RestaurantMenuRoundedIcon />,
-                path: route(routeNameForContext('inventory.index', url)),
+                path: safeRouteForContext('inventory.index', url),
             },
             {
                 text: 'Categories',
                 icon: <CategoryRoundedIcon />,
-                path: route(routeNameForContext('inventory.category', url)),
+                path: safeRouteForContext('inventory.category', url),
             },
             {
                 text: 'Sub Categories',
                 icon: <CategoryRoundedIcon />,
-                path: route(routeNameForContext('sub-categories.index', url)),
+                path: safeRouteForContext('sub-categories.index', url),
             },
             {
                 text: 'Ingredients',
                 icon: <Inventory2RoundedIcon />,
-                path: route(routeNameForContext('ingredients.index', url)),
+                path: safeRouteForContext('ingredients.index', url),
             },
             {
                 text: 'Units',
                 icon: <ScaleRoundedIcon />,
-                path: route(routeNameForContext('units.index', url)),
+                path: safeRouteForContext('units.index', url),
             },
             {
                 text: 'Manufacturers',
                 icon: <Inventory2RoundedIcon />,
-                path: route(routeNameForContext('manufacturers.index', url)),
+                path: safeRouteForContext('manufacturers.index', url),
             },
         ],
     },
@@ -204,27 +204,33 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Cake Bookings',
                 icon: <CakeRoundedIcon />,
-                path: route(routeNameForContext('cake-bookings.index', url)),
+                path: safeRouteForContext('cake-bookings.index', url),
             },
             {
                 text: 'Cake Types',
                 icon: <CakeRoundedIcon />,
-                path: route(routeNameForContext('cake-types.index', url)),
+                path: safeRouteForContext('cake-types.index', url),
             },
             {
                 text: 'Guests',
                 icon: <GroupRoundedIcon />,
-                path: route(routeNameForContext('customers.index', url)),
+                path: safeRouteForContext('customers.index', url),
             },
             {
-                text: 'Printer Test',
+                text: 'Printer Management',
                 icon: <PrintRoundedIcon />,
-                path: route(routeNameForContext('printer.index', url)),
+                path: safeRouteForContext('printers.index', url, undefined, true, {
+                    menu_source: 'pos_sidebar',
+                    menu_item: 'Printer Management',
+                }),
             },
             {
                 text: 'Settings',
                 icon: <SettingsRoundedIcon />,
-                path: route(routeNameForContext('setting.index', url)),
+                path: safeRouteForContext('setting.index', url, undefined, true, {
+                    menu_source: 'pos_sidebar',
+                    menu_item: 'Settings',
+                }),
             },
         ],
     },
@@ -262,7 +268,9 @@ export default function SideNav({ open, setOpen }) {
         const handleKeyDown = (event) => {
             if (event.key === 'F12') {
                 event.preventDefault();
-                router.visit(route(routeNameForContext('order.management', url)));
+                const orderManagementPath = safeRouteForContext('order.management', url);
+                if (!orderManagementPath) return;
+                router.visit(orderManagementPath);
             }
         };
 
@@ -272,13 +280,15 @@ export default function SideNav({ open, setOpen }) {
 
     const renderMenuItem = (item) => {
         const active = item.path && isItemActive(item.path, url);
+        const disabled = !item.path;
 
         return (
             <ListItem key={item.text} disablePadding sx={{ display: 'block' }}>
-                <Tooltip title={!open ? item.text : ''} placement="right">
+                <Tooltip title={disabled ? `${item.text} · Unavailable` : (!open ? item.text : '')} placement="right">
                     <ListItemButton
-                        component={Link}
-                        href={item.path}
+                        component={disabled ? 'button' : Link}
+                        href={disabled ? undefined : item.path}
+                        disabled={disabled}
                         sx={{
                             minHeight: 46,
                             mx: open ? 1.5 : 1,
@@ -291,6 +301,9 @@ export default function SideNav({ open, setOpen }) {
                             boxShadow: active ? '0 16px 28px rgba(6, 52, 85, 0.18)' : 'none',
                             '&:hover': {
                                 background: active ? 'linear-gradient(135deg, #063455 0%, #0c67a7 100%)' : 'rgba(12, 103, 167, 0.08)',
+                            },
+                            '&.Mui-disabled': {
+                                opacity: 0.5,
                             },
                         }}
                     >
@@ -459,7 +472,11 @@ export default function SideNav({ open, setOpen }) {
                                         fullWidth
                                         variant="contained"
                                         startIcon={open ? <AddRoundedIcon /> : null}
-                                        onClick={() => router.visit(route(routeNameForContext('order.new', url)))}
+                                        onClick={() => {
+                                            const newOrderPath = safeRouteForContext('order.new', url);
+                                            if (!newOrderPath) return;
+                                            router.visit(newOrderPath);
+                                        }}
                                         sx={{
                                             minWidth: 0,
                                             minHeight: 42,

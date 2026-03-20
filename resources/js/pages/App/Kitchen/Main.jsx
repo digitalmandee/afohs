@@ -9,7 +9,7 @@ import { useState } from 'react';
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
 
-const MainDashboard = ({ kitchens }) => {
+const MainDashboard = ({ kitchens, error = null }) => {
     const [open, setOpen] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -118,6 +118,12 @@ const MainDashboard = ({ kitchens }) => {
                     </div>
 
                     <Box>
+                        {error ? (
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                {error}
+                            </Alert>
+                        ) : null}
+
                         <Table>
                             <TableHead style={{ backgroundColor: '#f0f0f0' }}>
                                 <TableRow>

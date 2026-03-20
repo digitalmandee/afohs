@@ -82,6 +82,9 @@
         "inventory:route-audit": [
             "@php artisan inventory:audit-route-map --ansi"
         ],
+        "queue:printing-worker": [
+            "@php artisan queue:work --queue=printing,default --tries=3 --timeout=120"
+        ],
         "deploy:warehouse-strict-check": [
             "@php artisan migrate --force --ansi",
             "@php artisan inventory:verify-warehouse-schema --ansi",

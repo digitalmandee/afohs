@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\KitchenRoleSupport;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Log;
 
@@ -19,7 +20,7 @@ class ProductFactory extends Factory
             'tenant_id' => null,
             'menu_code' => $this->faker->bothify('MC-###'),
             'description' => $this->faker->paragraph(),
-            'kitchen_id' => User::role('kitchen', 'web')->inRandomOrder()->value('id'),
+            'kitchen_id' => KitchenRoleSupport::usersQuery()->inRandomOrder()->value('id'),
             'images' => [],
             'category_id' => Category::factory(),
             'base_price' => $this->faker->randomFloat(2, 10, 100),

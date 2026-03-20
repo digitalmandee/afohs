@@ -116,9 +116,7 @@ class InventoryOperationController extends Controller
             'warehouses' => Warehouse::query()->with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id']),
             'warehouseLocations' => WarehouseLocation::query()->orderBy('name')->get(['id', 'warehouse_id', 'tenant_id', 'name', 'code', 'status']),
             'products' => Product::query()
-                ->where(function ($query) {
-                    $query->where('manage_stock', true)->orWhere('item_type', 'raw_material');
-                })
+                ->warehouseOperationalEligible()
                 ->orderBy('name')
                 ->limit(300)
                 ->get(['id', 'name', 'menu_code', 'tenant_id', 'current_stock']),

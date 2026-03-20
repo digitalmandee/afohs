@@ -32,6 +32,8 @@ class DatabaseSeeder extends Seeder
             MemberTypeSeeder::class,
             TransactionTypeSeeder::class,
             PermissionsDatabaseSeeder::class,
+            PermissionsSeeder::class,
+            RolesSeeder::class,
             RestuarantDatabaseSeeder::class,
             FloorDatabaseSeeder::class,
             KitchenDatabaseSeeder::class,
@@ -41,9 +43,6 @@ class DatabaseSeeder extends Seeder
             MemberClassificationSeeder::class,
             // Payroll System
             PayrollSeeder::class,
-            // Role and Permission System
-            PermissionsSeeder::class,
-            RolesSeeder::class,
             // BookingSeeder::class,
             // OrderDatabaseSeeder::class
         ]);

@@ -9,12 +9,17 @@ class OrderItem extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['order_id', 'tenant_id', 'location_id', 'order_item', 'status', 'remark', 'instructions', 'cancelType'];
+    protected $fillable = ['order_id', 'tenant_id', 'location_id', 'kitchen_id', 'order_item', 'status', 'remark', 'instructions', 'cancelType'];
 
     protected $casts = ['order_item' => 'array'];
 
     public function order()
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function kitchen()
+    {
+        return $this->belongsTo(User::class, 'kitchen_id');
     }
 }

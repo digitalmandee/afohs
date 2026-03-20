@@ -169,6 +169,19 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (TenantCouldNotBeIdentifiedByPathException $e, $request) {
+            Log::channel('inventory')->warning('navigation.tenant_path_unresolved', [
+                'event' => 'navigation.tenant_path_unresolved',
+                'request_id' => $request->attributes->get('request_id'),
+                'user_id' => $request->user()?->id,
+                'route_name' => $request->route()?->getName(),
+                'path' => (string) $request->path(),
+                'url' => $request->fullUrl(),
+                'referrer' => $request->headers->get('referer'),
+                'route_source' => $request->headers->get('x-route-source'),
+                'user_agent' => $request->userAgent(),
+                'message' => $e->getMessage(),
+            ]);
+
             return Inertia::render('Errors/TenantNotFound', [
                 'message' => 'The tenant you are looking for does not exist.'
             ])->toResponse($request)->setStatusCode(404);

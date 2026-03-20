@@ -187,7 +187,8 @@ const OrderDetail = ({ handleEditItem, is_new_order }) => {
             .post(route(routeNameForContext('order.send-to-kitchen')), payload)
             .then((res) => {
                 console.log('Server response:', res.data);
-                enqueueSnackbar(res.data?.message || 'Your order has been successfully sent to the kitchen!', { variant: 'success' });
+                const hasPrintFailures = Array.isArray(res.data?.print_failures) && res.data.print_failures.length > 0;
+                enqueueSnackbar(res.data?.message || 'Your order has been successfully sent to the kitchen!', { variant: hasPrintFailures ? 'warning' : 'success' });
                 router.visit(route(routeNameForContext('order.new')));
             })
             .catch((error) => {
@@ -647,14 +648,6 @@ const OrderDetail = ({ handleEditItem, is_new_order }) => {
                                 const handleQtyBlur = () => {
                                     const newQty = Number(tempQty);
                                     if (newQty > 0 && newQty !== item.quantity) {
-                                        // Check stock availability if managed
-                                        if (item.manage_stock && newQty > item.current_stock) {
-                                            enqueueSnackbar(`Insufficient stock. Available: ${item.current_stock}`, { variant: 'error' });
-                                            setTempQty(item.quantity.toString());
-                                            setEditingQtyIndex(null);
-                                            return;
-                                        }
-
                                         const updatedItems = [...orderDetails.order_items];
                                         updatedItems[index].quantity = newQty;
                                         updatedItems[index].total_price = newQty * updatedItems[index].price;

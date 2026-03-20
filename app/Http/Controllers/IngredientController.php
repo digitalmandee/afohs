@@ -97,8 +97,7 @@ class IngredientController extends Controller
     {
         return Inertia::render('App/Inventory/Ingredients/Create', [
             'rawMaterialProducts' => Product::query()
-                ->where('item_type', 'raw_material')
-                ->where('manage_stock', true)
+                ->rawMaterialStockManaged()
                 ->orderBy('name')
                 ->get(['id', 'name', 'menu_code']),
         ]);
@@ -159,8 +158,7 @@ class IngredientController extends Controller
         return Inertia::render('App/Inventory/Ingredients/Edit', [
             'ingredient' => $ingredient->load('inventoryProduct:id,name,menu_code,item_type'),
             'rawMaterialProducts' => Product::query()
-                ->where('item_type', 'raw_material')
-                ->where('manage_stock', true)
+                ->rawMaterialStockManaged()
                 ->orderBy('name')
                 ->get(['id', 'name', 'menu_code']),
         ]);

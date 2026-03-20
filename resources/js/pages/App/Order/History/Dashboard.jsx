@@ -226,7 +226,10 @@ const Dashboard = ({ orders, filters, tables = [], waiters = [], cashiers = [], 
         }
     };
 
-    const formatOrderStatus = (status) => {
+    const formatOrderStatus = (status, order = null) => {
+        if (order?.adjustment_label && (status === 'cancelled' || status === 'refund')) {
+            return order.adjustment_label;
+        }
         const statuses = {
             in_progress: 'In Progress',
             completed: 'Completed',
@@ -1021,7 +1024,7 @@ const Dashboard = ({ orders, filters, tables = [], waiters = [], cashiers = [], 
                                                 <TableCell sx={{ color: balance > 0 ? 'red' : 'green' }}>{balance}</TableCell>
                                                 <TableCell>{order.payment_method || '-'}</TableCell>
                                                 <TableCell>
-                                                    <Chip label={formatOrderStatus(order.status)} size="small" color={getOrderStatusColor(order.status)} />
+                                                    <Chip label={formatOrderStatus(order.status, order)} size="small" color={getOrderStatusColor(order.status)} />
                                                 </TableCell>
                                                 <TableCell>
                                                     {(() => {
@@ -1166,7 +1169,7 @@ const Dashboard = ({ orders, filters, tables = [], waiters = [], cashiers = [], 
                                             Order Status
                                         </Typography>
                                         <Box>
-                                            <Chip label={formatOrderStatus(selectedOrder.status)} size="small" color={getOrderStatusColor(selectedOrder.status)} />
+                                            <Chip label={formatOrderStatus(selectedOrder.status, selectedOrder)} size="small" color={getOrderStatusColor(selectedOrder.status)} />
                                         </Box>
                                     </Box>
                                     <Box>
@@ -1376,7 +1379,7 @@ const Dashboard = ({ orders, filters, tables = [], waiters = [], cashiers = [], 
                                                                     <TableCell align="right">Rs. {net.toFixed(2)}</TableCell>
                                                                     <TableCell>{item.order_item?.is_taxable ? 'Yes' : 'No'}</TableCell>
                                                                     <TableCell>{item.order_item?.is_discountable ? 'Yes' : 'No'}</TableCell>
-                                                                    <TableCell>{item.cancelType || '-'}</TableCell>
+                                                                    <TableCell>{item.adjustment_label || item.cancelType || '-'}</TableCell>
                                                                     <TableCell>{item.remark || '-'}</TableCell>
                                                                     <TableCell>{item.instructions || '-'}</TableCell>
                                                                 </TableRow>

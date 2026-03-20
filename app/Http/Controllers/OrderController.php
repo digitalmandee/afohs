@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Constants\AppConstants;
 use App\Events\OrderCreated;
 use App\Helpers\FileHelper;
-use App\Jobs\PrintOrderJob;
 use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Employee;
@@ -38,13 +37,16 @@ use App\Models\Variant;
 use App\Models\Warehouse;
 use App\Services\Inventory\InventoryMovementService;
 use App\Services\Inventory\RestaurantInventoryResolver;
+use App\Services\Printing\KotPrintDispatcher;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
-use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use Mike42\Escpos\Printer;
 
 class OrderController extends Controller
@@ -369,7 +371,7 @@ class OrderController extends Controller
                 ->with([
                     'table:id,table_no',
                     'tenant:id,name',  // ✅ Load Tenant Name
-                    'orderItems:id,order_id,tenant_id,order_item,status,remark,instructions,cancelType',
+                    'orderItems:id,order_id,tenant_id,kitchen_id,order_item,status,remark,instructions,cancelType',
                     'member:id,member_type_id,full_name,membership_no',
                     'customer:id,name,customer_no,guest_type_id',
                     'customer.guestType:id,name',
@@ -490,6 +492,19 @@ class OrderController extends Controller
             }
 
             $orders = $query->latest()->paginate(20)->withQueryString();
+            $orderIds = $orders->getCollection()->pluck('id')->values();
+            $printSummaries = collect();
+            if (Schema::hasTable('order_print_logs') && $orderIds->isNotEmpty()) {
+                $printSummaries = DB::table('order_print_logs')
+                    ->select('order_id')
+                    ->selectRaw('SUM(CASE WHEN status IN ("queued", "retried") THEN 1 ELSE 0 END) AS queued_count')
+                    ->selectRaw('SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed_count')
+                    ->selectRaw('MAX(created_at) AS last_print_at')
+                    ->whereIn('order_id', $orderIds)
+                    ->groupBy('order_id')
+                    ->get()
+                    ->keyBy('order_id');
+            }
 
             // Attach Invoice Data
             $orders->getCollection()->transform(function ($order) {
@@ -500,6 +515,16 @@ class OrderController extends Controller
                     ->orderByDesc('id')
                     ->first();
                 $order->invoice = $invoice;
+                return $this->attachOrderAdjustmentMetadata($order, $invoice);
+            });
+
+            $orders->getCollection()->transform(function ($order) use ($printSummaries) {
+                $summary = $printSummaries->get($order->id);
+                $order->print_summary = [
+                    'queued_count' => (int) ($summary->queued_count ?? 0),
+                    'failed_count' => (int) ($summary->failed_count ?? 0),
+                    'last_print_at' => $summary->last_print_at ?? null,
+                ];
                 return $order;
             });
 
@@ -1072,7 +1097,7 @@ class OrderController extends Controller
         return (bool) $this->getActiveShift();
     }
 
-    public function sendToKitchen(Request $request, InventoryMovementService $inventoryMovementService)
+    public function sendToKitchen(Request $request, InventoryMovementService $inventoryMovementService, KotPrintDispatcher $kotPrintDispatcher)
     {
         // Enforce Active Shift (Global)
         $activeShift = $this->getActiveShift();
@@ -1348,126 +1373,142 @@ class OrderController extends Controller
                 return $item;
             }, $orderItems));
 
-            $groupedByKitchen = collect($orderItems)
-                ->filter(function ($item) {
-                    return !empty($item['id']);
-                })
-                ->groupBy('tenant_id');
+            $productIds = collect($orderItems)->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $productKitchenMap = Product::query()->whereIn('id', $productIds)->pluck('kitchen_id', 'id')->toArray();
+            $orderItems = array_values(array_map(function ($item) use ($productKitchenMap) {
+                if (!is_array($item) || empty($item['id'])) {
+                    return $item;
+                }
+
+                $productId = (int) $item['id'];
+                $item['kitchen_id'] = isset($productKitchenMap[$productId]) ? (int) $productKitchenMap[$productId] : null;
+
+                return $item;
+            }, $orderItems));
+
+            $groupedByKitchen = [];
             $totalCostPrice = 0;
 
-            foreach ($groupedByKitchen as $kitchenId => $items) {
-                // Filter out invalid items (missing ID)
-                $items = collect($items)->filter(function ($item) {
-                    return !empty($item['id']);
-                });
-                if ($items->isEmpty())
+            foreach ($orderItems as $item) {
+                $productId = $item['id'] ?? null;
+                if (!$productId) {
                     continue;
-
-                $safeKitchenId = is_numeric($kitchenId) ? (int) $kitchenId : (string) $kitchenId;
-
-                foreach ($items as $item) {
-                    $productId = $item['id'] ?? null;
-                    if (!$productId)
-                        continue;
-
-                    $productQty = $item['quantity'] ?? 1;
-
-                    $product = Product::with(['ingredients.inventoryProduct'])->find($productId);
-
-                    // Only check stock if management is enabled
-                    if ($product && $product->manage_stock) {
-                        if ($this->productUsesUnsupportedVariantStock($product)) {
-                            throw new \RuntimeException("Warehouse-managed product '{$product->name}' still uses variant stock. Remove variant stock or disable stock management before ordering.");
-                        }
-
-                        $availableStock = $inventoryMovementService->availableQuantity(
-                            (int) $productId,
-                            (int) $inventoryContext['warehouse_id'],
-                            $inventoryContext['warehouse_location_id'],
-                        );
-
-                        if ($availableStock < $productQty || $product->minimal_stock > $availableStock - $productQty) {
-                            throw new \Exception('Insufficient stock for product: ' . ($product->name ?? 'Unknown'));
-                        }
-
-                        $this->recordOrderInventoryMovement(
-                            inventoryMovementService: $inventoryMovementService,
-                            product: $product,
-                            quantity: (float) $productQty,
-                            orderId: (int) $order->id,
-                            restaurantId: (int) $restaurantId,
-                            inventoryContext: $inventoryContext,
-                            transactionDate: $orderData['start_date'],
-                            reason: 'POS sale consumption',
-                            direction: 'out',
-                            createdBy: $request->user()?->id,
-                        );
-                    }
-
-                    if ($product) {
-                        $this->syncRecipeInventoryForOrderItem(
-                            inventoryMovementService: $inventoryMovementService,
-                            product: $product,
-                            quantity: (float) $productQty,
-                            orderId: (int) $order->id,
-                            restaurantId: (int) $restaurantId,
-                            inventoryContext: $inventoryContext,
-                            transactionDate: $orderData['start_date'],
-                            direction: 'out',
-                            createdBy: $request->user()?->id,
-                        );
-                    }
-
-                    if (!empty($item['variants'])) {
-                        if ($product && $product->manage_stock) {
-                            throw new \RuntimeException("Warehouse-managed product '{$product->name}' cannot use variant-level stock yet.");
-                        }
-
-                        foreach ($item['variants'] as $variant) {
-                            $variantId = $variant['id'] ?? null;
-                            if (!$variantId)
-                                continue;
-
-                            $variantValue = ProductVariantValue::find($variantId);
-
-                            if (!$variantValue) {
-                                throw new \Exception('Invalid variant ID: ' . $variantId);
-                            }
-
-                            // Only check and decrement stock if management is enabled
-                            if ($product->manage_stock) {
-                                if ($variantValue->stock < 0) {
-                                    throw new \Exception('Insufficient stock for variant: ' . ($variantValue->name ?? 'Unknown'));
-                                }
-                                $variantValue->decrement('stock', 1);
-                            }
-
-                            $totalCostPrice += $variantValue->additional_price;
-                        }
-                    }
-
-                    $totalCostPrice += $product->cost_of_goods_sold * $productQty;
-
-                        OrderItem::create([
-                            'order_id' => $order->id,
-                            'tenant_id' => $safeKitchenId,
-                            'location_id' => $posLocationId,
-                            'order_item' => $item,
-                            'status' => 'in_progress',
-                        ]);
                 }
+
+                $productQty = $item['quantity'] ?? 1;
+                $product = Product::with(['ingredients.inventoryProduct'])->find($productId);
+                $resolvedKitchenId = isset($item['kitchen_id']) && $item['kitchen_id'] ? (int) $item['kitchen_id'] : null;
+
+                // Only check stock if management is enabled
+                if ($product && $product->manage_stock) {
+                    if ($this->productUsesUnsupportedVariantStock($product)) {
+                        throw new \RuntimeException("Warehouse-managed product '{$product->name}' still uses variant stock. Remove variant stock or disable stock management before ordering.");
+                    }
+
+                    $availableStock = $inventoryMovementService->availableQuantity(
+                        (int) $productId,
+                        (int) $inventoryContext['warehouse_id'],
+                        $inventoryContext['warehouse_location_id'],
+                    );
+
+                    if ($availableStock < $productQty || $product->minimal_stock > $availableStock - $productQty) {
+                        throw new \Exception('Insufficient stock for product: ' . ($product->name ?? 'Unknown'));
+                    }
+
+                    $this->recordOrderInventoryMovement(
+                        inventoryMovementService: $inventoryMovementService,
+                        product: $product,
+                        quantity: (float) $productQty,
+                        orderId: (int) $order->id,
+                        restaurantId: (int) $restaurantId,
+                        inventoryContext: $inventoryContext,
+                        transactionDate: $orderData['start_date'],
+                        reason: 'POS sale consumption',
+                        direction: 'out',
+                        createdBy: $request->user()?->id,
+                    );
+                }
+
+                if ($product) {
+                    $this->syncRecipeInventoryForOrderItem(
+                        inventoryMovementService: $inventoryMovementService,
+                        product: $product,
+                        quantity: (float) $productQty,
+                        orderId: (int) $order->id,
+                        restaurantId: (int) $restaurantId,
+                        inventoryContext: $inventoryContext,
+                        transactionDate: $orderData['start_date'],
+                        direction: 'out',
+                        createdBy: $request->user()?->id,
+                    );
+                }
+
+                if (!empty($item['variants'])) {
+                    if ($product && $product->manage_stock) {
+                        throw new \RuntimeException("Warehouse-managed product '{$product->name}' cannot use variant-level stock yet.");
+                    }
+
+                    foreach ($item['variants'] as $variant) {
+                        $variantId = $variant['id'] ?? null;
+                        if (!$variantId) {
+                            continue;
+                        }
+
+                        $variantValue = ProductVariantValue::find($variantId);
+
+                        if (!$variantValue) {
+                            throw new \Exception('Invalid variant ID: ' . $variantId);
+                        }
+
+                        // Only check and decrement stock if management is enabled
+                        if ($product && $product->manage_stock) {
+                            if ($variantValue->stock < 0) {
+                                throw new \Exception('Insufficient stock for variant: ' . ($variantValue->name ?? 'Unknown'));
+                            }
+                            $variantValue->decrement('stock', 1);
+                        }
+
+                        $totalCostPrice += $variantValue->additional_price;
+                    }
+                }
+
+                $totalCostPrice += ($product->cost_of_goods_sold ?? 0) * $productQty;
+
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'tenant_id' => $restaurantId,
+                    'location_id' => $posLocationId,
+                    'kitchen_id' => $resolvedKitchenId,
+                    'order_item' => $item,
+                    'status' => 'in_progress',
+                ]);
+
+                $groupKey = $resolvedKitchenId ? (string) $resolvedKitchenId : 'unassigned';
+                if (!array_key_exists($groupKey, $groupedByKitchen)) {
+                    $groupedByKitchen[$groupKey] = [];
+                }
+                $groupedByKitchen[$groupKey][] = $item;
             }
 
             // Handle Cancelled Items (if any)
             if ($request->has('cancelled_items')) {
-                $groupedCancelled = collect($request->cancelled_items)
+                $cancelledItems = collect($request->cancelled_items)
                     ->filter(function ($item) {
                         return !empty($item['id']);
                     })
-                    ->groupBy('tenant_id');
+                    ->values()
+                    ->all();
+
+                $cancelledItems = array_map(function ($item) use ($productKitchenMap) {
+                    $productId = (int) ($item['id'] ?? 0);
+                    $item['kitchen_id'] = $productKitchenMap[$productId] ?? null;
+                    return $item;
+                }, $cancelledItems);
+
+                $groupedCancelled = collect($cancelledItems)->groupBy('kitchen_id');
 
                 foreach ($groupedCancelled as $kitchenId => $items) {
-                    $safeKitchenId = is_numeric($kitchenId) ? (int) $kitchenId : (string) $kitchenId;
+                    $resolvedKitchenId = is_numeric($kitchenId) ? (int) $kitchenId : null;
 
                     foreach ($items as $item) {
                         // Apply Stock Logic:
@@ -1543,8 +1584,9 @@ class OrderController extends Controller
 
                         OrderItem::create([
                             'order_id' => $order->id,
-                            'tenant_id' => $safeKitchenId,
+                            'tenant_id' => $restaurantId,
                             'location_id' => $posLocationId,
+                            'kitchen_id' => $resolvedKitchenId,
                             'order_item' => $item,
                             'status' => 'cancelled',  // Explicitly marked
                             'remark' => $item['remark'] ?? null,
@@ -1571,13 +1613,24 @@ class OrderController extends Controller
             $order->load(['table', 'orderItems']);
             broadcast(new OrderCreated($order));
 
-            // Dispatch print job (async, no delay in API response)
-            dispatch(new PrintOrderJob($groupedByKitchen, $order));
+            $printDispatch = $kotPrintDispatcher->dispatchForOrder($order, $groupedByKitchen, [
+                'request_id' => $request->attributes->get('request_id'),
+                'triggered_by' => $request->user()?->id,
+            ]);
+
+            $printMessage = 'Order sent to kitchen successfully.';
+            if (($printDispatch['print_status'] ?? null) === 'failed') {
+                $printMessage = 'Order saved, but one or more kitchen prints failed. Use Reprint KOT.';
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Order sent to kitchen successfully.',
-                'order' => $order
+                'message' => $printMessage,
+                'order' => $order,
+                'print_status' => $printDispatch['print_status'] ?? 'failed',
+                'print_batch_id' => $printDispatch['print_batch_id'] ?? null,
+                'dispatched_at' => $printDispatch['dispatched_at'] ?? now()->toIso8601String(),
+                'print_failures' => $printDispatch['print_failures'] ?? [],
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
@@ -1757,6 +1810,347 @@ class OrderController extends Controller
         }
     }
 
+    private function normalizeAdjustmentType(?string $status, ?string $adjustmentType = null, ?string $cancelType = null): ?string
+    {
+        $normalized = strtolower(trim((string) ($adjustmentType ?: $cancelType ?: '')));
+
+        if (in_array($normalized, ['void', 'complementary', 'return', 'refund'], true)) {
+            return $normalized;
+        }
+
+        return $status === 'refund' ? 'refund' : null;
+    }
+
+    private function shouldConsumeInventoryForAdjustment(?string $status, ?string $adjustmentType): bool
+    {
+        if ($status === 'cancelled') {
+            return $adjustmentType !== 'return';
+        }
+
+        if ($status === 'refund') {
+            return $adjustmentType !== 'return';
+        }
+
+        return true;
+    }
+
+    private function buildOrderInventorySnapshot(Collection $rows, ?string $orderStatus = null, ?string $orderAdjustmentType = null): array
+    {
+        $productIds = $rows
+            ->map(function ($row) {
+                $payload = is_array($row->order_item ?? null) ? $row->order_item : [];
+                $productId = $payload['product_id'] ?? ($payload['id'] ?? null);
+
+                return $productId ? (int) $productId : null;
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        $products = Product::query()
+            ->with('ingredients.inventoryProduct')
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $snapshot = [
+            'finished' => [],
+            'recipe' => [],
+        ];
+
+        foreach ($rows as $row) {
+            $payload = is_array($row->order_item ?? null) ? $row->order_item : [];
+            $productId = (int) ($payload['product_id'] ?? ($payload['id'] ?? 0));
+
+            if ($productId <= 0) {
+                continue;
+            }
+
+            $product = $products->get($productId);
+            if (!$product) {
+                continue;
+            }
+
+            $rowStatus = $orderStatus && in_array($orderStatus, ['cancelled', 'refund'], true)
+                ? $orderStatus
+                : ($row->status ?? 'pending');
+            $rowAdjustmentType = $orderStatus && in_array($orderStatus, ['cancelled', 'refund'], true)
+                ? $orderAdjustmentType
+                : $this->normalizeAdjustmentType($rowStatus, $payload['adjustment_type'] ?? null, $row->cancelType ?? ($payload['cancelType'] ?? null));
+
+            if (!$this->shouldConsumeInventoryForAdjustment($rowStatus, $rowAdjustmentType)) {
+                continue;
+            }
+
+            $quantity = round((float) ($payload['quantity'] ?? 0), 3);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            if ($product->manage_stock) {
+                if ($this->productUsesUnsupportedVariantStock($product)) {
+                    throw new \RuntimeException("Warehouse-managed product '{$product->name}' still uses variant stock. Remove variant stock or disable stock management before ordering.");
+                }
+
+                if (!isset($snapshot['finished'][$product->id])) {
+                    $snapshot['finished'][$product->id] = [
+                        'product' => $product,
+                        'quantity' => 0.0,
+                    ];
+                }
+
+                $snapshot['finished'][$product->id]['quantity'] += $quantity;
+            }
+
+            foreach ($product->ingredients as $ingredient) {
+                $inventoryProduct = $ingredient->inventoryProduct;
+                if (!$inventoryProduct) {
+                    throw new \RuntimeException("Ingredient '{$ingredient->name}' is not linked to a warehouse raw-material item.");
+                }
+
+                $requiredQuantity = round((float) $ingredient->pivot->quantity_used * $quantity, 3);
+                if ($requiredQuantity <= 0) {
+                    continue;
+                }
+
+                if (!isset($snapshot['recipe'][$inventoryProduct->id])) {
+                    $snapshot['recipe'][$inventoryProduct->id] = [
+                        'product' => $inventoryProduct,
+                        'quantity' => 0.0,
+                    ];
+                }
+
+                $snapshot['recipe'][$inventoryProduct->id]['quantity'] += $requiredQuantity;
+            }
+        }
+
+        return $snapshot;
+    }
+
+    private function applyInventorySnapshotDelta(
+        InventoryMovementService $inventoryMovementService,
+        array $previousSnapshot,
+        array $nextSnapshot,
+        Order $order,
+        string $transactionDate,
+        ?int $createdBy = null,
+    ): string {
+        $allBuckets = ['finished', 'recipe'];
+        $hasChanges = false;
+
+        foreach ($allBuckets as $bucket) {
+            $keys = array_unique(array_merge(
+                array_keys($previousSnapshot[$bucket] ?? []),
+                array_keys($nextSnapshot[$bucket] ?? []),
+            ));
+
+            foreach ($keys as $productId) {
+                $before = (float) ($previousSnapshot[$bucket][$productId]['quantity'] ?? 0);
+                $after = (float) ($nextSnapshot[$bucket][$productId]['quantity'] ?? 0);
+                if (abs($after - $before) >= 0.0001) {
+                    $hasChanges = true;
+                    break 2;
+                }
+            }
+        }
+
+        if (!$hasChanges) {
+            return 'none';
+        }
+
+        $inventoryContext = $this->resolveRestaurantInventoryContext((int) $order->tenant_id);
+        $effect = 'none';
+
+        foreach ($allBuckets as $bucket) {
+            $keys = array_unique(array_merge(
+                array_keys($previousSnapshot[$bucket] ?? []),
+                array_keys($nextSnapshot[$bucket] ?? []),
+            ));
+
+            foreach ($keys as $productId) {
+                $before = round((float) ($previousSnapshot[$bucket][$productId]['quantity'] ?? 0), 3);
+                $after = round((float) ($nextSnapshot[$bucket][$productId]['quantity'] ?? 0), 3);
+                $delta = round($after - $before, 3);
+
+                if (abs($delta) < 0.0001) {
+                    continue;
+                }
+
+                $product = $nextSnapshot[$bucket][$productId]['product']
+                    ?? $previousSnapshot[$bucket][$productId]['product']
+                    ?? null;
+
+                if (!$product) {
+                    continue;
+                }
+
+                if ($delta > 0) {
+                    $available = $inventoryMovementService->availableQuantity(
+                        (int) $product->id,
+                        (int) $inventoryContext['warehouse_id'],
+                        $inventoryContext['warehouse_location_id'],
+                    );
+
+                    if ($available + 0.0001 < $delta) {
+                        throw new \RuntimeException("Insufficient warehouse stock for '{$product->name}' while updating order.");
+                    }
+
+                    $this->recordOrderInventoryMovement(
+                        inventoryMovementService: $inventoryMovementService,
+                        product: $product,
+                        quantity: $delta,
+                        orderId: (int) $order->id,
+                        restaurantId: (int) $order->tenant_id,
+                        inventoryContext: $inventoryContext,
+                        transactionDate: $transactionDate,
+                        reason: $bucket === 'recipe' ? 'POS order adjustment recipe consumption' : 'POS order adjustment consumption',
+                        direction: 'out',
+                        createdBy: $createdBy,
+                    );
+                    $effect = 'consume';
+                    continue;
+                }
+
+                $this->recordOrderInventoryMovement(
+                    inventoryMovementService: $inventoryMovementService,
+                    product: $product,
+                    quantity: abs($delta),
+                    orderId: (int) $order->id,
+                    restaurantId: (int) $order->tenant_id,
+                    inventoryContext: $inventoryContext,
+                    transactionDate: $transactionDate,
+                    reason: $bucket === 'recipe' ? 'POS order adjustment recipe return' : 'POS order adjustment return',
+                    direction: 'in',
+                    createdBy: $createdBy,
+                );
+                $effect = 'restore';
+            }
+        }
+
+        return $effect;
+    }
+
+    private function buildOrderAdjustmentSummary(Order $order, ?FinancialInvoice $invoice = null): array
+    {
+        $adjustmentType = $this->normalizeAdjustmentType($order->status, null, $order->cancelType);
+        $invoiceStatus = strtolower((string) ($invoice?->status ?? ''));
+        $paymentStatus = strtolower((string) ($order->payment_status ?? ''));
+        $paidAmount = (float) ($invoice?->paid_amount ?? 0);
+
+        $adjustmentLabel = match ($adjustmentType) {
+            'void' => 'Void - stock kept consumed',
+            'complementary' => 'Complementary - stock kept consumed',
+            'return' => 'Return - stock restored',
+            'refund' => 'Refund - payment reversed',
+            default => match ($order->status) {
+                'cancelled' => 'Cancelled',
+                'refund' => 'Refund',
+                default => ucfirst(str_replace('_', ' ', (string) $order->status)),
+            },
+        };
+
+        $inventoryEffect = 'none';
+        if ($order->status === 'cancelled') {
+            $inventoryEffect = $adjustmentType === 'return' ? 'restore' : 'none';
+        } elseif ($order->status === 'refund') {
+            $inventoryEffect = $adjustmentType === 'return' ? 'restore' : 'none';
+        }
+
+        $financeEffect = 'none';
+        if ($order->status === 'cancelled') {
+            if ($invoice) {
+                $financeEffect = in_array($adjustmentType, ['void', 'complementary'], true) ? 'void_invoice' : 'cancel_invoice';
+            }
+        } elseif ($order->status === 'refund' || $invoiceStatus === 'refunded') {
+            $financeEffect = ($paidAmount > 0 || in_array($paymentStatus, ['paid', 'refunded'], true) || $invoiceStatus === 'refunded')
+                ? 'refund_payment'
+                : 'cancel_invoice';
+        }
+
+        return [
+            'adjustment_type' => $adjustmentType,
+            'adjustment_label' => $adjustmentLabel,
+            'inventory_effect' => $inventoryEffect,
+            'finance_effect' => $financeEffect,
+        ];
+    }
+
+    private function attachOrderAdjustmentMetadata(Order $order, ?FinancialInvoice $invoice = null): Order
+    {
+        $summary = $this->buildOrderAdjustmentSummary($order, $invoice);
+        foreach ($summary as $key => $value) {
+            $order->setAttribute($key, $value);
+        }
+
+        if ($order->relationLoaded('orderItems')) {
+            $order->orderItems->transform(function ($row) {
+                $status = $row->status ?? 'pending';
+                $adjustmentType = $this->normalizeAdjustmentType($status, null, $row->cancelType);
+                $row->setAttribute('adjustment_type', $adjustmentType);
+                $row->setAttribute('adjustment_label', match ($adjustmentType) {
+                    'void' => 'Void - stock kept consumed',
+                    'complementary' => 'Complementary - stock kept consumed',
+                    'return' => 'Return - stock restored',
+                    'refund' => 'Refund - payment reversed',
+                    default => $status === 'cancelled' ? 'Cancelled' : ucfirst(str_replace('_', ' ', (string) $status)),
+                });
+                $row->setAttribute('inventory_effect', $status === 'cancelled' && $adjustmentType === 'return' ? 'restore' : 'none');
+
+                return $row;
+            });
+        }
+
+        return $order;
+    }
+
+    private function refundOrderInvoice(Order $order, FinancialInvoice $invoice): string
+    {
+        $hasReceiptLink = TransactionRelation::query()
+            ->where('invoice_id', $invoice->id)
+            ->whereNotNull('receipt_id')
+            ->exists()
+            || Transaction::query()
+                ->where('invoice_id', $invoice->id)
+                ->whereNotNull('receipt_id')
+                ->exists();
+
+        $refundableAmount = (float) ($invoice->paid_amount ?? 0);
+
+        if ($refundableAmount <= 0 || !$hasReceiptLink) {
+            throw new \RuntimeException('Refund cannot be processed because no valid invoice receipt linkage was found.');
+        }
+
+        $invoiceItem = $invoice->items()->first();
+        $payerType = $order->member_id
+            ? Member::class
+            : ($order->customer_id ? Customer::class : Employee::class);
+        $payerId = $order->member_id ?: ($order->customer_id ?: $order->employee_id);
+
+        if (!$payerId) {
+            throw new \RuntimeException('Refund cannot be processed because the payer could not be resolved.');
+        }
+
+        $invoice->update([
+            'status' => 'refunded',
+            'paid_amount' => max(0, (float) $invoice->paid_amount - $refundableAmount),
+        ]);
+
+        Transaction::create([
+            'type' => 'debit',
+            'amount' => $refundableAmount,
+            'date' => now(),
+            'description' => 'Refund processed for POS Order #' . $order->id,
+            'payable_type' => $payerType,
+            'payable_id' => $payerId,
+            'reference_type' => $invoiceItem ? FinancialInvoiceItem::class : FinancialInvoice::class,
+            'reference_id' => $invoiceItem ? $invoiceItem->id : $invoice->id,
+            'invoice_id' => $invoice->id,
+            'created_by' => Auth::id(),
+        ]);
+
+        return 'refund_payment';
+    }
+
     protected function printItem($printer, $item)
     {
         // Print the category if available
@@ -1809,6 +2203,8 @@ class OrderController extends Controller
             'updated_items' => 'nullable|array',
             'new_items' => 'nullable|array',
             'status' => 'required|in:saved,pending,in_progress,completed,cancelled,no_show,refund',
+            'adjustment_type' => 'nullable|in:void,complementary,return,refund',
+            'adjustment_scope' => 'nullable|in:item,order',
             'subtotal' => 'nullable|numeric',
             'total_price' => 'nullable|numeric',
             'discount' => 'nullable|numeric',
@@ -1831,6 +2227,9 @@ class OrderController extends Controller
 
         try {
             $order = Order::findOrFail($id);
+            $previousOrderItems = $order->orderItems()->get();
+            $previousOrderStatus = (string) $order->status;
+            $previousAdjustmentType = $this->normalizeAdjustmentType($previousOrderStatus, null, $order->cancelType);
             if (!$canEditAfterBill && (string) $order->created_by !== (string) Auth::id()) {
                 DB::rollBack();
                 return $respondUpdateError('You are not allowed to update this order.', 'FORBIDDEN', 403);
@@ -1839,6 +2238,11 @@ class OrderController extends Controller
             $financialInvoice = FinancialInvoice::where('invoice_type', 'food_order')
                 ->whereJsonContains('data', ['order_id' => $order->id])
                 ->first();
+            $requestedAdjustmentType = $this->normalizeAdjustmentType(
+                $validated['status'],
+                $request->input('adjustment_type'),
+                $request->input('cancelType'),
+            );
             $hasClientUpdate = ($request->filled('client_type') || $request->filled('customer_type')) && ($request->filled('client_id') || $request->filled('customer_id'));
             $isClientChanged = false;
             if ($hasClientUpdate) {
@@ -2020,8 +2424,12 @@ class OrderController extends Controller
                 'status' => $validated['status'],
                 'remark' => $request->remark ?? null,
                 'instructions' => $request->instructions ?? null,
-                'cancelType' => $request->cancelType ?? null,
+                'cancelType' => $requestedAdjustmentType,
             ];
+            if ($validated['status'] === 'cancelled' && $financialInvoice && strtolower((string) ($financialInvoice->status ?? '')) === 'paid') {
+                DB::rollBack();
+                return $respondUpdateError('Paid orders must use the refund workflow instead of cancellation.', 'PAID_ORDER_CANCEL_FORBIDDEN', 422);
+            }
             if ($hasClientUpdate) {
                 $clientType = (string) ($request->input('client_type') ?? $request->input('customer_type'));
                 $clientId = (int) ($request->input('client_id') ?? $request->input('customer_id'));
@@ -2069,6 +2477,21 @@ class OrderController extends Controller
 
             [$mergedUpdatedItems, $mergedNewItems] = $mergeIncoming($validated['updated_items'] ?? [], $validated['new_items'] ?? []);
 
+            $mergedProductIds = collect(array_merge($mergedUpdatedItems, $mergedNewItems))
+                ->map(function ($row) {
+                    $orderItem = is_array($row['order_item'] ?? null) ? $row['order_item'] : [];
+                    $productId = $orderItem['product_id'] ?? ($orderItem['id'] ?? null);
+                    return $productId ? (int) $productId : null;
+                })
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $productKitchenMap = !empty($mergedProductIds)
+                ? Product::query()->whereIn('id', $mergedProductIds)->pluck('kitchen_id', 'id')->toArray()
+                : [];
+
             // Update existing order items
             foreach ($mergedUpdatedItems as $itemData) {
                 $itemId = $getItemId($itemData['id'] ?? null);
@@ -2076,27 +2499,55 @@ class OrderController extends Controller
                     continue;
                 }
                 $normalizedOrderItem = $recalcPricing($itemData['order_item'] ?? []);
+                $productId = (int) ($normalizedOrderItem['product_id'] ?? ($normalizedOrderItem['id'] ?? 0));
+                $resolvedKitchenId = $productId > 0 ? (($productKitchenMap[$productId] ?? null) ? (int) $productKitchenMap[$productId] : null) : null;
                 $order->orderItems()->where('id', $itemId)->update([
                     'order_item' => $normalizedOrderItem,
+                    'kitchen_id' => $resolvedKitchenId,
                     'status' => $itemData['status'],
                     'remark' => $itemData['remark'] ?? null,
                     'instructions' => $itemData['instructions'] ?? null,
-                    'cancelType' => $itemData['cancelType'] ?? null,
+                    'cancelType' => $this->normalizeAdjustmentType($itemData['status'] ?? null, $itemData['adjustment_type'] ?? null, $itemData['cancelType'] ?? null),
                 ]);
             }
 
             // Add new order items
             foreach ($mergedNewItems as $itemData) {
                 $normalizedOrderItem = $recalcPricing($itemData['order_item'] ?? []);
+                $productId = (int) ($normalizedOrderItem['product_id'] ?? ($normalizedOrderItem['id'] ?? 0));
+                $resolvedKitchenId = $productId > 0 ? (($productKitchenMap[$productId] ?? null) ? (int) $productKitchenMap[$productId] : null) : null;
                 $order->orderItems()->create([
-                    'tenant_id' => $normalizedOrderItem['tenant_id'] ?? null,
+                    'tenant_id' => $order->tenant_id,
+                    'location_id' => $order->location_id,
+                    'kitchen_id' => $resolvedKitchenId,
                     'order_item' => $normalizedOrderItem,
                     'status' => $itemData['status'] ?? 'pending',
                     'remark' => $itemData['remark'] ?? null,
                     'instructions' => $itemData['instructions'] ?? null,
-                    'cancelType' => $itemData['cancelType'] ?? null,
+                    'cancelType' => $this->normalizeAdjustmentType($itemData['status'] ?? null, $itemData['adjustment_type'] ?? null, $itemData['cancelType'] ?? null),
                 ]);
             }
+
+            $inventoryMovementService = app(InventoryMovementService::class);
+            $previousSnapshot = $this->buildOrderInventorySnapshot(
+                $previousOrderItems,
+                in_array($previousOrderStatus, ['cancelled', 'refund'], true) ? $previousOrderStatus : null,
+                $previousAdjustmentType,
+            );
+            $nextOrderItems = $order->orderItems()->get();
+            $nextSnapshot = $this->buildOrderInventorySnapshot(
+                $nextOrderItems,
+                in_array($validated['status'], ['cancelled', 'refund'], true) ? $validated['status'] : null,
+                $requestedAdjustmentType,
+            );
+            $inventoryEffect = $this->applyInventorySnapshotDelta(
+                inventoryMovementService: $inventoryMovementService,
+                previousSnapshot: $previousSnapshot,
+                nextSnapshot: $nextSnapshot,
+                order: $order,
+                transactionDate: (string) ($order->start_date ?? now()->toDateString()),
+                createdBy: $request->user()?->id,
+            );
 
             $freshItems = $order->orderItems()->where('status', '!=', 'cancelled')->get();
             $taxRate = (float) ($order->tax ?? 0);
@@ -2149,6 +2600,8 @@ class OrderController extends Controller
                     'total_price' => $computedTotal,
                 ]);
             }
+
+            $financeEffect = 'none';
 
             // ✅ AUTO-CREATE INVOICE when order marked 'completed' (for dine-in, delivery, reservation, room_service)
             // Only if a payer exists (member, customer, or employee)
@@ -2315,10 +2768,14 @@ class OrderController extends Controller
                         }
                     }
                 }
-            } elseif ($financialInvoice && ($financialInvoice->status !== 'paid' || $canEditAfterBill)) {
-                if ($validated['status'] === 'cancelled' || $validated['status'] === 'refund') {
-                    // Mark invoice as cancelled
-                    $financialInvoice->update(['status' => 'cancelled']);
+            } elseif ($financialInvoice && ($financialInvoice->status !== 'paid' || $canEditAfterBill || $validated['status'] === 'refund')) {
+                if ($validated['status'] === 'cancelled') {
+                    $targetInvoiceStatus = in_array($requestedAdjustmentType, ['void', 'complementary'], true) ? 'void' : 'cancelled';
+                    $financialInvoice->update(['status' => $targetInvoiceStatus]);
+                    $financeEffect = $targetInvoiceStatus === 'void' ? 'void_invoice' : 'cancel_invoice';
+                } elseif ($validated['status'] === 'refund') {
+                    $financeEffect = $this->refundOrderInvoice($order, $financialInvoice);
+                    $order->update(['payment_status' => 'refunded']);
                 } elseif ($shouldSyncTotals) {
                     // Otherwise update amounts if provided
                     $financialInvoice->update([
@@ -2351,6 +2808,8 @@ class OrderController extends Controller
                             'description' => 'Food Order Invoice #' . $financialInvoice->invoice_no . ' (Updated)',
                         ]);
                     }
+
+                    $financeEffect = 'none';
                 }
             }
 
@@ -2378,13 +2837,25 @@ class OrderController extends Controller
                 ]);
             }
 
+            Log::info('pos.order.adjustment.processed', [
+                'request_id' => $request->attributes->get('request_id'),
+                'order_id' => $order->id,
+                'restaurant_id' => $order->tenant_id,
+                'adjustment_type' => $requestedAdjustmentType,
+                'scope' => $request->input('adjustment_scope', 'order'),
+                'inventory_effect' => $inventoryEffect,
+                'finance_effect' => $financeEffect,
+                'user_id' => $request->user()?->id,
+                'status' => $validated['status'],
+            ]);
+
             DB::commit();
 
             return redirect()->back()->with('success', 'Order updated successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->withErrors(['error' => 'Failed to update order.']);
+            return redirect()->back()->withErrors(['error' => $e->getMessage() ?: 'Failed to update order.']);
         }
     }
 
@@ -2405,7 +2876,10 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'products' => []], 200);
         }
 
-        $productsQuery = Product::with(['variants:id,product_id,name', 'variants.values', 'category'])->where('category_id', $category_id);
+        $productsQuery = Product::query()
+            ->posMenuEligible()
+            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'ingredients:id,name,inventory_product_id'])
+            ->where('category_id', $category_id);
         if (!$request->routeIs('pos.*')) {
             $restaurantId = session('active_restaurant_id') ?? tenant('id');
             $requestedId = $request->query('restaurant_id');
@@ -2429,14 +2903,13 @@ class OrderController extends Controller
             $productsQuery->whereJsonContains('available_order_types', $productOrderType);
         }
 
-        $productsQuery->where('is_salable', true);
-
         $products = $productsQuery->get();
         $restaurantId = (int) ($request->session()->get('active_restaurant_id') ?? 0);
         if ($request->filled('restaurant_id')) {
             $restaurantId = (int) $request->input('restaurant_id');
         }
         $this->hydrateRestaurantProductStocks($products, $restaurantId);
+        $this->annotatePosInventoryReadiness($products);
         $products = $products
             ->filter(fn ($product) => !$product->manage_stock || (float) $product->current_stock > 0)
             ->values();
@@ -2480,14 +2953,15 @@ class OrderController extends Controller
         }
 
         // Search products across all restaurants by ID or name
-        $productsQuery = Product::with(['variants:id,product_id,name', 'variants.values', 'category', 'tenant:id,name'])
+        $productsQuery = Product::query()
+            ->posMenuEligible()
+            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'tenant:id,name', 'ingredients:id,name,inventory_product_id'])
             ->where(function ($query) use ($searchTerm) {
                 $query
                     ->where('id', 'like', "%{$searchTerm}%")
                     ->orWhere('menu_code', 'like', "%{$searchTerm}%")
                     ->orWhere('name', 'like', "%{$searchTerm}%");
             })
-            ->where('is_salable', true)  // Only show salable products
             ->limit(20);  // Limit results for performance
 
         $requestedId = $request->query('restaurant_id');
@@ -2505,6 +2979,7 @@ class OrderController extends Controller
             $restaurantId = (int) $requestedId;
         }
         $this->hydrateRestaurantProductStocks($products, $restaurantId);
+        $this->annotatePosInventoryReadiness($products);
         $products = $products
             ->filter(fn ($product) => !$product->manage_stock || (float) $product->current_stock > 0)
             ->values();
@@ -2529,6 +3004,33 @@ class OrderController extends Controller
             }
 
             $product->current_stock = (float) $balances->get((int) $product->id, 0.0);
+        }
+    }
+
+    private function annotatePosInventoryReadiness($products): void
+    {
+        foreach ($products as $product) {
+            if (!$product) {
+                continue;
+            }
+
+            $issues = [];
+            $ingredients = collect($product->ingredients ?? []);
+            $unlinkedIngredients = $ingredients
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_product_id))
+                ->values();
+
+            if ($unlinkedIngredients->isNotEmpty()) {
+                $issues[] = 'Recipe ingredients are missing inventory links.';
+            }
+
+            if ($product->manage_stock && $this->productUsesUnsupportedVariantStock($product)) {
+                $issues[] = 'Variant-level stock is not warehouse-backed yet.';
+            }
+
+            $product->inventory_setup_issues = $issues;
+            $product->inventory_ready_for_pos = empty($issues);
+            $product->variant_stock_supported = !$product->manage_stock || !$this->productUsesUnsupportedVariantStock($product);
         }
     }
 
@@ -2833,6 +3335,14 @@ class OrderController extends Controller
         }
 
         $orders = $query->orderBy('id', 'desc')->paginate(15)->withQueryString();
+        $orders->getCollection()->transform(function ($order) {
+            $invoice = FinancialInvoice::whereJsonContains('data->order_id', $order->id)
+                ->orderByRaw("CASE status WHEN 'unpaid' THEN 0 WHEN 'paid' THEN 1 ELSE 2 END")
+                ->orderByDesc('id')
+                ->first();
+
+            return $this->attachOrderAdjustmentMetadata($order, $invoice);
+        });
 
         // Dropdown Data
         $tables = Table::select('id', 'table_no')->get();
@@ -2854,6 +3364,111 @@ class OrderController extends Controller
         ]);
     }
 
+    public function reprintKot(Request $request, int $id, KotPrintDispatcher $kotPrintDispatcher)
+    {
+        $order = Order::query()->with('orderItems:id,order_id,kitchen_id,order_item,status')->findOrFail($id);
+        $groupedByKitchen = $this->groupOrderItemsByKitchen($order);
+
+        if (empty($groupedByKitchen)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No kitchen-routed items found for this order.',
+            ], 422);
+        }
+
+        $printDispatch = $kotPrintDispatcher->dispatchForOrder($order, $groupedByKitchen, [
+            'request_id' => $request->attributes->get('request_id'),
+            'triggered_by' => $request->user()?->id,
+            'is_retry' => true,
+        ]);
+
+        $success = ($printDispatch['queued_count'] ?? 0) > 0;
+        $message = $success
+            ? 'KOT reprint queued successfully.'
+            : 'Reprint failed. Verify kitchen printer configuration.';
+
+        return response()->json([
+            'success' => $success,
+            'message' => $message,
+            'print_status' => $printDispatch['print_status'] ?? 'failed',
+            'print_batch_id' => $printDispatch['print_batch_id'] ?? null,
+            'dispatched_at' => $printDispatch['dispatched_at'] ?? now()->toIso8601String(),
+            'print_failures' => $printDispatch['print_failures'] ?? [],
+        ], $success ? 200 : 422);
+    }
+
+    public function printHealth(Request $request)
+    {
+        $queueDriver = (string) config('queue.default');
+        $jobsTableReady = Schema::hasTable('jobs');
+        $failedTableReady = Schema::hasTable('failed_jobs');
+
+        $pendingPrintJobs = 0;
+        $failedPrintJobs = 0;
+
+        if ($jobsTableReady) {
+            $pendingPrintJobs = DB::table('jobs')->where('queue', 'printing')->count();
+        }
+
+        if ($failedTableReady) {
+            $failedPrintJobs = DB::table('failed_jobs')
+                ->where(function ($q) {
+                    $q->where('queue', 'printing')
+                        ->orWhere('payload', 'like', '%PrintOrderJob%');
+                })
+                ->count();
+        }
+
+        $workerHeartbeat = Cache::get('printing:worker_heartbeat');
+        $workerOnline = false;
+        if ($workerHeartbeat) {
+            try {
+                $workerOnline = now()->diffInMinutes(Carbon::parse($workerHeartbeat)) <= 10;
+            } catch (\Throwable $e) {
+                $workerOnline = false;
+            }
+        }
+
+        return response()->json([
+            'queue_driver' => $queueDriver,
+            'queue_name' => 'printing',
+            'worker_heartbeat' => $workerHeartbeat,
+            'worker_online' => $workerOnline,
+            'pending_print_jobs' => $pendingPrintJobs,
+            'failed_print_jobs' => $failedPrintJobs,
+            'required_worker_command' => 'php artisan queue:work --queue=printing,default',
+        ]);
+    }
+
+    protected function groupOrderItemsByKitchen(Order $order): array
+    {
+        $grouped = [];
+
+        foreach ($order->orderItems as $row) {
+            if (($row->status ?? null) === 'cancelled') {
+                continue;
+            }
+
+            $payload = is_array($row->order_item) ? $row->order_item : [];
+            if (empty($payload['id'])) {
+                continue;
+            }
+
+            $kitchenId = $row->kitchen_id;
+            if (!$kitchenId) {
+                $kitchenId = Product::query()->where('id', (int) $payload['id'])->value('kitchen_id');
+            }
+
+            $key = $kitchenId ? (string) ((int) $kitchenId) : 'unassigned';
+            if (!array_key_exists($key, $grouped)) {
+                $grouped[$key] = [];
+            }
+            $grouped[$key][] = $payload;
+        }
+
+        return $grouped;
+    }
+
     /**
      * Get single order details (JSON) for optimized fetching
      */
@@ -2862,7 +3477,7 @@ class OrderController extends Controller
         $order = Order::with([
             'table:id,table_no',
             'tenant:id,name',
-            'orderItems:id,order_id,order_item,status',
+            'orderItems:id,order_id,kitchen_id,order_item,status,remark,instructions,cancelType',
             'member:id,member_type_id,full_name,membership_no',
             'member.memberType:id,name',
             'customer:id,name,customer_no,guest_type_id',
@@ -2972,6 +3587,6 @@ class OrderController extends Controller
             }
         }
 
-        return response()->json($order);
+        return response()->json($this->attachOrderAdjustmentMetadata($order, $invoice));
     }
 }

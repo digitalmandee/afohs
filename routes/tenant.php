@@ -83,6 +83,7 @@ Route::group([
         Route::post('/order/{id}/generate-invoice', [OrderController::class, 'generateInvoice'])->name('order.generate-invoice');
         // Send to kitchen order
         Route::post('/order/send/kitchen', [OrderController::class, 'sendToKitchen'])->name('order.send-to-kitchen');
+        Route::post('/order/{id}/reprint-kot', [OrderController::class, 'reprintKot'])->name('order.reprint-kot');
 
         Route::get('/product/categories', [OrderController::class, 'getCategories'])->name('products.categories');
         Route::get('/products/{category_id}', [OrderController::class, 'getProducts'])->name('products.bycategory');
@@ -92,9 +93,15 @@ Route::group([
             return Inertia::render('App/Settings/Dashboard');
         })->name('settings');
 
-        // Printer Test
+        // Printer management + test
+        Route::get('/settings/printers', [PrinterTestController::class, 'index'])->name('printers.index');
+        Route::get('/settings/printers/discover', [PrinterTestController::class, 'discover'])->name('printers.discover');
+        Route::put('/settings/printers', [PrinterTestController::class, 'updateMappings'])->name('printers.update');
+        Route::post('/settings/printers/test-kitchen', [PrinterTestController::class, 'testKitchenPrinter'])->name('printers.test-kitchen');
+        Route::post('/settings/printers/test-receipt', [PrinterTestController::class, 'testReceiptPrinter'])->name('printers.test-receipt');
         Route::get('/settings/printer-test', [PrinterTestController::class, 'index'])->name('printer.index');
         Route::post('/settings/printer-test', [PrinterTestController::class, 'testPrint'])->name('printer.test');
+        Route::get('/settings/printing-health', [OrderController::class, 'printHealth'])->name('print.health');
 
         // Route::get('/kitchen', function () {
         //     return Inertia::render('App/Kitchen/Dashboard');

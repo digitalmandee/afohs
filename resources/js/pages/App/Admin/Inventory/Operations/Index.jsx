@@ -205,7 +205,7 @@ export default function Index({
 
     const columns = [
         { key: 'date', label: 'Date', minWidth: 110 },
-        { key: 'product', label: 'Product', minWidth: 220 },
+        { key: 'product', label: 'Inventory Item', minWidth: 220 },
         { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
         { key: 'warehouse', label: 'Warehouse', minWidth: 180 },
         { key: 'location', label: 'Location', minWidth: 160 },
@@ -307,12 +307,12 @@ export default function Index({
                     <Grid item xs={12} md={3}><StatCard label="Valuation" value={Number(summary.valuation || 0).toFixed(2)} tone="light" /></Grid>
                 </Grid>
 
-                <SurfaceCard title="Stock Ledger" subtitle="Live movement history by restaurant, warehouse, location, product, and movement type.">
+                <SurfaceCard title="Stock Ledger" subtitle="Live movement history by restaurant, warehouse, location, inventory item, and movement type.">
                             <FilterToolbar onReset={resetFilters}>
                                 <Grid container spacing={2}>
                                     <Grid item xs={12} md={4}>
                                         <TextField
-                                            label="Search product or reason"
+                                            label="Search inventory item or reason"
                                             value={localFilters.search}
                                             onChange={(event) => updateFilters({ search: event.target.value })}
                                             fullWidth
@@ -363,12 +363,12 @@ export default function Index({
                                     <Grid item xs={12} md={3}>
                                         <TextField
                                             select
-                                            label="Product"
+                                            label="Inventory Item"
                                             value={localFilters.product_id}
                                             onChange={(event) => updateFilters({ product_id: event.target.value }, { immediate: true })}
                                             fullWidth
                                         >
-                                            <MenuItem value="">All products</MenuItem>
+                                            <MenuItem value="">All inventory items</MenuItem>
                                             {products.map((product) => (
                                                 <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>
                                             ))}
@@ -428,7 +428,7 @@ export default function Index({
                                                 <TableCell>
                                                     <Stack spacing={0.35}>
                                                         <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
-                                                            {row.product?.name || 'Product'}
+                                                            {row.product?.name || 'Inventory Item'}
                                                         </Typography>
                                                         <Typography variant="body2" color="text.secondary">
                                                             {row.product?.menu_code || `#${row.product_id}`}
@@ -487,7 +487,7 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Product" value={openingForm.data.product_id} onChange={(event) => openingForm.setData('product_id', event.target.value)} error={!!openingForm.errors.product_id} helperText={openingForm.errors.product_id} fullWidth>
+                            <TextField select label="Inventory Item" value={openingForm.data.product_id} onChange={(event) => openingForm.setData('product_id', event.target.value)} error={!!openingForm.errors.product_id} helperText={openingForm.errors.product_id} fullWidth>
                                 {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
                             </TextField>
                         </Grid>
@@ -542,7 +542,7 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Product" value={adjustmentForm.data.product_id} onChange={(event) => adjustmentForm.setData('product_id', event.target.value)} error={!!adjustmentForm.errors.product_id} helperText={adjustmentForm.errors.product_id} fullWidth>
+                            <TextField select label="Inventory Item" value={adjustmentForm.data.product_id} onChange={(event) => adjustmentForm.setData('product_id', event.target.value)} error={!!adjustmentForm.errors.product_id} helperText={adjustmentForm.errors.product_id} fullWidth>
                                 {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
                             </TextField>
                         </Grid>
@@ -591,7 +591,7 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Product" value={issueForm.data.product_id} onChange={(event) => issueForm.setData('product_id', event.target.value)} error={!!issueForm.errors.product_id} helperText={issueForm.errors.product_id} fullWidth>
+                            <TextField select label="Inventory Item" value={issueForm.data.product_id} onChange={(event) => issueForm.setData('product_id', event.target.value)} error={!!issueForm.errors.product_id} helperText={issueForm.errors.product_id} fullWidth>
                                 {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
                             </TextField>
                         </Grid>
@@ -626,7 +626,7 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={4}>
-                            <TextField select label="Product" value={transferForm.data.product_id} onChange={(event) => transferForm.setData('product_id', event.target.value)} error={!!transferForm.errors.product_id} helperText={transferForm.errors.product_id} fullWidth>
+                            <TextField select label="Inventory Item" value={transferForm.data.product_id} onChange={(event) => transferForm.setData('product_id', event.target.value)} error={!!transferForm.errors.product_id} helperText={transferForm.errors.product_id} fullWidth>
                                 {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
                             </TextField>
                         </Grid>

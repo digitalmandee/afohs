@@ -1,6 +1,7 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -37,7 +38,7 @@ export default function Create({ vendors, warehouses, products }) {
     if (field === 'product_id') {
       const selected = productMap.get(Number(value));
       if (selected) {
-        items[index].unit_cost = selected.price || 0;
+        items[index].unit_cost = Number(selected.base_price ?? selected.price ?? 0) || 0;
       }
     }
 
@@ -74,6 +75,11 @@ export default function Create({ vendors, warehouses, products }) {
       <Typography variant="h4" sx={{ mb: 2 }}>Create Purchase Order</Typography>
       <Card>
         <CardContent>
+          {errors.error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {errors.error}
+            </Alert>
+          )}
           <form onSubmit={submit}>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
@@ -102,7 +108,10 @@ export default function Create({ vendors, warehouses, products }) {
                   fullWidth
                 >
                   {warehouses.map((w) => (
-                    <MenuItem key={w.id} value={w.id}>{w.name}{w.tenant ? ` · ${w.tenant.name}` : ''}</MenuItem>
+                    <MenuItem key={w.id} value={w.id} disabled={w.status !== 'active'}>
+                      {w.name}{w.tenant ? ` · ${w.tenant.name}` : ' · Shared'}
+                      {w.status !== 'active' ? ' (Inactive)' : ''}
+                    </MenuItem>
                   ))}
                 </TextField>
               </Grid>
@@ -145,18 +154,26 @@ export default function Create({ vendors, warehouses, products }) {
 
             <Box sx={{ mt: 3 }}>
               <Typography variant="h6" sx={{ mb: 1 }}>Items</Typography>
+              {products.length === 0 && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  No procurement-eligible raw materials found. Create active raw-material items and mark them purchasable to place POs.
+                </Alert>
+              )}
               {data.items.map((item, index) => (
                 <Grid container spacing={2} key={index} sx={{ mb: 2 }}>
                   <Grid item xs={12} md={6}>
                     <TextField
                       select
-                      label="Product"
+                      label="Inventory Item"
                       value={item.product_id}
                       onChange={(e) => updateItem(index, 'product_id', e.target.value)}
                       fullWidth
                     >
+                      {products.length === 0 && <MenuItem value="" disabled>No items available</MenuItem>}
                       {products.map((p) => (
-                        <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.menu_code ? `${p.menu_code} · ` : ''}{p.name}
+                        </MenuItem>
                       ))}
                     </TextField>
                   </Grid>

@@ -149,4 +149,9 @@ class Order extends BaseModel
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function printLogs()
+    {
+        return $this->hasMany(OrderPrintLog::class);
+    }
 }

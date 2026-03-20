@@ -16,7 +16,7 @@ class PermissionsDatabaseSeeder extends Seeder
         // --- Permissions ---
         $permissions = ['dashboard', 'order', 'kitchen', 'user', 'admin'];
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission]);
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
 
         // --- Roles with Permissions ---
@@ -31,7 +31,7 @@ class PermissionsDatabaseSeeder extends Seeder
         ];
 
         foreach ($rolesWithPermissions as $role => $perms) {
-            $roleInstance = Role::firstOrCreate(['name' => $role]);
+            $roleInstance = Role::firstOrCreate(['name' => $role, 'guard_name' => 'web']);
             $roleInstance->syncPermissions($perms);
         }
 

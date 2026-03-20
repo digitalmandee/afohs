@@ -84,10 +84,10 @@ const CancelItemDialog = ({ open, onClose, onConfirm, item }) => {
                     {/* Instructions */}
                     <TextField label="Additional Remarks" multiline rows={2} fullWidth value={instructions} onChange={(e) => setInstructions(e.target.value)} />
 
-                    {/* Cancel Type */}
+                    {/* Adjustment Type */}
                     <FormControl component="fieldset">
                         <Typography variant="caption" color="text.secondary">
-                            Cancel Type
+                            Adjustment Type
                         </Typography>
                         <RadioGroup row value={cancelType} onChange={(e) => setCancelType(e.target.value)}>
                             <FormControlLabel value="void" control={<Radio size="small" />} label="Void" />

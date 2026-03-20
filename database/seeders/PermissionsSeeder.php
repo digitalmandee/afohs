@@ -91,6 +91,8 @@ class PermissionsSeeder extends Seeder
             'subscriptions.categories.create',
             'subscriptions.categories.edit',
             'subscriptions.categories.delete',
+            'kitchen.dashboard.view',
+            'kitchen.view',
             'kitchen.locations.view',
             'kitchen.locations.create',
             'kitchen.locations.edit',

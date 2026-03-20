@@ -432,6 +432,7 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                                         size="small"
                                                         color="success"
                                                         onClick={() => router.visit(route(routeNameForContext('ingredients.add-stock.form'), ingredient.id))}
+                                                        disabled={ingredient.balance_source === 'warehouse'}
                                                     >
                                                         <AddStockIcon />
                                                     </IconButton>

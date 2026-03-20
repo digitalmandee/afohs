@@ -13,7 +13,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     qty_received_before: item.qty_received || 0,
     qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
     unit_cost: item.unit_cost,
-    product_name: item.product?.name || `Product #${item.product_id}`,
+    product_name: item.product?.name || `Inventory Item #${item.product_id}`,
   })) || [];
 
   const { data, setData, post, processing, errors } = useForm({
@@ -40,7 +40,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
       qty_received_before: item.qty_received || 0,
       qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
       unit_cost: item.unit_cost,
-      product_name: item.product?.name || `Product #${item.product_id}`,
+      product_name: item.product?.name || `Inventory Item #${item.product_id}`,
     }));
 
     setData('purchase_order_id', value);
@@ -171,8 +171,8 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
                 <Grid container spacing={2} key={index} sx={{ mb: 2 }}>
                   <Grid item xs={12} md={4}>
                     <TextField
-                      label="Product"
-                      value={item.product_name || `Product #${item.product_id}`}
+                      label="Inventory Item"
+                      value={item.product_name || `Inventory Item #${item.product_id}`}
                       fullWidth
                       disabled
                     />

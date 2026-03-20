@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -102,5 +103,39 @@ class Product extends BaseModel
     public function tenant()
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    public function scopeProcurementEligible(Builder $query): Builder
+    {
+        return $query
+            ->rawMaterialStockManaged()
+            ->where('is_purchasable', true)
+            ->where('status', 'active');
+    }
+
+    public function scopeRawMaterialStockManaged(Builder $query): Builder
+    {
+        return $query
+            ->where('item_type', 'raw_material')
+            ->where('manage_stock', true);
+    }
+
+    public function scopeWarehouseOperationalEligible(Builder $query): Builder
+    {
+        return $query
+            ->where('status', 'active')
+            ->where('manage_stock', true);
+    }
+
+    public function scopePosMenuEligible(Builder $query): Builder
+    {
+        return $query
+            ->where('is_salable', true)
+            ->where('status', 'active')
+            ->where(function (Builder $builder) {
+                $builder
+                    ->where('item_type', 'finished_product')
+                    ->orWhereNull('item_type');
+            });
     }
 }

@@ -160,6 +160,17 @@ const OrderMenu = () => {
         // Only check stock if management is enabled
         if (product.manage_stock && product.minimal_stock > product.current_stock - 1) return;
 
+        if (product.manage_stock && product.variant_stock_supported === false) {
+            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+            return;
+        }
+
+        if (product.inventory_ready_for_pos === false) {
+            const issue = Array.isArray(product.inventory_setup_issues) ? product.inventory_setup_issues[0] : 'This menu item is not ready for warehouse-backed POS stock.';
+            enqueueSnackbar(issue, { variant: 'error' });
+            return;
+        }
+
         if (!orderDetails.tenant_id && product.tenant_id) {
             handleOrderDetailChange('tenant_id', product.tenant_id);
             handleOrderDetailChange('restaurant_id', product.tenant_id);
@@ -739,8 +750,8 @@ const OrderMenu = () => {
                                                                     flexDirection: 'column',
                                                                     alignItems: 'center',
                                                                     border: '1px solid #eee',
-                                                                    opacity: product.manage_stock && product.minimal_stock > product.current_stock - 1 ? 0.5 : 1,
-                                                                    cursor: product.manage_stock && product.minimal_stock > product.current_stock - 1 ? 'not-allowed' : 'pointer',
+                                                                    opacity: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 0.5 : 1,
+                                                                    cursor: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
                                                                     borderRadius: 2,
                                                                     height: '100%',
                                                                     width: 100,
@@ -822,8 +833,8 @@ const OrderMenu = () => {
                                                             borderRadius: 2,
                                                             height: '100%',
                                                             width: 100,
-                                                            opacity: product.manage_stock && product.minimal_stock > product.current_stock - 1 ? 0.5 : 1,
-                                                            cursor: product.manage_stock && product.minimal_stock > product.current_stock - 1 ? 'not-allowed' : 'pointer',
+                                                            opacity: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 0.5 : 1,
+                                                            cursor: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
                                                             // bgcolor: 'pink',
                                                             '&:hover': {
                                                                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)',

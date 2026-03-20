@@ -116,6 +116,8 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
     const handleConfirmCancel = (cancelData) => {
         const payload = {
             status: 'cancelled',
+            adjustment_type: cancelData.cancelType,
+            adjustment_scope: 'order',
             remark: cancelData.remark,
             instructions: cancelData.instructions,
             cancelType: cancelData.cancelType,
@@ -475,6 +477,18 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
             .catch((error) => {
                 console.error(error);
                 enqueueSnackbar('Failed to generate invoice.', { variant: 'error' });
+            });
+    };
+
+    const handleReprintKot = (order) => {
+        axios
+            .post(route(routeNameForContext('order.reprint-kot'), { id: order.id }))
+            .then((response) => {
+                const failures = response.data?.print_failures || [];
+                enqueueSnackbar(response.data?.message || 'KOT reprint queued.', { variant: failures.length > 0 ? 'warning' : 'success' });
+            })
+            .catch((error) => {
+                enqueueSnackbar(error?.response?.data?.message || 'Failed to reprint KOT.', { variant: 'error' });
             });
     };
 
@@ -865,6 +879,18 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
                                             <Typography sx={{ mb: 2, fontSize: '14px', opacity: 0.9 }}>
                                                 Restaurant: <strong>{card.tenant?.name || 'Unknown'}</strong>
                                             </Typography>
+                                            {(card.adjustment_label || card.finance_effect !== 'none') && (card.status === 'cancelled' || card.status === 'refund') && (
+                                                <Chip
+                                                    label={card.adjustment_label}
+                                                    size="small"
+                                                    sx={{
+                                                        mb: 1.5,
+                                                        bgcolor: 'rgba(255,255,255,0.16)',
+                                                        color: '#fff',
+                                                        fontWeight: 600,
+                                                    }}
+                                                />
+                                            )}
                                             <Box
                                                 sx={{
                                                     display: 'flex',
@@ -910,6 +936,7 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
                                                             fontSize: '14px',
                                                         }}
                                                         primary={item.order_item.name}
+                                                        secondary={item.status === 'cancelled' ? (item.adjustment_label || item.cancelType || 'Cancelled') : null}
                                                     />
                                                     <Typography variant="body2" sx={{ color: '#121212', fontWeight: 500, fontSize: '14px' }}>
                                                         {item.order_item.quantity}x
@@ -981,7 +1008,7 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
                                                         handleOpenCancelModal();
                                                     }}
                                                 >
-                                                    {card.status === 'cancelled' ? 'Cancelled' : 'Cancel'}
+                                                    {card.status === 'cancelled' ? (card.adjustment_label || 'Cancelled') : 'Cancel'}
                                                 </Button>
                                                 <Button
                                                     variant="contained"
@@ -1026,6 +1053,11 @@ const Dashboard = ({ allrestaurants, filters, initialOrders, canEditAfterBill })
                                             {isMoveAllowed(card) && (
                                                 <Button variant="outlined" fullWidth sx={{ textTransform: 'none', mt: 1, borderColor: '#003153', color: '#003153' }} onClick={() => openMoveModal(card)}>
                                                     Move
+                                                </Button>
+                                            )}
+                                            {card.status !== 'cancelled' && card.status !== 'refund' && (
+                                                <Button variant="outlined" fullWidth sx={{ textTransform: 'none', mt: 1, borderColor: '#003153', color: '#003153' }} onClick={() => handleReprintKot(card)}>
+                                                    Reprint KOT
                                                 </Button>
                                             )}
                                         </Box>

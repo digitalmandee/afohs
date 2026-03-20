@@ -71,7 +71,13 @@ const ShowIngredient = ({ ingredient }) => {
                             <Button variant="outlined" startIcon={<EditIcon />} onClick={() => router.visit(route(routeNameForContext('ingredients.edit'), ingredient.id))}>
                                 Edit Ingredient
                             </Button>
-                            <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.visit(route(routeNameForContext('ingredients.add-stock.form'), ingredient.id))} sx={{ backgroundColor: '#063455' }}>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={() => router.visit(route(routeNameForContext('ingredients.add-stock.form'), ingredient.id))}
+                                sx={{ backgroundColor: '#063455' }}
+                                disabled={!!ingredient.inventory_product_id}
+                            >
                                 Add Stock
                             </Button>
                         </Box>
@@ -140,6 +146,9 @@ const ShowIngredient = ({ ingredient }) => {
                                         <Typography variant="h6" color={ingredient.remaining_quantity <= 0 ? 'error' : 'success'}>
                                             {ingredient.remaining_quantity} {ingredient.unit}
                                         </Typography>
+                                        {ingredient.inventory_product_id && (
+                                            <Chip size="small" color="info" label="Warehouse-managed" sx={{ mt: 1 }} />
+                                        )}
                                     </Box>
 
                                     <Box sx={{ mb: 2 }}>

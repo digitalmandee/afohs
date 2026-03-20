@@ -86,7 +86,7 @@ const CancelOrder = ({ onClose, onConfirm, order }) => {
                     {/* Instructions */}
                     <TextField label="Instructions" multiline rows={2} fullWidth value={instructions} onChange={(e) => setInstructions(e.target.value)} />
 
-                    {/* Cancel Type */}
+                    {/* Adjustment Type */}
                     <RadioGroup row value={cancelType} onChange={(e) => setCancelType(e.target.value)}>
                         <FormControlLabel value="void" control={<Radio />} label="Void" />
                         <FormControlLabel value="return" control={<Radio />} label="Return" />

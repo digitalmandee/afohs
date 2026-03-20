@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Box, Typography, TextField, Grid, Paper, Button, Alert, MenuItem } from '@mui/material';
+import { Alert, Box, Button, Grid, MenuItem, TextField } from '@mui/material';
 import { enqueueSnackbar } from 'notistack';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
 export default function Billing({ settings, tax }) {
-    // const [open, setOpen] = useState(true);
-
     const { data, setData, post, processing, errors } = useForm({
         tax: tax ?? 12,
         service_charges_percentage: settings.service_charges_percentage ?? 0,
@@ -34,113 +34,183 @@ export default function Billing({ settings, tax }) {
             return;
         }
 
-        const numericValue = value === '' ? '' : parseFloat(value); // Keep empty string for input UX
+        const numericValue = value === '' ? '' : parseFloat(value);
 
         if (name.startsWith('penalty_')) {
-            const q = name.split('_')[1];
+            const quarter = name.split('_')[1];
             setData('penalty_quarter_pct', {
                 ...data.penalty_quarter_pct,
-                [q]: numericValue === '' ? 0 : numericValue,
+                [quarter]: numericValue === '' ? 0 : numericValue,
             });
-        } else if (name.startsWith('reinstatement_')) {
-            const q = name.split('_')[1];
+            return;
+        }
+
+        if (name.startsWith('reinstatement_')) {
+            const quarter = name.split('_')[1];
             setData('reinstatement_fees', {
                 ...data.reinstatement_fees,
-                [q]: numericValue === '' ? 0 : numericValue,
+                [quarter]: numericValue === '' ? 0 : numericValue,
             });
-        } else {
-            setData(name, numericValue === '' ? 0 : numericValue);
+            return;
         }
+
+        setData(name, numericValue === '' ? 0 : numericValue);
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
 
         post(route('admin.billing-settings.update'), {
-            onSuccess: () => {
-                enqueueSnackbar('Billing settings updated successfully.', { variant: 'success' });
-            },
-            onError: () => {
-                enqueueSnackbar('Something went wrong. Please check your input.', { variant: 'error' });
-            },
+            onSuccess: () => enqueueSnackbar('Billing settings updated successfully.', { variant: 'success' }),
+            onError: () => enqueueSnackbar('Something went wrong. Please check your input.', { variant: 'error' }),
         });
     };
 
     return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
-                <Typography sx={{ fontWeight: 700, color: '#063455', ml: 4, pt: 3, fontSize: '30px' }}>Billing & Financial Settings</Typography>
-                <Paper sx={{ p: 2, maxWidth: '800px', mx: 'auto', mt: 5 }}>
-                    <form onSubmit={handleSubmit}>
-                        <Grid container spacing={3}>
-                            {/* General Finance Settings */}
-                            <Grid item xs={12}>
-                                <Typography variant="h6" mt={2} mb={2}>
-                                    General Financial Settings
-                                </Typography>
-                                <Grid container spacing={2}>
-                                    <Grid item xs={12} md={6}>
-                                        <TextField label="Tax Rate (%)" name="tax" type="number" fullWidth value={data.tax} onChange={(e) => setData('tax', e.target.value)} onWheel={(e) => e.target.blur()} error={!!errors.tax} helperText={errors.tax} inputProps={{ step: '0.01', min: 0, max: 100 }} />
-                                    </Grid>
-                                    <Grid item xs={12} md={6}>
-                                        <TextField label="Service Charges (%)" name="service_charges_percentage" type="number" fullWidth value={data.service_charges_percentage} onChange={(e) => setData('service_charges_percentage', e.target.value)} onWheel={(e) => e.target.blur()} error={!!errors.service_charges_percentage} helperText={errors.service_charges_percentage} inputProps={{ step: '0.01', min: 0, max: 100 }} />
-                                    </Grid>
-                                    <Grid item xs={12} md={6}>
-                                        <Grid container spacing={2}>
-                                            <Grid item xs={6}>
-                                                <TextField select label="Bank Charges Type" name="bank_charges_type" fullWidth value={data.bank_charges_type} onChange={handleChange}>
-                                                    <MenuItem value="percentage">Percentage (%)</MenuItem>
-                                                    <MenuItem value="fixed">Fixed Amount</MenuItem>
-                                                </TextField>
-                                            </Grid>
-                                            <Grid item xs={6}>
-                                                <TextField label={data.bank_charges_type === 'percentage' ? 'Percentage (%)' : 'Amount'} name="bank_charges_value" type="number" fullWidth value={data.bank_charges_value} onChange={(e) => setData('bank_charges_value', e.target.value)} onWheel={(e) => e.target.blur()} error={!!errors.bank_charges_value} helperText={errors.bank_charges_value} inputProps={{ step: '0.01', min: 0 }} />
-                                            </Grid>
-                                        </Grid>
-                                    </Grid>
+        <AppPage
+            eyebrow="Settings"
+            title="Billing"
+            subtitle="Manage financial defaults, service charges, penalties, and reinstatement policies from one standardized settings surface."
+            actions={[
+                <Button key="save" variant="contained" type="submit" form="billing-settings-form" disabled={processing}>
+                    {processing ? 'Saving...' : 'Save Settings'}
+                </Button>,
+            ]}
+        >
+            <Box component="form" id="billing-settings-form" onSubmit={handleSubmit}>
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12}>
+                        <SurfaceCard
+                            title="General Financial Settings"
+                            subtitle="Configure the default tax, service charge, overdue charge, and bank charge behavior used across the system."
+                        >
+                            <Grid container spacing={2}>
+                                <Grid item xs={12} md={4}>
+                                    <TextField
+                                        label="Tax Rate (%)"
+                                        name="tax"
+                                        type="number"
+                                        fullWidth
+                                        value={data.tax}
+                                        onChange={(e) => setData('tax', e.target.value)}
+                                        error={!!errors.tax}
+                                        helperText={errors.tax}
+                                        inputProps={{ step: '0.01', min: 0, max: 100 }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <TextField
+                                        label="Service Charges (%)"
+                                        name="service_charges_percentage"
+                                        type="number"
+                                        fullWidth
+                                        value={data.service_charges_percentage}
+                                        onChange={(e) => setData('service_charges_percentage', e.target.value)}
+                                        error={!!errors.service_charges_percentage}
+                                        helperText={errors.service_charges_percentage}
+                                        inputProps={{ step: '0.01', min: 0, max: 100 }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <TextField
+                                        label="Overdue Charge (%)"
+                                        name="overdue_charge_pct"
+                                        type="number"
+                                        fullWidth
+                                        value={data.overdue_charge_pct}
+                                        onChange={(e) => setData('overdue_charge_pct', e.target.value)}
+                                        error={!!errors.overdue_charge_pct}
+                                        helperText={errors.overdue_charge_pct}
+                                        inputProps={{ step: '0.01', min: 0 }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <TextField
+                                        select
+                                        label="Bank Charges Type"
+                                        name="bank_charges_type"
+                                        fullWidth
+                                        value={data.bank_charges_type}
+                                        onChange={handleChange}
+                                    >
+                                        <MenuItem value="percentage">Percentage (%)</MenuItem>
+                                        <MenuItem value="fixed">Fixed Amount</MenuItem>
+                                    </TextField>
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <TextField
+                                        label={data.bank_charges_type === 'percentage' ? 'Bank Charges (%)' : 'Bank Charges Amount'}
+                                        name="bank_charges_value"
+                                        type="number"
+                                        fullWidth
+                                        value={data.bank_charges_value}
+                                        onChange={(e) => setData('bank_charges_value', e.target.value)}
+                                        error={!!errors.bank_charges_value}
+                                        helperText={errors.bank_charges_value}
+                                        inputProps={{ step: '0.01', min: 0 }}
+                                    />
                                 </Grid>
                             </Grid>
+                        </SurfaceCard>
+                    </Grid>
 
-                            {/* Penalty Per Quarter */}
-                            <Grid item xs={12}>
-                                <Typography variant="h6" mt={4}>
-                                    One-time Penalty per Quarter (%)
-                                </Typography>
-                                <Grid container spacing={2} mt={1}>
-                                    {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                                        <Grid item xs={6} md={3} key={`penalty-${q}`}>
-                                            <TextField label={`Penalty ${q}`} name={`penalty_${q}`} type="number" fullWidth value={data.penalty_quarter_pct[q] || ''} onChange={handleChange} onWheel={(e) => e.target.blur()} error={!!errors[`penalty_quarter_pct.${q}`]} helperText={errors[`penalty_quarter_pct.${q}`]} />
-                                        </Grid>
-                                    ))}
-                                </Grid>
+                    <Grid item xs={12} lg={6}>
+                        <SurfaceCard
+                            title="Quarterly Penalties"
+                            subtitle="Apply one-time penalty percentages by quarter with a consistent grouped layout."
+                        >
+                            <Grid container spacing={2}>
+                                {['Q1', 'Q2', 'Q3', 'Q4'].map((quarter) => (
+                                    <Grid item xs={12} sm={6} key={`penalty-${quarter}`}>
+                                        <TextField
+                                            label={`Penalty ${quarter} (%)`}
+                                            name={`penalty_${quarter}`}
+                                            type="number"
+                                            fullWidth
+                                            value={data.penalty_quarter_pct[quarter] || ''}
+                                            onChange={handleChange}
+                                            error={!!errors[`penalty_quarter_pct.${quarter}`]}
+                                            helperText={errors[`penalty_quarter_pct.${quarter}`]}
+                                        />
+                                    </Grid>
+                                ))}
                             </Grid>
+                        </SurfaceCard>
+                    </Grid>
 
-                            {/* Reinstatement Fees Per Quarter */}
-                            <Grid item xs={12}>
-                                <Typography variant="h6" mt={4}>
-                                    Reinstatement Fees (PKR)
-                                </Typography>
-                                <Grid container spacing={2} mt={1}>
-                                    {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                                        <Grid item xs={6} md={3} key={`reinstatement-${q}`}>
-                                            <TextField label={`Reinstatement ${q}`} name={`reinstatement_${q}`} type="number" fullWidth value={data.reinstatement_fees[q] || ''} onChange={handleChange} onWheel={(e) => e.target.blur()} error={!!errors[`reinstatement_fees.${q}`]} helperText={errors[`reinstatement_fees.${q}`]} />
-                                        </Grid>
-                                    ))}
-                                </Grid>
+                    <Grid item xs={12} lg={6}>
+                        <SurfaceCard
+                            title="Reinstatement Fees"
+                            subtitle="Define reinstatement charges per quarter in PKR using the same settings-card pattern."
+                        >
+                            <Grid container spacing={2}>
+                                {['Q1', 'Q2', 'Q3', 'Q4'].map((quarter) => (
+                                    <Grid item xs={12} sm={6} key={`reinstatement-${quarter}`}>
+                                        <TextField
+                                            label={`Reinstatement ${quarter} (PKR)`}
+                                            name={`reinstatement_${quarter}`}
+                                            type="number"
+                                            fullWidth
+                                            value={data.reinstatement_fees[quarter] || ''}
+                                            onChange={handleChange}
+                                            error={!!errors[`reinstatement_fees.${quarter}`]}
+                                            helperText={errors[`reinstatement_fees.${quarter}`]}
+                                        />
+                                    </Grid>
+                                ))}
                             </Grid>
+                        </SurfaceCard>
+                    </Grid>
 
-                            <Grid item xs={12} mt={4}>
-                                <Box mt={2} display="flex" justifyContent="flex-end">
-                                    <Button variant="contained" color="primary" type="submit" disabled={processing} sx={{ textTransform: 'none', borderRadius: '16px' }}>
-                                        Save Settings
-                                    </Button>
-                                </Box>
-                            </Grid>
+                    {Object.keys(errors).length > 0 ? (
+                        <Grid item xs={12}>
+                            <Alert severity="error">
+                                Please review the highlighted settings fields before saving.
+                            </Alert>
                         </Grid>
-                    </form>
-                </Paper>
-            </div>
-        </>
+                    ) : null}
+                </Grid>
+            </Box>
+        </AppPage>
     );
 }

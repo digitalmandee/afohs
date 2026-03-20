@@ -113,6 +113,11 @@ class User extends Authenticatable
         return $this->hasMany(User::class, 'parent_user_id');
     }
 
+    public function kitchenDetail()
+    {
+        return $this->hasOne(KitchenDetail::class, 'kitchen_id');
+    }
+
     public function statusHistories()
     {
         return $this->hasMany(MemberStatusHistory::class);

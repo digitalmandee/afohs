@@ -18,11 +18,11 @@ class RolesSeeder extends Seeder
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         // Create Super Admin Role (has all permissions)
-        $superAdmin = Role::firstOrCreate(['name' => 'super-admin']);
+        $superAdmin = Role::firstOrCreate(['name' => 'super-admin', 'guard_name' => 'web']);
         $superAdmin->syncPermissions(Permission::all());
 
         // Create Admin Role (has most permissions except super admin features)
-        $admin = Role::firstOrCreate(['name' => 'admin']);
+        $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $adminPermissions = [
             'admin.access',
             // Dashboard
@@ -81,7 +81,7 @@ class RolesSeeder extends Seeder
         $admin->syncPermissions(Permission::whereIn('name', $adminPermissions)->get());
 
         // Create Manager Role (can manage most things but not delete or create users)
-        $manager = Role::firstOrCreate(['name' => 'manager']);
+        $manager = Role::firstOrCreate(['name' => 'manager', 'guard_name' => 'web']);
         $managerPermissions = [
             'admin.access',
             // Dashboard
@@ -132,7 +132,7 @@ class RolesSeeder extends Seeder
         $manager->syncPermissions(Permission::whereIn('name', $managerPermissions)->get());
 
         // Create User Role (read-only access to most things)
-        $user = Role::firstOrCreate(['name' => 'user']);
+        $user = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
         $userPermissions = [
             'admin.access',
             // Dashboard
@@ -178,7 +178,7 @@ class RolesSeeder extends Seeder
         $user->syncPermissions(Permission::whereIn('name', $userPermissions)->get());
 
         // Create Guest Role (very limited access)
-        $guest = Role::firstOrCreate(['name' => 'guest']);
+        $guest = Role::firstOrCreate(['name' => 'guest', 'guard_name' => 'web']);
         $guestPermissions = [
             'admin.access',
             // Dashboard
@@ -198,7 +198,7 @@ class RolesSeeder extends Seeder
         ];
         $guest->syncPermissions(Permission::whereIn('name', $guestPermissions)->get());
 
-        $cashier = Role::firstOrCreate(['name' => 'cashier']);
+        $cashier = Role::firstOrCreate(['name' => 'cashier', 'guard_name' => 'web']);
         $cashierPermissions = [
             'pos.view',
             'pos.dashboard.view',
@@ -216,6 +216,13 @@ class RolesSeeder extends Seeder
             'pos.customers.edit',
         ];
         $cashier->syncPermissions(Permission::whereIn('name', $cashierPermissions)->get());
+
+        $kitchen = Role::firstOrCreate(['name' => 'kitchen', 'guard_name' => 'web']);
+        $kitchenPermissions = [
+            'kitchen.dashboard.view',
+            'kitchen.view',
+        ];
+        $kitchen->syncPermissions(Permission::whereIn('name', $kitchenPermissions)->get());
 
         $this->command->info('Roles and permissions assigned successfully!');
     }

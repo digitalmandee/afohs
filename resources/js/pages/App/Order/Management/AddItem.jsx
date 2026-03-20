@@ -114,6 +114,17 @@ const AddItems = ({ setOrderItems, orderItems, setShowAddItem, allrestaurants, i
     const handleProductClick = (product) => {
         if (product.manage_stock && product.minimal_stock > product.current_stock - 1) return;
 
+        if (product.manage_stock && product.variant_stock_supported === false) {
+            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+            return;
+        }
+
+        if (product.inventory_ready_for_pos === false) {
+            const issue = Array.isArray(product.inventory_setup_issues) ? product.inventory_setup_issues[0] : 'This menu item is not ready for warehouse-backed POS stock.';
+            enqueueSnackbar(issue, { variant: 'error' });
+            return;
+        }
+
         if (product.variants && product.variants.length > 0) {
             setVariantProduct(product);
             setVariantPopupOpen(true);

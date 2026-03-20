@@ -262,6 +262,7 @@ function EditOrderModal({ open, onClose, order, orderItems, setOrderItems, onSav
                     ...item,
                     id: updatedId,
                     status: 'pending',
+                    adjustment_type: null,
                     remark: null,
                     instructions: null,
                     cancelType: null,
@@ -287,6 +288,7 @@ function EditOrderModal({ open, onClose, order, orderItems, setOrderItems, onSav
             // Cancel Entire Item
             updateItem(index, {
                 status: 'cancelled',
+                adjustment_type: cancelType,
                 remark,
                 instructions,
                 cancelType,
@@ -317,6 +319,7 @@ function EditOrderModal({ open, onClose, order, orderItems, setOrderItems, onSav
                 ...originalItem,
                 id: 'new', // Treat as new item
                 status: 'cancelled',
+                adjustment_type: cancelType,
                 remark,
                 instructions,
                 cancelType,
