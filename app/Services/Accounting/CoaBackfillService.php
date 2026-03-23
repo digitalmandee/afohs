@@ -444,6 +444,7 @@ class CoaBackfillService
                 'segment2' => $row['segments'][1] ?? null,
                 'segment3' => $row['segments'][2] ?? null,
                 'segment4' => $row['segments'][3] ?? null,
+                'segment5' => $row['segments'][4] ?? null,
                 'name' => $row['name'],
                 'type' => $row['type'],
                 'level' => $row['level'],

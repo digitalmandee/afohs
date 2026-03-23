@@ -107,6 +107,7 @@ class CoaAccountController extends Controller
             'segment2' => 'nullable|string|max:4',
             'segment3' => 'nullable|string|max:4',
             'segment4' => 'nullable|string|max:4',
+            'segment5' => 'nullable|string|max:4',
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,income,expense',
             'parent_id' => 'nullable|exists:coa_accounts,id',
@@ -120,6 +121,7 @@ class CoaAccountController extends Controller
         $data['segment2'] = $normalized['segment2'];
         $data['segment3'] = $normalized['segment3'];
         $data['segment4'] = $normalized['segment4'];
+        $data['segment5'] = $normalized['segment5'];
 
         $this->validateHierarchy($data, null, $segments);
         $data['full_code'] = implode('-', $segments);
@@ -144,6 +146,7 @@ class CoaAccountController extends Controller
             'segment2' => 'nullable|string|max:4',
             'segment3' => 'nullable|string|max:4',
             'segment4' => 'nullable|string|max:4',
+            'segment5' => 'nullable|string|max:4',
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,income,expense',
             'parent_id' => 'nullable|exists:coa_accounts,id',
@@ -157,6 +160,7 @@ class CoaAccountController extends Controller
         $data['segment2'] = $normalized['segment2'];
         $data['segment3'] = $normalized['segment3'];
         $data['segment4'] = $normalized['segment4'];
+        $data['segment5'] = $normalized['segment5'];
 
         $this->validateHierarchy($data, $coaAccount, $segmentsNew);
         $this->validateUniqueCode(implode('-', $segmentsNew), $coaAccount);
@@ -170,6 +174,7 @@ class CoaAccountController extends Controller
                 $coaAccount->segment2,
                 $coaAccount->segment3,
                 $coaAccount->segment4,
+                $coaAccount->segment5,
             ], fn($seg) => $seg !== null && $seg !== '');
 
             if (
@@ -227,11 +232,13 @@ class CoaAccountController extends Controller
             return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
         }
 
-        $headers = ['segment1', 'segment2', 'segment3', 'segment4', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
+        $headers = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
         $sample = [
-            ['1', '', '', '', 'Assets', 'asset', '', '0', '1'],
-            ['1', '11', '', '', 'Cash & Bank', 'asset', '1', '0', '1'],
-            ['1', '11', '01', '', 'Main Bank Account', 'asset', '1-11', '1', '1'],
+            ['1', '', '', '', '', 'Assets', 'asset', '', '0', '1'],
+            ['1', '11', '', '', '', 'Cash & Bank', 'asset', '1', '0', '1'],
+            ['1', '11', '01', '', '', 'Bank Control', 'asset', '1-11', '0', '1'],
+            ['1', '11', '01', '01', '', 'Operating Bank', 'asset', '1-11-01', '0', '1'],
+            ['1', '11', '01', '01', '01', 'Operating Bank Karachi', 'asset', '1-11-01-01', '1', '1'],
         ];
 
         return Response::streamDownload(function () use ($headers, $sample) {
@@ -262,7 +269,7 @@ class CoaAccountController extends Controller
             $path = $request->file('file')->getRealPath();
             $handle = fopen($path, 'r');
             $header = fgetcsv($handle);
-            $expected = ['segment1', 'segment2', 'segment3', 'segment4', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
+            $expected = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
 
             if ($header !== $expected) {
                 throw ValidationException::withMessages([
@@ -277,9 +284,9 @@ class CoaAccountController extends Controller
                     continue;
                 }
 
-                [$segment1, $segment2, $segment3, $segment4, $name, $type, $parentCode, $isPostable, $isActive] = array_pad($row, 9, null);
+                [$segment1, $segment2, $segment3, $segment4, $segment5, $name, $type, $parentCode, $isPostable, $isActive] = array_pad($row, 10, null);
 
-                $segments = array_filter([$segment1, $segment2, $segment3, $segment4], fn($seg) => $seg !== null && $seg !== '');
+                $segments = array_filter([$segment1, $segment2, $segment3, $segment4, $segment5], fn($seg) => $seg !== null && $seg !== '');
                 $fullCode = implode('-', $segments);
 
                 if (CoaAccount::where('full_code', $fullCode)->exists()) {
@@ -307,6 +314,7 @@ class CoaAccountController extends Controller
                     'segment2' => trim((string) ($segment2 ?? '')) ?: null,
                     'segment3' => trim((string) ($segment3 ?? '')) ?: null,
                     'segment4' => trim((string) ($segment4 ?? '')) ?: null,
+                    'segment5' => trim((string) ($segment5 ?? '')) ?: null,
                     'type' => trim((string) $type),
                     'parent_id' => $parentId,
                     'is_postable' => in_array((string) $isPostable, ['1', 'true', 'yes'], true),
@@ -319,6 +327,7 @@ class CoaAccountController extends Controller
                     $rowData['segment2'] = $normalized['segment2'];
                     $rowData['segment3'] = $normalized['segment3'];
                     $rowData['segment4'] = $normalized['segment4'];
+                    $rowData['segment5'] = $normalized['segment5'];
                     $this->validateHierarchy($rowData, null, $segments);
                     $this->validateUniqueCode(implode('-', $segments), null);
                 } catch (ValidationException $exception) {
@@ -332,6 +341,7 @@ class CoaAccountController extends Controller
                     'segment2' => $rowData['segment2'],
                     'segment3' => $rowData['segment3'],
                     'segment4' => $rowData['segment4'],
+                    'segment5' => $rowData['segment5'],
                     'full_code' => implode('-', $segments),
                     'name' => trim((string) $name),
                     'type' => trim((string) $type),
@@ -381,30 +391,37 @@ class CoaAccountController extends Controller
         $s2 = trim((string) ($data['segment2'] ?? ''));
         $s3 = trim((string) ($data['segment3'] ?? ''));
         $s4 = trim((string) ($data['segment4'] ?? ''));
+        $s5 = trim((string) ($data['segment5'] ?? ''));
 
         if ($s1 === '') {
             throw ValidationException::withMessages([
                 'segment1' => 'Segment 1 is required.',
             ]);
         }
-        if ($s2 === '' && ($s3 !== '' || $s4 !== '')) {
+        if ($s2 === '' && ($s3 !== '' || $s4 !== '' || $s5 !== '')) {
             throw ValidationException::withMessages([
-                'segment2' => 'Segment 2 is required when Segment 3/4 is provided.',
+                'segment2' => 'Segment 2 is required when Segment 3/4/5 is provided.',
             ]);
         }
-        if ($s3 === '' && $s4 !== '') {
+        if ($s3 === '' && ($s4 !== '' || $s5 !== '')) {
             throw ValidationException::withMessages([
-                'segment3' => 'Segment 3 is required when Segment 4 is provided.',
+                'segment3' => 'Segment 3 is required when Segment 4/5 is provided.',
+            ]);
+        }
+        if ($s4 === '' && $s5 !== '') {
+            throw ValidationException::withMessages([
+                'segment4' => 'Segment 4 is required when Segment 5 is provided.',
             ]);
         }
 
-        $segments = array_values(array_filter([$s1, $s2, $s3, $s4], fn($seg) => $seg !== ''));
+        $segments = array_values(array_filter([$s1, $s2, $s3, $s4, $s5], fn($seg) => $seg !== ''));
 
         return [
             'segment1' => $s1,
             'segment2' => $s2 !== '' ? $s2 : null,
             'segment3' => $s3 !== '' ? $s3 : null,
             'segment4' => $s4 !== '' ? $s4 : null,
+            'segment5' => $s5 !== '' ? $s5 : null,
             'segments' => $segments,
         ];
     }
@@ -414,9 +431,9 @@ class CoaAccountController extends Controller
         $segments = $segments ?? $this->normalizeSegments($data)['segments'];
         $level = count($segments);
 
-        if ($level < 1 || $level > 4) {
+        if ($level < 1 || $level > 5) {
             throw ValidationException::withMessages([
-                'segment1' => 'COA supports levels 1 to 4 only.',
+                'segment1' => 'COA supports levels 1 to 5 only.',
             ]);
         }
 
@@ -424,7 +441,7 @@ class CoaAccountController extends Controller
         if (!$parentId) {
             if ($level !== 1) {
                 throw ValidationException::withMessages([
-                    'parent_id' => 'Level 2/3/4 accounts must have a parent.',
+                    'parent_id' => 'Level 2/3/4/5 accounts must have a parent.',
                 ]);
             }
             return;
@@ -466,6 +483,7 @@ class CoaAccountController extends Controller
             $parent->segment2,
             $parent->segment3,
             $parent->segment4,
+            $parent->segment5,
         ], fn($seg) => $seg !== null && $seg !== ''));
 
         for ($i = 0; $i < count($parentSegments); $i++) {

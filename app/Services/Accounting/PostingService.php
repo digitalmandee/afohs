@@ -20,7 +20,7 @@ class PostingService
     {
         return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId) {
             $entry = JournalEntry::create([
-                'entry_no' => 'JE-' . now()->format('YmdHis'),
+                'entry_no' => $this->generateEntryNo(),
                 'entry_date' => $entryDate,
                 'description' => $description,
                 'status' => 'posted',
@@ -52,5 +52,17 @@ class PostingService
 
             return $entry;
         });
+    }
+
+    private function generateEntryNo(): string
+    {
+        $attempts = 0;
+
+        do {
+            $attempts++;
+            $candidate = sprintf('JE-%s-%04d', now()->format('YmdHis'), random_int(1, 9999));
+        } while (JournalEntry::query()->where('entry_no', $candidate)->exists() && $attempts < 20);
+
+        return $candidate;
     }
 }

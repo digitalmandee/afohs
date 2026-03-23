@@ -14,6 +14,7 @@ class CoaAccount extends Model
         'segment2',
         'segment3',
         'segment4',
+        'segment5',
         'full_code',
         'name',
         'type',

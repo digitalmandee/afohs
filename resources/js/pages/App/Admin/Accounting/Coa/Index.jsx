@@ -41,16 +41,17 @@ const typeTone = {
 const normalizeParts = (parts = []) => parts.map((part) => String(part ?? '').trim());
 
 const getHierarchyInfo = (parts = []) => {
-    const [s1, s2, s3, s4] = normalizeParts(parts);
+    const [s1, s2, s3, s4, s5] = normalizeParts(parts);
     if (!s1) return { level: 0, hasGap: false, segments: [] };
-    if (!s2 && (s3 || s4)) return { level: 1, hasGap: true, segments: [s1] };
-    if (!s3 && s4) return { level: 2, hasGap: true, segments: [s1, s2].filter(Boolean) };
-    const segments = [s1, s2, s3, s4].filter(Boolean);
+    if (!s2 && (s3 || s4 || s5)) return { level: 1, hasGap: true, segments: [s1] };
+    if (!s3 && (s4 || s5)) return { level: 2, hasGap: true, segments: [s1, s2].filter(Boolean) };
+    if (!s4 && s5) return { level: 3, hasGap: true, segments: [s1, s2, s3].filter(Boolean) };
+    const segments = [s1, s2, s3, s4, s5].filter(Boolean);
     return { level: segments.length, hasGap: false, segments };
 };
 
 const matchesPrefix = (account, segments = []) => {
-    const prefix = [account.segment1, account.segment2, account.segment3, account.segment4].filter(Boolean);
+    const prefix = [account.segment1, account.segment2, account.segment3, account.segment4, account.segment5].filter(Boolean);
     if (prefix.length > segments.length) return false;
 
     for (let index = 0; index < prefix.length; index += 1) {
@@ -82,6 +83,9 @@ const FormFields = ({
         </Grid>
         <Grid item xs={12} md={3}>
             <TextField label="Segment 4" value={formData.segment4} onChange={(event) => setFormData('segment4', event.target.value)} fullWidth />
+        </Grid>
+        <Grid item xs={12} md={3}>
+            <TextField label="Segment 5" value={formData.segment5} onChange={(event) => setFormData('segment5', event.target.value)} fullWidth />
         </Grid>
         <Grid item xs={12} md={6}>
             <TextField label="Account Name" value={formData.name} onChange={(event) => setFormData('name', event.target.value)} error={!!errors.name} helperText={errors.name} fullWidth />
@@ -141,7 +145,7 @@ const FormFields = ({
         </Grid>
         <Grid item xs={12}>
             <Typography variant="caption" color="text.secondary">
-                Code Preview: {[formData.segment1, formData.segment2, formData.segment3, formData.segment4].filter((part) => String(part || '').trim() !== '').join('-') || '—'}
+                Code Preview: {[formData.segment1, formData.segment2, formData.segment3, formData.segment4, formData.segment5].filter((part) => String(part || '').trim() !== '').join('-') || '—'}
                 {selectedParent ? ` · Type locked to ${typeLabels[selectedParent.type] || selectedParent.type}` : ''}
             </Typography>
         </Grid>
@@ -149,7 +153,7 @@ const FormFields = ({
             <Typography variant="caption" color={hierarchyInfo.hasGap ? 'error.main' : 'text.secondary'}>
                 {submitLabel} level: {hierarchyInfo.level || 'n/a'} ·
                 {hierarchyInfo.hasGap
-                    ? ' Fill segments in order from level 1 to level 4.'
+                    ? ' Fill segments in order from level 1 to level 5.'
                     : hierarchyInfo.level <= 1
                         ? ' Root account without parent.'
                         : ` Parent must be level ${hierarchyInfo.level - 1} with matching prefix and type.`}
@@ -185,6 +189,7 @@ export default function Index({ accounts, error = null }) {
         segment2: '',
         segment3: '',
         segment4: '',
+        segment5: '',
         name: '',
         type: 'asset',
         parent_id: '',
@@ -204,6 +209,7 @@ export default function Index({ accounts, error = null }) {
         segment2: '',
         segment3: '',
         segment4: '',
+        segment5: '',
         name: '',
         type: 'asset',
         parent_id: '',
@@ -249,12 +255,12 @@ export default function Index({ accounts, error = null }) {
     const activeAccounts = React.useMemo(() => accounts.filter((account) => account.is_active !== false), [accounts]);
     const parentOptions = React.useMemo(
         () => accounts
-            .filter((account) => account.is_postable === false || account.is_postable === 0 || Number(account.level) < 4)
+            .filter((account) => account.is_postable === false || account.is_postable === 0 || Number(account.level) < 5)
             .sort((a, b) => String(a.full_code).localeCompare(String(b.full_code))),
         [accounts],
     );
 
-    const createHierarchyInfo = React.useMemo(() => getHierarchyInfo([data.segment1, data.segment2, data.segment3, data.segment4]), [data.segment1, data.segment2, data.segment3, data.segment4]);
+    const createHierarchyInfo = React.useMemo(() => getHierarchyInfo([data.segment1, data.segment2, data.segment3, data.segment4, data.segment5]), [data.segment1, data.segment2, data.segment3, data.segment4, data.segment5]);
     const selectedParent = data.parent_id ? accounts.find((account) => String(account.id) === String(data.parent_id)) : null;
     const eligibleCreateParents = React.useMemo(() => {
         if (createHierarchyInfo.hasGap || createHierarchyInfo.level <= 1) return [];
@@ -279,7 +285,7 @@ export default function Index({ accounts, error = null }) {
         return ids;
     }, [accountMap, editingAccount]);
 
-    const editHierarchyInfo = React.useMemo(() => getHierarchyInfo([editData.segment1, editData.segment2, editData.segment3, editData.segment4]), [editData.segment1, editData.segment2, editData.segment3, editData.segment4]);
+    const editHierarchyInfo = React.useMemo(() => getHierarchyInfo([editData.segment1, editData.segment2, editData.segment3, editData.segment4, editData.segment5]), [editData.segment1, editData.segment2, editData.segment3, editData.segment4, editData.segment5]);
     const editSelectedParent = editData.parent_id ? accounts.find((account) => String(account.id) === String(editData.parent_id)) : null;
     const eligibleEditParents = React.useMemo(() => {
         if (!editingAccount || editHierarchyInfo.hasGap || editHierarchyInfo.level <= 1) return [];
@@ -382,6 +388,7 @@ export default function Index({ accounts, error = null }) {
             segment2: node.segment2 || '',
             segment3: node.segment3 || '',
             segment4: node.segment4 || '',
+            segment5: node.segment5 || '',
             name: node.name || '',
             type: node.type || 'asset',
             parent_id: node.parent_id ? String(node.parent_id) : '',
