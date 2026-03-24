@@ -8,6 +8,7 @@ use App\Models\PaymentAccount;
 use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class AccountingBankAccountController extends Controller
@@ -49,7 +50,7 @@ class AccountingBankAccountController extends Controller
         return Inertia::render('App/Admin/Accounting/Banking/Accounts', [
             'accounts' => $query->orderByDesc('id')->paginate($perPage)->withQueryString(),
             'coaAccounts' => Schema::hasTable('coa_accounts')
-                ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name'])
+                ? CoaAccount::query()->operationalPosting()->orderBy('full_code')->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable'])
                 : collect(),
             'filters' => $request->only(['search', 'status', 'method', 'per_page']),
             'error' => !empty($status['missing_optional'])
@@ -64,7 +65,7 @@ class AccountingBankAccountController extends Controller
             'name' => 'required|string|max:255',
             'payment_method' => 'required|string|max:255',
             'status' => 'required|in:active,inactive',
-            'coa_account_id' => 'nullable|exists:coa_accounts,id',
+            'coa_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'is_default' => 'boolean',
         ]);
 
@@ -79,7 +80,7 @@ class AccountingBankAccountController extends Controller
             'name' => 'required|string|max:255',
             'payment_method' => 'required|string|max:255',
             'status' => 'required|in:active,inactive',
-            'coa_account_id' => 'nullable|exists:coa_accounts,id',
+            'coa_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'is_default' => 'boolean',
         ]);
 

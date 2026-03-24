@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use App\Services\Accounting\Support\AccountingSourceResolver;
 
@@ -661,9 +662,9 @@ class JournalEntryController extends Controller
         return [
             'accounts' => Schema::hasTable('coa_accounts')
                 ? CoaAccount::query()
-                    ->where('is_active', true)
+                    ->operationalPosting()
                     ->orderBy('full_code')
-                    ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable'])
+                    ->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable'])
                 : collect(),
             'accounts_error' => !Schema::hasTable('coa_accounts')
                 ? 'Chart of Accounts is not configured yet. Journal lines cannot be mapped until coa_accounts is migrated.'
@@ -684,7 +685,7 @@ class JournalEntryController extends Controller
             'description' => 'nullable|string|max:255',
             'period_id' => 'nullable|integer|exists:accounting_periods,id',
             'lines' => 'required|array|min:2',
-            'lines.*.account_id' => 'required|integer|exists:coa_accounts,id',
+            'lines.*.account_id' => ['required', 'integer', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'lines.*.description' => 'nullable|string|max:255',
             'lines.*.debit' => 'nullable|numeric|min:0',
             'lines.*.credit' => 'nullable|numeric|min:0',

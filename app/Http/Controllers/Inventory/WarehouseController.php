@@ -14,6 +14,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Throwable;
 
@@ -23,9 +25,30 @@ class WarehouseController extends Controller
 
     public function index(Request $request)
     {
-        try {
-            $perPage = $this->resolvePerPage($request);
+        $perPage = $this->resolvePerPage($request);
+        $status = $this->inventoryStatus('master');
 
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Index', [
+                'warehouses' => $this->emptyPaginator($request, $perPage),
+                'assignmentWarehouses' => collect(),
+                'tenants' => collect(),
+                'categories' => collect(),
+                'assignments' => collect(),
+                'locationSummary' => [
+                    'total_locations' => 0,
+                    'active_locations' => 0,
+                    'tracked_products' => 0,
+                    'sellable_assignments' => 0,
+                    'back_store_assignments' => 0,
+                    'assignments' => collect(),
+                ],
+                'filters' => $request->only(['search', 'status', 'coverage_type', 'restaurant_id', 'has_primary_source', 'per_page']),
+                'error' => $this->inventorySetupMessage('Warehouse master', $status['missing_required']),
+            ]);
+        }
+
+        try {
             $query = Warehouse::query()->with([
                 'tenant:id,name',
                 'locations',
@@ -106,6 +129,7 @@ class WarehouseController extends Controller
                         ->get(),
                 ],
                 'filters' => $request->only(['search', 'status', 'coverage_type', 'restaurant_id', 'has_primary_source', 'per_page']),
+                'error' => null,
             ]);
         } catch (QueryException $exception) {
             $this->logInventoryFailure($request, 'master', 'inventory.warehouse.master.failed', $exception, [
@@ -464,6 +488,15 @@ class WarehouseController extends Controller
 
     public function categories()
     {
+        $status = $this->inventoryStatus('categories');
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Categories/Index', [
+                'categories' => collect(),
+                'error' => $this->inventorySetupMessage('Warehouse categories', $status['missing_required']),
+            ]);
+        }
+
         try {
             $categories = WarehouseCategory::query()
                 ->withCount('warehouses')
@@ -473,6 +506,7 @@ class WarehouseController extends Controller
 
             return Inertia::render('App/Admin/Inventory/Warehouses/Categories/Index', [
                 'categories' => $categories,
+                'error' => null,
             ]);
         } catch (QueryException $exception) {
             $this->logInventoryFailure(request(), 'categories', 'inventory.warehouse.categories.failed', $exception, [
@@ -556,6 +590,17 @@ class WarehouseController extends Controller
     public function locationsMaster(Request $request)
     {
         $perPage = $this->resolvePerPage($request);
+        $status = $this->inventoryStatus('locations');
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Locations/Index', [
+                'locations' => $this->emptyPaginator($request, $perPage),
+                'warehouses' => collect(),
+                'filters' => $request->only(['search', 'warehouse_id', 'status', 'per_page']),
+                'error' => $this->inventorySetupMessage('Warehouse locations', $status['missing_required']),
+            ]);
+        }
+
         $query = WarehouseLocation::query()->with(['warehouse:id,name,code', 'tenant:id,name']);
 
         if ($request->filled('search')) {
@@ -580,6 +625,7 @@ class WarehouseController extends Controller
             'locations' => $query->orderBy('name')->paginate($perPage)->withQueryString(),
             'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name', 'code']),
             'filters' => $request->only(['search', 'warehouse_id', 'status', 'per_page']),
+            'error' => null,
         ]);
     }
 
@@ -667,6 +713,18 @@ class WarehouseController extends Controller
     public function documents(Request $request)
     {
         $perPage = $this->resolvePerPage($request);
+        $status = $this->inventoryStatus('documents');
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Documents/Index', [
+                'documents' => $this->emptyPaginator($request, $perPage),
+                'warehouses' => collect(),
+                'tenants' => collect(),
+                'filters' => $request->only(['search', 'type', 'restaurant_id', 'warehouse_id', 'per_page']),
+                'error' => $this->inventorySetupMessage('Stock documents', $status['missing_required']),
+            ]);
+        }
+
         $query = InventoryDocument::query()->with([
             'tenant:id,name',
             'sourceWarehouse:id,name,code',
@@ -706,11 +764,29 @@ class WarehouseController extends Controller
             'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name', 'code']),
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
             'filters' => $request->only(['search', 'type', 'restaurant_id', 'warehouse_id', 'per_page']),
+            'error' => null,
         ]);
     }
 
     public function valuation(Request $request)
     {
+        $status = $this->inventoryStatus('valuation');
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Valuation/Index', [
+                'summary' => [
+                    'total_valuation' => 0,
+                    'warehouse_count' => 0,
+                    'restaurant_count' => 0,
+                ],
+                'byWarehouse' => collect(),
+                'byLocation' => collect(),
+                'byRestaurant' => collect(),
+                'movementValueDelta' => collect(),
+                'error' => $this->inventorySetupMessage('Inventory valuation', $status['missing_required']),
+            ]);
+        }
+
         $byWarehouse = InventoryTransaction::query()
             ->selectRaw('warehouse_id, COALESCE(SUM(qty_in - qty_out), 0) as net_qty, COALESCE(SUM(total_cost), 0) as valuation')
             ->groupBy('warehouse_id')
@@ -746,12 +822,23 @@ class WarehouseController extends Controller
             'byLocation' => $byLocation,
             'byRestaurant' => $byRestaurant,
             'movementValueDelta' => $movementValueDelta,
+            'error' => null,
         ]);
     }
 
     public function coverage()
     {
         $request = request();
+        $status = $this->inventoryStatus('coverage');
+
+        if (!$status['ready']) {
+            return Inertia::render('App/Admin/Inventory/Warehouses/Coverage/Index', [
+                'restaurants' => collect(),
+                'warehouses' => collect(),
+                'assignments' => collect(),
+                'error' => $this->inventorySetupMessage('Restaurant coverage matrix', $status['missing_required']),
+            ]);
+        }
 
         try {
             $restaurants = Tenant::query()->orderBy('name')->get(['id', 'name']);
@@ -769,6 +856,7 @@ class WarehouseController extends Controller
                 'restaurants' => $restaurants,
                 'warehouses' => $warehouses,
                 'assignments' => $assignments,
+                'error' => null,
             ]);
         } catch (QueryException $exception) {
             $this->logInventoryFailure($request, 'coverage', 'inventory.warehouse.coverage.failed', $exception, [
@@ -887,8 +975,66 @@ class WarehouseController extends Controller
                 'tables' => ['warehouse_categories'],
                 'columns' => ['warehouse_categories.slug', 'warehouse_categories.status'],
             ],
+            'locations' => [
+                'tables' => ['warehouse_locations', 'warehouses'],
+                'columns' => ['warehouse_locations.warehouse_id', 'warehouse_locations.status'],
+            ],
+            'documents' => [
+                'tables' => ['inventory_documents', 'warehouses', 'tenants'],
+                'columns' => ['inventory_documents.document_no', 'inventory_documents.transaction_date'],
+            ],
+            'valuation' => [
+                'tables' => ['inventory_transactions', 'warehouses'],
+                'columns' => ['inventory_transactions.warehouse_id', 'inventory_transactions.total_cost'],
+            ],
             default => [],
         };
+    }
+
+    protected function inventoryStatus(string $area): array
+    {
+        $requirements = $this->inventorySchemaRequirements($area);
+        $missingTables = array_values(array_filter(
+            $requirements['tables'] ?? [],
+            fn (string $table) => !Schema::hasTable($table)
+        ));
+
+        $missingColumns = array_values(array_filter(
+            $requirements['columns'] ?? [],
+            function (string $column) {
+                [$table, $field] = array_pad(explode('.', $column, 2), 2, null);
+                return !$table || !$field || !Schema::hasTable($table) || !Schema::hasColumn($table, $field);
+            }
+        ));
+
+        return [
+            'ready' => empty($missingTables) && empty($missingColumns),
+            'missing_required' => array_values(array_merge($missingTables, $missingColumns)),
+        ];
+    }
+
+    protected function inventorySetupMessage(string $feature, array $missingRequired = []): string
+    {
+        if (!empty($missingRequired)) {
+            return sprintf(
+                '%s is not fully configured yet. Missing required schema: %s.',
+                $feature,
+                implode(', ', $missingRequired)
+            );
+        }
+
+        return $feature . ' is available.';
+    }
+
+    protected function emptyPaginator(Request $request, int $perPage = 25): LengthAwarePaginator
+    {
+        return new LengthAwarePaginator(
+            collect(),
+            0,
+            $perPage,
+            max(1, (int) $request->input('page', 1)),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
     }
 
     protected function sanitizePayload(array $payload): array

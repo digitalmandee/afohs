@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, TableCell, TableRow } from '@mui/material';
+import { Alert, Grid, TableCell, TableRow } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
@@ -11,6 +11,7 @@ export default function WarehouseValuationIndex({
     byLocation = [],
     byRestaurant = [],
     movementValueDelta = [],
+    error = null,
 }) {
     return (
         <AppPage
@@ -18,6 +19,7 @@ export default function WarehouseValuationIndex({
             title="Valuation & Reconciliation"
             subtitle="Warehouse-, location-, and restaurant-level inventory value visibility with movement value deltas."
         >
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <Grid container spacing={2.25}>
                 <Grid item xs={12} md={4}><StatCard label="Total Valuation" value={Number(summary.total_valuation || 0).toFixed(2)} accent /></Grid>
                 <Grid item xs={12} md={4}><StatCard label="Warehouses" value={summary.warehouse_count || 0} tone="light" /></Grid>
@@ -113,4 +115,3 @@ export default function WarehouseValuationIndex({
         </AppPage>
     );
 }
-

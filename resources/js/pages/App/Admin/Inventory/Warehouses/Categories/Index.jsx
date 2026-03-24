@@ -1,11 +1,11 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 
-export default function WarehouseCategoriesIndex({ categories = [] }) {
+export default function WarehouseCategoriesIndex({ categories = [], error = null }) {
     const [open, setOpen] = React.useState(false);
     const [editing, setEditing] = React.useState(null);
     const form = useForm({
@@ -66,6 +66,7 @@ export default function WarehouseCategoriesIndex({ categories = [] }) {
                     </Button>,
                 ]}
             >
+                {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
                 <SurfaceCard title="Category Register" subtitle="Central, back-store, sellable, production, transit, and custom warehouse groups.">
                     <AdminDataTable
                         columns={[

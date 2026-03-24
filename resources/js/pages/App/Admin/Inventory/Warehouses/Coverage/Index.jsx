@@ -1,11 +1,11 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import { Alert, Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 
-export default function WarehouseCoverageIndex({ restaurants = [], warehouses = [], assignments = [] }) {
+export default function WarehouseCoverageIndex({ restaurants = [], warehouses = [], assignments = [], error = null }) {
     const form = useForm({
         restaurant_id: '',
         warehouse_id: '',
@@ -40,6 +40,7 @@ export default function WarehouseCoverageIndex({ restaurants = [], warehouses = 
                 </Button>,
             ]}
         >
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <SurfaceCard title="Coverage Assignment" subtitle="Set warehouse/location role mapping for restaurant inventory visibility and POS consumption.">
                 <Grid container spacing={2} component="form" onSubmit={submit}>
                     <Grid item xs={12} md={3}>
@@ -158,4 +159,3 @@ export default function WarehouseCoverageIndex({ restaurants = [], warehouses = 
         </AppPage>
     );
 }
-

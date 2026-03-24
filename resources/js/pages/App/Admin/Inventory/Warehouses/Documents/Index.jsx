@@ -1,12 +1,12 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import { Alert, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 
-export default function WarehouseDocumentsIndex({ documents, filters = {}, warehouses = [], tenants = [] }) {
+export default function WarehouseDocumentsIndex({ documents, filters = {}, warehouses = [], tenants = [], error = null }) {
     const [localFilters, setLocalFilters] = React.useState({
         search: filters.search || '',
         type: filters.type || '',
@@ -36,6 +36,7 @@ export default function WarehouseDocumentsIndex({ documents, filters = {}, wareh
             title="Stock Documents"
             subtitle="Document-level register for GRN, transfer, adjustment, opening balance, and stock issue batches."
         >
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <SurfaceCard title="Live Filters" subtitle="Filter by document number, warehouse, restaurant, and document type.">
                 <FilterToolbar onReset={() => {
                     const reset = { search: '', type: '', restaurant_id: '', warehouse_id: '', per_page: localFilters.per_page || 25 };
@@ -105,4 +106,3 @@ export default function WarehouseDocumentsIndex({ documents, filters = {}, wareh
         </AppPage>
     );
 }
-

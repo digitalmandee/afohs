@@ -102,19 +102,12 @@ class AccountingReportController extends Controller
             ]);
         }
 
-        $query = JournalLine::query()
-            ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit) as debit'), DB::raw('SUM(journal_lines.credit) as credit'))
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id');
-
-        if ($from && $to) {
-            $query->whereBetween('journal_entries.entry_date', [$from, $to]);
-        }
-
-        $totals = $query->groupBy('journal_lines.account_id')->get()->keyBy('account_id');
+        $totals = $this->aggregateByAccount($from, $to);
         $ledgerReady = Schema::hasTable('journal_entries') && Schema::hasTable('journal_lines');
 
         $accounts = CoaAccount::orderBy('full_code')->get()->map(function ($acc) use ($totals, $from, $to, $health, $ledgerReady) {
             $line = $totals->get($acc->id);
+            $trialBalance = $this->trialBalanceAmounts($acc, $line);
             $ledgerQuery = array_filter([
                 'account_id' => $acc->id,
                 'from' => $from,
@@ -126,10 +119,11 @@ class AccountingReportController extends Controller
                 'code' => $acc->full_code,
                 'name' => $acc->name,
                 'type' => $acc->type,
+                'normal_balance' => $acc->normal_balance,
                 'level' => $acc->level,
                 'is_postable' => (bool) $acc->is_postable,
-                'debit' => $line?->debit ?? 0,
-                'credit' => $line?->credit ?? 0,
+                'debit' => $trialBalance['debit'],
+                'credit' => $trialBalance['credit'],
                 'ledger_url' => $ledgerReady ? $health->safeRoute('accounting.general-ledger', $ledgerQuery) : null,
             ];
         });
@@ -151,6 +145,7 @@ class AccountingReportController extends Controller
                     'Code' => $row['code'],
                     'Name' => $row['name'],
                     'Type' => $row['type'],
+                    'Normal Balance' => $row['normal_balance'],
                     'Level' => $row['level'],
                     'Debit' => number_format((float) $row['debit'], 2, '.', ''),
                     'Credit' => number_format((float) $row['credit'], 2, '.', ''),
@@ -161,12 +156,13 @@ class AccountingReportController extends Controller
                 'Code' => '',
                 'Name' => 'TOTAL',
                 'Type' => '',
+                'Normal Balance' => '',
                 'Level' => '',
                 'Debit' => number_format($totalDebit, 2, '.', ''),
                 'Credit' => number_format($totalCredit, 2, '.', ''),
             ];
 
-            return $this->downloadCsv('trial-balance.csv', ['Code', 'Name', 'Type', 'Level', 'Debit', 'Credit'], $rows);
+            return $this->downloadCsv('trial-balance.csv', ['Code', 'Name', 'Type', 'Normal Balance', 'Level', 'Debit', 'Credit'], $rows);
         }
 
         return Inertia::render('App/Admin/Accounting/Reports/TrialBalance', [
@@ -817,7 +813,7 @@ class AccountingReportController extends Controller
         }
 
         $lines = $this->aggregateByAccount($from, $to);
-        $accounts = CoaAccount::query()->get(['id', 'type']);
+        $accounts = CoaAccount::query()->get(['id', 'type', 'normal_balance', 'opening_balance']);
 
         $totalDebit = (float) $lines->sum('debit');
         $totalCredit = (float) $lines->sum('credit');
@@ -834,16 +830,18 @@ class AccountingReportController extends Controller
             $credit = (float) ($line?->credit ?? 0);
             $type = strtolower((string) $account->type);
 
+            $balance = $this->accountBalanceAmount($account, $line);
+
             if ($type === 'asset') {
-                $assetsTotal += ($debit - $credit);
+                $assetsTotal += $balance;
             } elseif ($type === 'liability') {
-                $liabilitiesTotal += ($credit - $debit);
+                $liabilitiesTotal += $balance;
             } elseif ($type === 'equity') {
-                $equityTotal += ($credit - $debit);
+                $equityTotal += $balance;
             } elseif ($type === 'income') {
-                $incomeTotal += ($credit - $debit);
+                $incomeTotal += $balance;
             } elseif ($type === 'expense') {
-                $expenseTotal += ($debit - $credit);
+                $expenseTotal += $balance;
             }
         }
 
@@ -870,9 +868,7 @@ class AccountingReportController extends Controller
 
         return $accounts->map(function ($acc) use ($lines, $normalSide, $from, $to, $health, $ledgerReady) {
             $line = $lines->get($acc->id);
-            $debit = $line?->debit ?? 0;
-            $credit = $line?->credit ?? 0;
-            $balance = $normalSide === 'debit' ? ($debit - $credit) : ($credit - $debit);
+            $balance = $this->accountBalanceAmount($acc, $line, $normalSide);
             $ledgerQuery = array_filter([
                 'account_id' => $acc->id,
                 'from' => $from,
@@ -905,6 +901,35 @@ class AccountingReportController extends Controller
         }
 
         return '90+';
+    }
+
+    private function trialBalanceAmounts(CoaAccount $account, mixed $line): array
+    {
+        $balance = $this->accountBalanceAmount($account, $line);
+
+        return [
+            'debit' => $balance >= 0 ? $balance : 0.0,
+            'credit' => $balance < 0 ? abs($balance) : 0.0,
+        ];
+    }
+
+    private function accountBalanceAmount(object $account, mixed $line, ?string $normalSide = null): float
+    {
+        $debit = (float) ($line?->debit ?? 0);
+        $credit = (float) ($line?->credit ?? 0);
+        $openingBalance = (float) ($account->opening_balance ?? 0);
+        $normalSide = $normalSide ?: ((string) ($account->normal_balance ?: $this->defaultNormalBalance((string) $account->type)));
+
+        if ($normalSide === 'credit') {
+            return $openingBalance + ($credit - $debit);
+        }
+
+        return $openingBalance + ($debit - $credit);
+    }
+
+    private function defaultNormalBalance(string $type): string
+    {
+        return in_array($type, ['liability', 'equity', 'income'], true) ? 'credit' : 'debit';
     }
 
     private function agingSummary($rows): array

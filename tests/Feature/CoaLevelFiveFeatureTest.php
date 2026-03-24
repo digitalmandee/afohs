@@ -15,6 +15,9 @@ class CoaLevelFiveFeatureTest extends TestCase
     public function test_coa_accounts_table_supports_segment_five(): void
     {
         $this->assertTrue(Schema::hasColumn('coa_accounts', 'segment5'));
+        $this->assertTrue(Schema::hasColumn('coa_accounts', 'normal_balance'));
+        $this->assertTrue(Schema::hasColumn('coa_accounts', 'opening_balance'));
+        $this->assertTrue(Schema::hasColumn('coa_accounts', 'description'));
     }
 
     public function test_can_create_level_five_coa_account(): void
@@ -79,7 +82,10 @@ class CoaLevelFiveFeatureTest extends TestCase
                 'segment5' => '01',
                 'name' => 'Operating Bank Karachi',
                 'type' => 'asset',
+                'normal_balance' => 'debit',
                 'parent_id' => $level4->id,
+                'opening_balance' => 1250.50,
+                'description' => 'Primary operating bank for Karachi branch.',
                 'is_active' => true,
             ])
             ->assertRedirect();
@@ -89,6 +95,9 @@ class CoaLevelFiveFeatureTest extends TestCase
             'level' => 5,
             'parent_id' => $level4->id,
             'segment5' => '01',
+            'normal_balance' => 'debit',
+            'opening_balance' => '1250.50',
+            'description' => 'Primary operating bank for Karachi branch.',
         ]);
     }
 
@@ -143,5 +152,18 @@ class CoaLevelFiveFeatureTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('segment5', $response->streamedContent());
+    }
+
+    public function test_coa_template_includes_new_accounting_columns(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get(route('accounting.coa.template'));
+
+        $response->assertOk();
+        $contents = $response->streamedContent();
+        $this->assertStringContainsString('normal_balance', $contents);
+        $this->assertStringContainsString('opening_balance', $contents);
+        $this->assertStringContainsString('description', $contents);
     }
 }

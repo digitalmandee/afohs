@@ -67,10 +67,13 @@ class CoaAccountController extends Controller
 
         $accounts = $accounts->map(function ($account) use ($totals, $ruleUsage, $paymentUsage, $health, $ledgerReady) {
             $summary = $totals->get($account->id);
-            $balance = (float) (($summary->total_debit ?? 0) - ($summary->total_credit ?? 0));
+            $netMovement = (float) (($summary->total_debit ?? 0) - ($summary->total_credit ?? 0));
+            $balance = $this->calculateCurrentBalance($account, $netMovement);
 
             $account->journal_line_count = (int) ($summary->line_count ?? 0);
+            $account->movement_balance = $netMovement;
             $account->direct_balance = $balance;
+            $account->current_balance = $balance;
             $account->usage = [
                 'rules' => (int) ($ruleUsage[$account->id] ?? 0),
                 'payment_accounts' => (int) ($paymentUsage[$account->id] ?? 0),
@@ -110,7 +113,10 @@ class CoaAccountController extends Controller
             'segment5' => 'nullable|string|max:4',
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,income,expense',
+            'normal_balance' => 'nullable|in:debit,credit',
             'parent_id' => 'nullable|exists:coa_accounts,id',
+            'opening_balance' => 'nullable|numeric',
+            'description' => 'nullable|string',
             'is_postable' => 'boolean',
             'is_active' => 'boolean',
         ]);
@@ -126,7 +132,9 @@ class CoaAccountController extends Controller
         $this->validateHierarchy($data, null, $segments);
         $data['full_code'] = implode('-', $segments);
         $data['level'] = count($segments);
-        $data['is_postable'] = $data['is_postable'] ?? ($data['level'] >= 4);
+        $data['is_postable'] = $this->resolvePostableFlag($data['is_postable'] ?? null, $data['level']);
+        $data['normal_balance'] = $data['normal_balance'] ?? $this->defaultNormalBalance($data['type']);
+        $data['opening_balance'] = $data['opening_balance'] ?? 0;
         $this->validateUniqueCode($data['full_code'], null);
         $data['created_by'] = $request->user()?->id;
 
@@ -149,7 +157,10 @@ class CoaAccountController extends Controller
             'segment5' => 'nullable|string|max:4',
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,income,expense',
+            'normal_balance' => 'nullable|in:debit,credit',
             'parent_id' => 'nullable|exists:coa_accounts,id',
+            'opening_balance' => 'nullable|numeric',
+            'description' => 'nullable|string',
             'is_postable' => 'boolean',
             'is_active' => 'boolean',
         ]);
@@ -196,7 +207,9 @@ class CoaAccountController extends Controller
 
         $data['full_code'] = implode('-', $segmentsNew);
         $data['level'] = count($segmentsNew);
-        $data['is_postable'] = $data['is_postable'] ?? ($data['level'] >= 4);
+        $data['is_postable'] = $this->resolvePostableFlag($data['is_postable'] ?? null, $data['level']);
+        $data['normal_balance'] = $data['normal_balance'] ?? $this->defaultNormalBalance($data['type']);
+        $data['opening_balance'] = $data['opening_balance'] ?? $coaAccount->opening_balance ?? 0;
         $data['updated_by'] = $request->user()?->id;
 
         $coaAccount->update($data);
@@ -232,13 +245,13 @@ class CoaAccountController extends Controller
             return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
         }
 
-        $headers = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
+        $headers = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active', 'normal_balance', 'opening_balance', 'description'];
         $sample = [
-            ['1', '', '', '', '', 'Assets', 'asset', '', '0', '1'],
-            ['1', '11', '', '', '', 'Cash & Bank', 'asset', '1', '0', '1'],
-            ['1', '11', '01', '', '', 'Bank Control', 'asset', '1-11', '0', '1'],
-            ['1', '11', '01', '01', '', 'Operating Bank', 'asset', '1-11-01', '0', '1'],
-            ['1', '11', '01', '01', '01', 'Operating Bank Karachi', 'asset', '1-11-01-01', '1', '1'],
+            ['1', '', '', '', '', 'Assets', 'asset', '', '0', '1', 'debit', '0', 'Root asset header'],
+            ['1', '11', '', '', '', 'Cash & Bank', 'asset', '1', '0', '1', 'debit', '0', 'Cash grouping header'],
+            ['1', '11', '01', '', '', 'Bank Control', 'asset', '1-11', '0', '1', 'debit', '0', 'Level 3 control header'],
+            ['1', '11', '01', '01', '', 'Operating Bank', 'asset', '1-11-01', '0', '1', 'debit', '0', 'Level 4 header'],
+            ['1', '11', '01', '01', '01', 'Operating Bank Karachi', 'asset', '1-11-01-01', '1', '1', 'debit', '0', 'Level 5 posting account'],
         ];
 
         return Response::streamDownload(function () use ($headers, $sample) {
@@ -269,13 +282,16 @@ class CoaAccountController extends Controller
             $path = $request->file('file')->getRealPath();
             $handle = fopen($path, 'r');
             $header = fgetcsv($handle);
-            $expected = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
+            $legacyExpected = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active'];
+            $extendedExpected = ['segment1', 'segment2', 'segment3', 'segment4', 'segment5', 'name', 'type', 'parent_full_code', 'is_postable', 'is_active', 'normal_balance', 'opening_balance', 'description'];
 
-            if ($header !== $expected) {
+            if ($header !== $legacyExpected && $header !== $extendedExpected) {
                 throw ValidationException::withMessages([
                     'file' => 'Invalid CSV header. Please use the provided template.',
                 ]);
             }
+
+            $usesExtendedTemplate = $header === $extendedExpected;
 
             $line = 1;
             while (($row = fgetcsv($handle)) !== false) {
@@ -284,7 +300,14 @@ class CoaAccountController extends Controller
                     continue;
                 }
 
-                [$segment1, $segment2, $segment3, $segment4, $segment5, $name, $type, $parentCode, $isPostable, $isActive] = array_pad($row, 10, null);
+                if ($usesExtendedTemplate) {
+                    [$segment1, $segment2, $segment3, $segment4, $segment5, $name, $type, $parentCode, $isPostable, $isActive, $normalBalance, $openingBalance, $description] = array_pad($row, 13, null);
+                } else {
+                    [$segment1, $segment2, $segment3, $segment4, $segment5, $name, $type, $parentCode, $isPostable, $isActive] = array_pad($row, 10, null);
+                    $normalBalance = null;
+                    $openingBalance = null;
+                    $description = null;
+                }
 
                 $segments = array_filter([$segment1, $segment2, $segment3, $segment4, $segment5], fn($seg) => $seg !== null && $seg !== '');
                 $fullCode = implode('-', $segments);
@@ -316,8 +339,11 @@ class CoaAccountController extends Controller
                     'segment4' => trim((string) ($segment4 ?? '')) ?: null,
                     'segment5' => trim((string) ($segment5 ?? '')) ?: null,
                     'type' => trim((string) $type),
+                    'normal_balance' => in_array((string) $normalBalance, ['debit', 'credit'], true) ? (string) $normalBalance : $this->defaultNormalBalance(trim((string) $type)),
                     'parent_id' => $parentId,
-                    'is_postable' => in_array((string) $isPostable, ['1', 'true', 'yes'], true),
+                    'opening_balance' => is_numeric($openingBalance) ? (float) $openingBalance : 0,
+                    'description' => trim((string) ($description ?? '')) ?: null,
+                    'is_postable' => $this->resolveImportedPostableFlag($isPostable),
                 ];
 
                 try {
@@ -345,8 +371,11 @@ class CoaAccountController extends Controller
                     'full_code' => implode('-', $segments),
                     'name' => trim((string) $name),
                     'type' => trim((string) $type),
+                    'normal_balance' => $rowData['normal_balance'],
                     'parent_id' => $parentId,
-                    'is_postable' => $rowData['is_postable'],
+                    'opening_balance' => $rowData['opening_balance'],
+                    'description' => $rowData['description'],
+                    'is_postable' => $this->resolvePostableFlag($rowData['is_postable'], count($segments)),
                     'is_active' => !in_array((string) $isActive, ['0', 'false', 'no'], true),
                     'level' => count($segments),
                     'created_by' => $request->user()?->id,
@@ -426,6 +455,21 @@ class CoaAccountController extends Controller
         ];
     }
 
+    private function defaultNormalBalance(string $type): string
+    {
+        return in_array($type, ['liability', 'equity', 'income'], true) ? 'credit' : 'debit';
+    }
+
+    private function calculateCurrentBalance(CoaAccount $account, float $netMovement): float
+    {
+        $openingBalance = (float) ($account->opening_balance ?? 0);
+        $normalBalance = (string) ($account->normal_balance ?: $this->defaultNormalBalance((string) $account->type));
+
+        return $normalBalance === 'credit'
+            ? $openingBalance + ($netMovement * -1)
+            : $openingBalance + $netMovement;
+    }
+
     private function validateHierarchy(array $data, ?CoaAccount $current = null, ?array $segments = null): void
     {
         $segments = $segments ?? $this->normalizeSegments($data)['segments'];
@@ -469,6 +513,12 @@ class CoaAccountController extends Controller
         if ($parent->type !== ($data['type'] ?? null)) {
             throw ValidationException::withMessages([
                 'type' => 'Account type must match the parent account type.',
+            ]);
+        }
+
+        if ((bool) $parent->is_postable) {
+            throw ValidationException::withMessages([
+                'parent_id' => 'Only non-postable header accounts can be selected as parents.',
             ]);
         }
 
@@ -521,5 +571,42 @@ class CoaAccountController extends Controller
         }
 
         return false;
+    }
+
+    private function resolveImportedPostableFlag(mixed $rawValue): ?bool
+    {
+        $normalized = strtolower(trim((string) ($rawValue ?? '')));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (in_array($normalized, ['1', 'true', 'yes'], true)) {
+            return true;
+        }
+
+        if (in_array($normalized, ['0', 'false', 'no'], true)) {
+            return false;
+        }
+
+        return null;
+    }
+
+    private function resolvePostableFlag(mixed $requested, int $level): bool
+    {
+        $requested = $requested === null ? null : filter_var($requested, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $default = $level === 5;
+
+        if ($requested === null) {
+            return $default;
+        }
+
+        if ($level < 5 && $requested === true) {
+            throw ValidationException::withMessages([
+                'is_postable' => 'Only level-5 accounts can be marked as postable.',
+            ]);
+        }
+
+        return $requested;
     }
 }

@@ -447,8 +447,11 @@ class CoaBackfillService
                 'segment5' => $row['segments'][4] ?? null,
                 'name' => $row['name'],
                 'type' => $row['type'],
+                'normal_balance' => in_array($row['type'], ['liability', 'equity', 'income'], true) ? 'credit' : 'debit',
                 'level' => $row['level'],
                 'parent_id' => $parentCode ? ($idMap[$parentCode] ?? null) : null,
+                'opening_balance' => 0,
+                'description' => $row['metadata']['description'] ?? null,
                 'is_postable' => $row['is_postable'],
                 'is_active' => $row['is_active'],
                 'metadata' => $row['metadata'],
@@ -596,8 +599,8 @@ class CoaBackfillService
             $segments = $this->chunkCompactCode($clean);
         }
 
-        if (empty($segments) || count($segments) > 4) {
-            return ['status' => 'unresolved', 'segments' => [], 'reason' => 'Code could not be split into 1-4 segments.'];
+        if (empty($segments) || count($segments) > 5) {
+            return ['status' => 'unresolved', 'segments' => [], 'reason' => 'Code could not be split into 1-5 segments.'];
         }
 
         if (collect($segments)->contains(fn ($segment) => strlen((string) $segment) > 4)) {

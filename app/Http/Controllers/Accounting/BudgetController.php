@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class BudgetController extends Controller
@@ -31,7 +32,7 @@ class BudgetController extends Controller
         if (!Schema::hasTable('budgets') || !Schema::hasTable('budget_lines')) {
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
                 'budgets' => $emptyBudgets,
-                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::query()->operationalPosting()->orderBy('full_code')->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable']) : collect(),
                 'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
                 'error' => 'Budget tables are not migrated yet. Run accounting migrations and refresh.',
             ]);
@@ -55,7 +56,7 @@ class BudgetController extends Controller
         try {
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
                 'budgets' => $query->orderByDesc('start_date')->paginate($perPage)->withQueryString(),
-                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::query()->operationalPosting()->orderBy('full_code')->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable']) : collect(),
                 'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
                 'error' => !Schema::hasTable('coa_accounts') ? $health->setupMessage('Budgets', [], ['coa_accounts']) : null,
             ]);
@@ -64,7 +65,7 @@ class BudgetController extends Controller
 
             return Inertia::render('App/Admin/Accounting/Budgets/Index', [
                 'budgets' => $emptyBudgets,
-                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']) : collect(),
+                'coaAccounts' => Schema::hasTable('coa_accounts') ? CoaAccount::query()->operationalPosting()->orderBy('full_code')->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable']) : collect(),
                 'filters' => $request->only(['search', 'status', 'from', 'to', 'per_page']),
                 'error' => 'Could not load budgets due to schema mismatch. Please verify migration state.',
             ]);
@@ -84,7 +85,7 @@ class BudgetController extends Controller
             'status' => 'required|in:draft,active,closed',
             'remarks' => 'nullable|string',
             'lines' => 'required|array|min:1',
-            'lines.*.account_id' => 'required|exists:coa_accounts,id',
+            'lines.*.account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'lines.*.amount' => 'required|numeric|min:0',
         ]);
 

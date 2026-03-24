@@ -76,7 +76,12 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
                                     Level {row.level} · {row.is_postable ? 'Postable' : 'Header'}
                                 </Typography>
                             </TableCell>
-                            <TableCell>{row.type}</TableCell>
+                            <TableCell>
+                                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                                    <Chip size="small" variant="outlined" label={row.type} />
+                                    <Chip size="small" variant="outlined" color={row.normal_balance === 'credit' ? 'warning' : 'primary'} label={row.normal_balance === 'credit' ? 'Credit Normal' : 'Debit Normal'} />
+                                </Stack>
+                            </TableCell>
                             <TableCell align="right">{Number(row.debit || 0).toFixed(2)}</TableCell>
                             <TableCell align="right">{Number(row.credit || 0).toFixed(2)}</TableCell>
                             <TableCell align="right">

@@ -9,6 +9,7 @@ use App\Services\Accounting\Support\AccountingHealth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class AccountingRuleController extends Controller
@@ -37,9 +38,9 @@ class AccountingRuleController extends Controller
             'rules' => $query->orderBy('code')->paginate($perPage)->withQueryString(),
             'coaAccounts' => Schema::hasTable('coa_accounts')
                 ? CoaAccount::query()
-                    ->where('is_active', true)
+                    ->operationalPosting()
                     ->orderBy('full_code')
-                    ->get(['id', 'full_code', 'name', 'type', 'level', 'is_postable'])
+                    ->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable'])
                 : collect(),
             'filters' => $request->only(['search', 'status', 'per_page']),
             'error' => !Schema::hasTable('coa_accounts') ? $health->setupMessage('Accounting Rules', [], ['coa_accounts']) : null,
@@ -56,7 +57,7 @@ class AccountingRuleController extends Controller
             'code' => 'required|string|max:255|unique:accounting_rules,code',
             'name' => 'required|string|max:255',
             'lines' => 'required|array|min:2',
-            'lines.*.account_id' => 'nullable|exists:coa_accounts,id',
+            'lines.*.account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'lines.*.side' => 'required|in:debit,credit',
             'lines.*.ratio' => 'nullable|numeric|min:0',
             'lines.*.use_payment_account' => 'nullable|boolean',
@@ -83,7 +84,7 @@ class AccountingRuleController extends Controller
             'code' => 'required|string|max:255|unique:accounting_rules,code,' . $accountingRule->id,
             'name' => 'required|string|max:255',
             'lines' => 'required|array|min:2',
-            'lines.*.account_id' => 'nullable|exists:coa_accounts,id',
+            'lines.*.account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'lines.*.side' => 'required|in:debit,credit',
             'lines.*.ratio' => 'nullable|numeric|min:0',
             'lines.*.use_payment_account' => 'nullable|boolean',

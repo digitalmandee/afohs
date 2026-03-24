@@ -1,12 +1,12 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Button, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import { Alert, Button, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 
-export default function WarehouseLocationsIndex({ locations, warehouses = [], filters = {} }) {
+export default function WarehouseLocationsIndex({ locations, warehouses = [], filters = {}, error = null }) {
     const [localFilters, setLocalFilters] = React.useState({
         search: filters.search || '',
         warehouse_id: filters.warehouse_id || '',
@@ -41,6 +41,7 @@ export default function WarehouseLocationsIndex({ locations, warehouses = [], fi
                 </Button>,
             ]}
         >
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <SurfaceCard title="Live Filters" subtitle="Search by warehouse, location code, or status.">
                 <FilterToolbar onReset={() => {
                     const reset = { search: '', warehouse_id: '', status: '', per_page: localFilters.per_page || 25 };
@@ -105,4 +106,3 @@ export default function WarehouseLocationsIndex({ locations, warehouses = [], fi
         </AppPage>
     );
 }
-
