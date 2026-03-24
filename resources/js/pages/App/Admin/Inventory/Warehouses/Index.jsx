@@ -228,6 +228,9 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                     <Button key="docs" variant="outlined" onClick={() => router.visit(route('inventory.documents.index'))}>
                         Documents
                     </Button>,
+                    <Button key="items" variant="outlined" onClick={() => router.visit(route('pos.inventory.index'))}>
+                        Inventory Items
+                    </Button>,
                     <Button key="valuation" variant="outlined" onClick={() => router.visit(route('inventory.valuation.index'))}>
                         Valuation
                     </Button>,
@@ -249,7 +252,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             <StatCard label="Active Locations" value={locationSummary.active_locations || 0} tone="light" />
                         </Grid>
                         <Grid item xs={12} md={4}>
-                            <StatCard label="Tracked Inventory Items" value={locationSummary.tracked_products || 0} tone="light" />
+                            <StatCard label="Inventory Items With Stock" value={locationSummary.tracked_products || 0} tone="light" />
                         </Grid>
                         <Grid item xs={12} md={4}>
                             <Box sx={{ p: 2.25, borderRadius: 4, border: '1px solid', borderColor: 'divider', backgroundColor: 'rgba(6, 52, 85, 0.04)', height: '100%' }}>
@@ -262,6 +265,33 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                 <Typography sx={{ mt: 1, color: 'text.secondary' }}>
                                     Restaurant is the reporting scope. POS location stays operational metadata only.
                                 </Typography>
+                            </Box>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <StatCard label="Configured Inventory Items" value={locationSummary.configured_products || 0} tone="light" />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <StatCard label="Linked Ingredients" value={locationSummary.linked_ingredients || 0} tone="light" />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <StatCard label="Legacy-only Ingredients" value={locationSummary.legacy_only_ingredients || 0} tone="muted" />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <Box sx={{ p: 2.25, borderRadius: 4, border: '1px dashed', borderColor: 'divider', backgroundColor: 'rgba(6, 52, 85, 0.03)' }}>
+                                <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                    Inventory Items hold stock. Ingredients link into them for recipe usage.
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                                    If warehouse numbers look empty, first check whether stock-managed raw-material inventory items have been created and whether ingredients are linked to those items.
+                                </Typography>
+                                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+                                    <Button size="small" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                                        Add Inventory Item
+                                    </Button>
+                                    <Button size="small" variant="outlined" onClick={() => router.visit(route('pos.ingredients.index'))}>
+                                        Review Ingredients
+                                    </Button>
+                                </Stack>
                             </Box>
                         </Grid>
                     </Grid>
@@ -325,11 +355,17 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                     />
                 </SurfaceCard>
 
-                <SurfaceCard title="Live Filters" subtitle="Refine warehouse records by code, scope, operational status, and restaurant.">
+                <SurfaceCard
+                    title="Live Filters"
+                    subtitle="Refine warehouse records by code, scope, operational status, and restaurant."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     <FilterToolbar onReset={resetFilters}>
-                        <Grid container spacing={2}>
+                        <Grid container spacing={1.25}>
                             <Grid item xs={12} md={4}>
                                 <TextField
+                                    size="small"
                                     label="Search code, name, or address"
                                     value={localFilters.search}
                                     onChange={(event) => updateFilters({ search: event.target.value })}
@@ -338,6 +374,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             </Grid>
                             <Grid item xs={12} md={3}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Restaurant"
                                     value={localFilters.restaurant_id}
@@ -352,6 +389,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             </Grid>
                             <Grid item xs={12} md={2.5}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Status"
                                     value={localFilters.status}
@@ -365,6 +403,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             </Grid>
                             <Grid item xs={12} md={2.5}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Coverage"
                                     value={localFilters.coverage_type}

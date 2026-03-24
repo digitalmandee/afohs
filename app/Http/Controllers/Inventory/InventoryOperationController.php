@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\InventoryDocument;
+use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
-use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
@@ -25,7 +25,7 @@ class InventoryOperationController extends Controller
         $query = InventoryTransaction::query()
             ->with([
                 'tenant:id,name',
-                'product:id,name,menu_code,current_stock',
+                'inventoryItem:id,name,sku,current_stock',
                 'warehouse:id,name,tenant_id',
                 'warehouseLocation:id,name,code,warehouse_id',
             ]);
@@ -36,7 +36,7 @@ class InventoryOperationController extends Controller
                 $builder
                     ->whereHas('product', function ($product) use ($search) {
                         $product->where('name', 'like', "%{$search}%")
-                            ->orWhere('menu_code', 'like', "%{$search}%");
+                            ->orWhere('sku', 'like', "%{$search}%");
                     })
                     ->orWhere('reason', 'like', "%{$search}%")
                     ->orWhere('reference_id', $search);
@@ -56,7 +56,7 @@ class InventoryOperationController extends Controller
         }
 
         if ($request->filled('product_id')) {
-            $query->where('product_id', $request->product_id);
+            $query->where('inventory_item_id', $request->product_id);
         }
 
         if ($request->filled('type')) {
@@ -115,11 +115,11 @@ class InventoryOperationController extends Controller
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
             'warehouses' => Warehouse::query()->with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id']),
             'warehouseLocations' => WarehouseLocation::query()->orderBy('name')->get(['id', 'warehouse_id', 'tenant_id', 'name', 'code', 'status']),
-            'products' => Product::query()
+            'products' => InventoryItem::query()
                 ->warehouseOperationalEligible()
                 ->orderBy('name')
                 ->limit(300)
-                ->get(['id', 'name', 'menu_code', 'tenant_id', 'current_stock']),
+                ->get(['id', 'name', 'sku', 'tenant_id', 'current_stock']),
             'typeOptions' => [
                 ['value' => 'purchase', 'label' => 'Purchase receipt'],
                 ['value' => 'adjustment_in', 'label' => 'Adjustment in'],
@@ -135,11 +135,12 @@ class InventoryOperationController extends Controller
 
     public function storeIssue(Request $request, InventoryMovementService $service)
     {
+        $this->normalizeInventoryItemPayload($request);
         $data = $request->validate([
             'tenant_id' => 'nullable|exists:tenants,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
-            'product_id' => 'required|exists:products,id',
+            'inventory_item_id' => 'required|exists:inventory_items,id',
             'transaction_date' => 'required|date',
             'quantity' => 'required|numeric|min:0.001',
             'unit_cost' => 'nullable|numeric|min:0',
@@ -164,11 +165,12 @@ class InventoryOperationController extends Controller
 
     public function storeOpeningBalance(Request $request, InventoryMovementService $service)
     {
+        $this->normalizeInventoryItemPayload($request);
         $data = $request->validate([
             'tenant_id' => 'nullable|exists:tenants,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
-            'product_id' => 'required|exists:products,id',
+            'inventory_item_id' => 'required|exists:inventory_items,id',
             'transaction_date' => 'required|date',
             'quantity' => 'required|numeric|min:0.001',
             'unit_cost' => 'required|numeric|min:0',
@@ -187,11 +189,12 @@ class InventoryOperationController extends Controller
 
     public function storeAdjustment(Request $request, InventoryMovementService $service)
     {
+        $this->normalizeInventoryItemPayload($request);
         $data = $request->validate([
             'tenant_id' => 'nullable|exists:tenants,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
-            'product_id' => 'required|exists:products,id',
+            'inventory_item_id' => 'required|exists:inventory_items,id',
             'transaction_date' => 'required|date',
             'direction' => 'required|in:in,out',
             'quantity' => 'required|numeric|min:0.001',
@@ -217,13 +220,14 @@ class InventoryOperationController extends Controller
 
     public function storeTransfer(Request $request, InventoryMovementService $service)
     {
+        $this->normalizeInventoryItemPayload($request);
         $data = $request->validate([
             'tenant_id' => 'nullable|exists:tenants,id',
             'source_warehouse_id' => 'required|exists:warehouses,id',
             'source_warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
             'destination_warehouse_id' => 'required|exists:warehouses,id',
             'destination_warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
-            'product_id' => 'required|exists:products,id',
+            'inventory_item_id' => 'required|exists:inventory_items,id',
             'transaction_date' => 'required|date',
             'quantity' => 'required|numeric|min:0.001',
             'unit_cost' => 'nullable|numeric|min:0',
@@ -254,6 +258,13 @@ class InventoryOperationController extends Controller
         }
 
         return redirect()->back()->with('success', 'Warehouse transfer posted.');
+    }
+
+    protected function normalizeInventoryItemPayload(Request $request): void
+    {
+        if (!$request->filled('inventory_item_id') && $request->filled('product_id')) {
+            $request->merge(['inventory_item_id' => $request->input('product_id')]);
+        }
     }
 
     protected function assertWarehouseContext(int $warehouseId, ?int $locationId = null, ?int $tenantId = null): void

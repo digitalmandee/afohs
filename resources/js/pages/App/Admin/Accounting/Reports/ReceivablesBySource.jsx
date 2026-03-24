@@ -6,10 +6,9 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportCsv, downloadReportPdf, formatReportAmount, formatReportCount, openReportPrint, sanitizeFilters } from './reportOutput';
 
-function formatNumber(value, digits = 2) {
-    return Number(value || 0).toFixed(digits);
-}
+const formatNumber = formatReportAmount;
 
 export default function ReceivablesBySource({ rows, summary = {}, sourceOptions = [], filters = {} }) {
     const list = rows?.data || [];
@@ -46,27 +45,15 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
             title="Receivables by Source"
             subtitle="Unified source-wise receivables for membership, subscriptions, POS, room bookings, and events in the standardized reporting shell."
             actions={[
-                <Button
-                    key="csv"
-                    variant="outlined"
-                    onClick={() => {
-                        window.location.href = route('accounting.reports.receivables-by-source', {
-                            ...localFilters,
-                            export: 'csv',
-                        });
-                    }}
-                >
-                    Export CSV
-                </Button>,
-                <Button key="print" variant="outlined" onClick={() => window.print()}>
-                    Print
-                </Button>,
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.receivables-by-source.pdf', sanitizeFilters(localFilters))}>Download PDF</Button>,
+                <Button key="csv" variant="outlined" onClick={() => downloadReportCsv('accounting.reports.receivables-by-source', localFilters)}>Export CSV</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.receivables-by-source.print', sanitizeFilters(localFilters))}>Print</Button>,
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Open Receivables" value={summary.records || 0} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Open Receivables" value={formatReportCount(summary.records)} accent /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="Outstanding" value={formatNumber(summary.total_balance)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Average Age" value={`${formatNumber(summary.average_age, 1)} days`} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Average Age" value={`${formatReportAmount(summary.average_age, 1)} days`} tone="light" /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="90+ Bucket" value={formatNumber(summary?.bucket_balance?.['90+'])} tone="muted" /></Grid>
             </Grid>
 

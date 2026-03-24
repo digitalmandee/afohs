@@ -137,6 +137,8 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
   }, [debouncedSubmit, localFilters.per_page, submitFilters]);
   const [openApply, setOpenApply] = React.useState(false);
   const [openRecurring, setOpenRecurring] = React.useState(false);
+  const [openTemplatesHub, setOpenTemplatesHub] = React.useState(false);
+  const [openPolicy, setOpenPolicy] = React.useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState('');
   const { data: applyData, setData: setApplyData, post: postApply, processing: applying, reset: resetApply } = useForm({
     entry_date: '',
@@ -213,10 +215,18 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
           <Button key="approvals" variant="outlined" onClick={() => router.visit(route('accounting.journals.approvals'))}>
             Approval Inbox
           </Button>,
+          templatesEnabled ? (
+            <Button key="templates" variant="outlined" onClick={() => setOpenTemplatesHub(true)}>
+              Templates
+            </Button>
+          ) : null,
+          <Button key="policy" variant="outlined" onClick={() => setOpenPolicy(true)}>
+            Approval Policy
+          </Button>,
           <Button key="create" variant="contained" onClick={() => router.visit(route('accounting.journals.create'))}>
             New Journal
           </Button>,
-      ]}
+      ].filter(Boolean)}
     >
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -226,145 +236,17 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
         <Grid item xs={12} md={3}><StatCard label="Reversed" value={summary?.reversed || 0} tone="light" /></Grid>
       </Grid>
 
-      {templatesEnabled && (
-        <SurfaceCard title="Templates & Recurring" subtitle="Reuse recurring journals and execute due template schedules from one place.">
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button variant="outlined" onClick={() => setOpenApply(true)} disabled={templates.length === 0}>Apply Template</Button>
-                <Button variant="outlined" onClick={() => setOpenRecurring(true)} disabled={templates.length === 0}>Schedule Recurring</Button>
-                <Button variant="contained" onClick={() => router.post(route('accounting.journals.recurring.run'))}>Run Due Recurring</Button>
-              </Box>
-            </Box>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Active Templates</Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {templates.length === 0 && <Typography variant="caption" color="text.secondary">No templates yet.</Typography>}
-                  {templates.map((tpl) => (
-                    <Chip key={tpl.id} label={tpl.name} size="small" variant="outlined" />
-                  ))}
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Recurring Queue</Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {recurringProfiles.length === 0 && <Typography variant="caption" color="text.secondary">No recurring profiles.</Typography>}
-                  {recurringProfiles.map((p) => (
-                    <Chip key={p.id} size="small" label={`${p.template?.name || 'Template'} · ${p.frequency} · ${p.next_run_date || '-'}`} />
-                  ))}
-                </Box>
-              </Grid>
-            </Grid>
-        </SurfaceCard>
-      )}
-
-      <SurfaceCard title="Approval Controls" subtitle="Configure maker-checker thresholds, role routing, and reminder timing for journals.">
-          <form onSubmit={savePolicy}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  select
-                  label="Policy Active"
-                  value={policyData.is_active ? 'yes' : 'no'}
-                  onChange={(e) => setPolicyData('is_active', e.target.value === 'yes')}
-                  fullWidth
-                >
-                  <MenuItem value="yes">Yes</MenuItem>
-                  <MenuItem value="no">No</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  select
-                  label="Maker Checker"
-                  value={policyData.enforce_maker_checker ? 'yes' : 'no'}
-                  onChange={(e) => setPolicyData('enforce_maker_checker', e.target.value === 'yes')}
-                  fullWidth
-                >
-                  <MenuItem value="yes">Enforce</MenuItem>
-                  <MenuItem value="no">Disable</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  type="number"
-                  label="Auto-Post Below"
-                  value={policyData.auto_post_below}
-                  onChange={(e) => setPolicyData('auto_post_below', e.target.value)}
-                  inputProps={{ min: 0, step: '0.01' }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <Button type="submit" variant="contained" fullWidth disabled={savingPolicy}>
-                  Save Policy
-                </Button>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  label="Legacy Single Role"
-                  value={policyData.approver_role}
-                  onChange={(e) => setPolicyData('approver_role', e.target.value)}
-                  placeholder="finance-manager"
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  label="Level 1 Role"
-                  value={policyData.level1_role}
-                  onChange={(e) => setPolicyData('level1_role', e.target.value)}
-                  placeholder="finance-executive"
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  type="number"
-                  label="L1 Max Amount"
-                  value={policyData.level1_max_amount}
-                  onChange={(e) => setPolicyData('level1_max_amount', e.target.value)}
-                  inputProps={{ min: 0, step: '0.01' }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  label="Level 2 Role"
-                  value={policyData.level2_role}
-                  onChange={(e) => setPolicyData('level2_role', e.target.value)}
-                  placeholder="finance-manager"
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  type="number"
-                  label="SLA (Hours)"
-                  value={policyData.sla_hours}
-                  onChange={(e) => setPolicyData('sla_hours', e.target.value)}
-                  inputProps={{ min: 1, step: 1 }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  label="Escalation Role"
-                  value={policyData.escalation_role}
-                  onChange={(e) => setPolicyData('escalation_role', e.target.value)}
-                  placeholder="finance-director"
-                  fullWidth
-                />
-              </Grid>
-            </Grid>
-          </form>
-      </SurfaceCard>
-
-      <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search, change status, or adjust date range.">
+      <SurfaceCard
+          title="Live Filters"
+          subtitle="Results update automatically while you search, change status, or adjust date range."
+          cardSx={{ borderRadius: '18px' }}
+          contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+      >
           <FilterToolbar onReset={resetFilters}>
-            <Grid container spacing={2} alignItems="center">
+            <Grid container spacing={1.25} alignItems="center">
               <Grid item xs={12} md={3}>
                 <TextField
+                  size="small"
                   label="Search entry or description"
                   value={localFilters.search}
                   onChange={(e) => updateFilter('search', e.target.value)}
@@ -373,6 +255,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
               </Grid>
               <Grid item xs={12} md={2}>
                 <TextField
+                  size="small"
                   select
                   label="Status"
                   value={localFilters.status}
@@ -387,6 +270,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
               </Grid>
               <Grid item xs={12} md={2}>
                 <TextField
+                  size="small"
                   label="From"
                   type="date"
                   value={localFilters.from}
@@ -397,6 +281,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
               </Grid>
               <Grid item xs={12} md={2}>
                 <TextField
+                  size="small"
                   label="To"
                   type="date"
                   value={localFilters.to}
@@ -445,11 +330,13 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                 <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">
-                  <Box sx={{ display: 'inline-flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Box sx={{ display: 'inline-flex', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <Button size="small" variant="outlined" component={Link} href={route('accounting.journals.show', entry.id)}>
+                      Open
+                    </Button>
                     {entry.document_url ? (
                       <Button size="small" variant="outlined" onClick={() => router.visit(entry.document_url)}>Open Source</Button>
                     ) : null}
-                    <Link href={route('accounting.journals.show', entry.id)}>Open</Link>
                     {entry.status === 'draft' && (
                       <>
                         <Button size="small" variant="outlined" onClick={() => router.visit(route('accounting.journals.edit', entry.id))}>Edit</Button>
@@ -463,6 +350,155 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
             )}
           />
       </SurfaceCard>
+
+      {templatesEnabled && (
+        <Dialog open={openTemplatesHub} onClose={() => setOpenTemplatesHub(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Templates & Recurring</DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+              <Button size="small" variant="outlined" onClick={() => setOpenApply(true)} disabled={templates.length === 0}>Apply Template</Button>
+              <Button size="small" variant="outlined" onClick={() => setOpenRecurring(true)} disabled={templates.length === 0}>Schedule Recurring</Button>
+              <Button size="small" variant="contained" onClick={() => router.post(route('accounting.journals.recurring.run'))}>Run Due Recurring</Button>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Active Templates</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {templates.length === 0 && <Typography variant="caption" color="text.secondary">No templates yet.</Typography>}
+                  {templates.map((tpl) => (
+                    <Chip key={tpl.id} label={tpl.name} size="small" variant="outlined" />
+                  ))}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Recurring Queue</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {recurringProfiles.length === 0 && <Typography variant="caption" color="text.secondary">No recurring profiles.</Typography>}
+                  {recurringProfiles.map((p) => (
+                    <Chip key={p.id} size="small" label={`${p.template?.name || 'Template'} · ${p.frequency} · ${p.next_run_date || '-'}`} />
+                  ))}
+                </Box>
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setOpenTemplatesHub(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      <Dialog open={openPolicy} onClose={() => setOpenPolicy(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Approval Policy</DialogTitle>
+        <form onSubmit={savePolicy}>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  select
+                  label="Policy Active"
+                  value={policyData.is_active ? 'yes' : 'no'}
+                  onChange={(e) => setPolicyData('is_active', e.target.value === 'yes')}
+                  fullWidth
+                >
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  select
+                  label="Maker Checker"
+                  value={policyData.enforce_maker_checker ? 'yes' : 'no'}
+                  onChange={(e) => setPolicyData('enforce_maker_checker', e.target.value === 'yes')}
+                  fullWidth
+                >
+                  <MenuItem value="yes">Enforce</MenuItem>
+                  <MenuItem value="no">Disable</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Auto-Post Below"
+                  value={policyData.auto_post_below}
+                  onChange={(e) => setPolicyData('auto_post_below', e.target.value)}
+                  inputProps={{ min: 0, step: '0.01' }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  label="Legacy Single Role"
+                  value={policyData.approver_role}
+                  onChange={(e) => setPolicyData('approver_role', e.target.value)}
+                  placeholder="finance-manager"
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  label="Level 1 Role"
+                  value={policyData.level1_role}
+                  onChange={(e) => setPolicyData('level1_role', e.target.value)}
+                  placeholder="finance-executive"
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="L1 Max Amount"
+                  value={policyData.level1_max_amount}
+                  onChange={(e) => setPolicyData('level1_max_amount', e.target.value)}
+                  inputProps={{ min: 0, step: '0.01' }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  label="Level 2 Role"
+                  value={policyData.level2_role}
+                  onChange={(e) => setPolicyData('level2_role', e.target.value)}
+                  placeholder="finance-manager"
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="SLA (Hours)"
+                  value={policyData.sla_hours}
+                  onChange={(e) => setPolicyData('sla_hours', e.target.value)}
+                  inputProps={{ min: 1, step: 1 }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  size="small"
+                  label="Escalation Role"
+                  value={policyData.escalation_role}
+                  onChange={(e) => setPolicyData('escalation_role', e.target.value)}
+                  placeholder="finance-director"
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setOpenPolicy(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={savingPolicy}>Save Policy</Button>
+          </DialogActions>
+        </form>
+      </Dialog>
 
       <Dialog open={openApply} onClose={() => setOpenApply(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Apply Journal Template</DialogTitle>

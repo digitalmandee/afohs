@@ -163,12 +163,15 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             <SurfaceCard
                 title="Filter Purchase Orders"
                 subtitle="Search by PO, vendor, warehouse, status, or date range with live updates."
+                cardSx={{ borderRadius: '18px' }}
+                contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
             >
                 <FilterToolbar onReset={resetFilters}>
                     <Box>
-                        <Grid container spacing={2} alignItems="center">
+                        <Grid container spacing={1.25} alignItems="center">
                             <Grid item xs={12} md={3}>
                                 <TextField
+                                    size="small"
                                     label="Search PO or vendor"
                                     value={localFilters.search}
                                     onChange={(e) => updateFilter('search', e.target.value)}
@@ -177,6 +180,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Status"
                                     value={localFilters.status}
@@ -193,6 +197,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Vendor"
                                     value={localFilters.vendor_id}
@@ -207,6 +212,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Warehouse"
                                     value={localFilters.warehouse_id}
@@ -221,6 +227,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Restaurant"
                                     value={localFilters.tenant_id}
@@ -235,6 +242,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={1.5}>
                                 <TextField
+                                    size="small"
                                     label="From"
                                     type="date"
                                     value={localFilters.from}
@@ -245,6 +253,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </Grid>
                             <Grid item xs={12} md={1.5}>
                                 <TextField
+                                    size="small"
                                     label="To"
                                     type="date"
                                     value={localFilters.to}

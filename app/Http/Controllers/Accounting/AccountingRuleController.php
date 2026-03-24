@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountingRule;
 use App\Models\CoaAccount;
 use App\Services\Accounting\Support\AccountingHealth;
+use App\Services\Accounting\StandardPostingRuleBootstrapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,7 @@ class AccountingRuleController extends Controller
     public function index(Request $request)
     {
         $health = app(AccountingHealth::class);
+        $bootstrap = app(StandardPostingRuleBootstrapService::class);
         $perPage = (int) $request->integer('per_page', 25);
         $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 25;
         $query = AccountingRule::query();
@@ -43,8 +45,37 @@ class AccountingRuleController extends Controller
                     ->get(['id', 'full_code', 'name', 'type', 'normal_balance', 'level', 'is_postable'])
                 : collect(),
             'filters' => $request->only(['search', 'status', 'per_page']),
+            'standardRules' => $bootstrap->analyze(),
             'error' => !Schema::hasTable('coa_accounts') ? $health->setupMessage('Accounting Rules', [], ['coa_accounts']) : null,
         ]);
+    }
+
+    public function bootstrap(Request $request)
+    {
+        if (!Schema::hasTable('coa_accounts')) {
+            return redirect()->back()->with('error', 'Chart of Accounts is not configured yet. Create or migrate coa_accounts first.');
+        }
+
+        $result = app(StandardPostingRuleBootstrapService::class)->bootstrap($request->user()?->id);
+
+        $parts = [];
+        if (!empty($result['created_accounts'])) {
+            $parts[] = 'COA support added: ' . implode(', ', $result['created_accounts']);
+        }
+        if (!empty($result['created_rules'])) {
+            $parts[] = 'Rules created: ' . implode(', ', $result['created_rules']);
+        }
+        if (!empty($result['skipped_rules'])) {
+            $parts[] = 'Already mapped: ' . implode(', ', $result['skipped_rules']);
+        }
+        if (!empty($result['blocked_rules'])) {
+            $parts[] = 'Blocked: ' . collect($result['blocked_rules'])->map(fn ($item) => "{$item['code']} ({$item['reason']})")->implode(', ');
+        }
+
+        return redirect()->route('accounting.rules.index')->with(
+            !empty($result['created_rules']) ? 'success' : 'error',
+            implode(' | ', $parts ?: ['No posting rules were created.'])
+        );
     }
 
     public function store(Request $request)

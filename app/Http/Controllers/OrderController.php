@@ -2878,7 +2878,7 @@ class OrderController extends Controller
 
         $productsQuery = Product::query()
             ->posMenuEligible()
-            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'ingredients:id,name,inventory_product_id'])
+            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'ingredients:id,name,inventory_item_id'])
             ->where('category_id', $category_id);
         if (!$request->routeIs('pos.*')) {
             $restaurantId = session('active_restaurant_id') ?? tenant('id');
@@ -2955,7 +2955,7 @@ class OrderController extends Controller
         // Search products across all restaurants by ID or name
         $productsQuery = Product::query()
             ->posMenuEligible()
-            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'tenant:id,name', 'ingredients:id,name,inventory_product_id'])
+            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'tenant:id,name', 'ingredients:id,name,inventory_item_id'])
             ->where(function ($query) use ($searchTerm) {
                 $query
                     ->where('id', 'like', "%{$searchTerm}%")
@@ -3017,7 +3017,7 @@ class OrderController extends Controller
             $issues = [];
             $ingredients = collect($product->ingredients ?? []);
             $unlinkedIngredients = $ingredients
-                ->filter(fn ($ingredient) => empty($ingredient->inventory_product_id))
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
                 ->values();
 
             if ($unlinkedIngredients->isNotEmpty()) {

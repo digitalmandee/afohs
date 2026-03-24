@@ -6,10 +6,9 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
-function formatNumber(value, digits = 2) {
-    return Number(value || 0).toFixed(digits);
-}
+const formatNumber = formatReportAmount;
 
 function SectionTable({ title, rows = [] }) {
     return (
@@ -30,7 +29,7 @@ function SectionTable({ title, rows = [] }) {
                         <TableCell>{row.name}</TableCell>
                         <TableCell align="right">{formatNumber(row.balance)}</TableCell>
                         <TableCell align="right">
-                            <Button size="small" variant="outlined" onClick={() => router.get(row.ledger_url)}>
+                            <Button size="small" variant="outlined" onClick={() => row.ledger_url && router.get(row.ledger_url)} disabled={!row.ledger_url}>
                                 Ledger
                             </Button>
                         </TableCell>
@@ -60,21 +59,9 @@ export default function ProfitLoss({ income = [], expense = [], summary = {}, fi
             title="Profit & Loss"
             subtitle="Income and expense visibility with direct ledger drilldown and the same premium report styling as the rest of accounting."
             actions={[
-                <Button
-                    key="csv"
-                    variant="outlined"
-                    onClick={() => {
-                        window.location.href = route('accounting.reports.profit-loss', {
-                            ...localFilters,
-                            export: 'csv',
-                        });
-                    }}
-                >
-                    Export CSV
-                </Button>,
-                <Button key="print" variant="outlined" onClick={() => window.print()}>
-                    Print
-                </Button>,
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.profit-loss.pdf', sanitizeFilters(localFilters))}>Download PDF</Button>,
+                <Button key="csv" variant="outlined" onClick={() => downloadReportCsv('accounting.reports.profit-loss', localFilters)}>Export CSV</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.profit-loss.print', sanitizeFilters(localFilters))}>Print</Button>,
             ]}
         >
             <Grid container spacing={2.25}>

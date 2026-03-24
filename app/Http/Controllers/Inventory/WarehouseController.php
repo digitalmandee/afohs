@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ingredient;
 use App\Models\InventoryDocument;
+use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\RestaurantWarehouseAssignment;
 use App\Models\Tenant;
@@ -39,6 +41,9 @@ class WarehouseController extends Controller
                     'total_locations' => 0,
                     'active_locations' => 0,
                     'tracked_products' => 0,
+                    'configured_products' => 0,
+                    'linked_ingredients' => 0,
+                    'legacy_only_ingredients' => 0,
                     'sellable_assignments' => 0,
                     'back_store_assignments' => 0,
                     'assignments' => collect(),
@@ -114,7 +119,10 @@ class WarehouseController extends Controller
                 'locationSummary' => [
                     'total_locations' => WarehouseLocation::query()->count(),
                     'active_locations' => WarehouseLocation::query()->where('status', 'active')->count(),
-                    'tracked_products' => InventoryTransaction::query()->distinct('product_id')->count('product_id'),
+                    'tracked_products' => InventoryTransaction::query()->distinct('inventory_item_id')->count('inventory_item_id'),
+                    'configured_products' => InventoryItem::query()->warehouseOperationalEligible()->count(),
+                    'linked_ingredients' => Ingredient::query()->whereNotNull('inventory_item_id')->count(),
+                    'legacy_only_ingredients' => Ingredient::query()->whereNull('inventory_item_id')->count(),
                     'sellable_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'sellable')->count(),
                     'back_store_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'back_store')->count(),
                     'assignments' => RestaurantWarehouseAssignment::query()
@@ -396,19 +404,22 @@ class WarehouseController extends Controller
 
     public function dashboard(Request $request)
     {
+        $configuredProducts = InventoryItem::query()->warehouseOperationalEligible()->count();
+        $linkedIngredients = Ingredient::query()->whereNotNull('inventory_item_id')->count();
+        $legacyOnlyIngredients = Ingredient::query()->whereNull('inventory_item_id')->count();
         $totalWarehouses = Warehouse::query()->count();
         $activeWarehouses = Warehouse::query()->where('status', 'active')->count();
         $activeLocations = WarehouseLocation::query()->where('status', 'active')->count();
         $lowStockCount = InventoryTransaction::query()
-            ->selectRaw('product_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
-            ->groupBy('product_id')
+            ->selectRaw('inventory_item_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
+            ->groupBy('inventory_item_id')
             ->havingRaw('COALESCE(SUM(qty_in - qty_out), 0) > 0')
             ->havingRaw('COALESCE(SUM(qty_in - qty_out), 0) <= 10')
             ->get()
             ->count();
         $outOfStockCount = InventoryTransaction::query()
-            ->selectRaw('product_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
-            ->groupBy('product_id')
+            ->selectRaw('inventory_item_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
+            ->groupBy('inventory_item_id')
             ->havingRaw('COALESCE(SUM(qty_in - qty_out), 0) <= 0')
             ->get()
             ->count();
@@ -474,6 +485,10 @@ class WarehouseController extends Controller
                 'total_warehouses' => $totalWarehouses,
                 'active_warehouses' => $activeWarehouses,
                 'active_locations' => $activeLocations,
+                'configured_products' => $configuredProducts,
+                'tracked_products' => (int) InventoryTransaction::query()->distinct('inventory_item_id')->count('inventory_item_id'),
+                'linked_ingredients' => $linkedIngredients,
+                'legacy_only_ingredients' => $legacyOnlyIngredients,
                 'low_stock_count' => $lowStockCount,
                 'out_of_stock_count' => $outOfStockCount,
                 'stock_value_total' => (float) InventoryTransaction::query()->sum('total_cost'),
@@ -637,18 +652,19 @@ class WarehouseController extends Controller
             : 'overview';
 
         $inventory = InventoryTransaction::query()
-            ->selectRaw('product_id, warehouse_location_id, COALESCE(SUM(qty_in), 0) as qty_in, COALESCE(SUM(qty_out), 0) as qty_out, COALESCE(SUM(qty_in - qty_out), 0) as on_hand, COALESCE(AVG(unit_cost), 0) as avg_cost, COALESCE(SUM(total_cost), 0) as value')
+            ->selectRaw('inventory_item_id, warehouse_location_id, COALESCE(SUM(qty_in), 0) as qty_in, COALESCE(SUM(qty_out), 0) as qty_out, COALESCE(SUM(qty_in - qty_out), 0) as on_hand, COALESCE(AVG(unit_cost), 0) as avg_cost, COALESCE(SUM(total_cost), 0) as value')
             ->where('warehouse_id', $warehouse->id)
-            ->groupBy('product_id', 'warehouse_location_id')
-            ->with(['product:id,name,menu_code', 'warehouseLocation:id,code,name'])
+            ->groupBy('inventory_item_id', 'warehouse_location_id')
+            ->with(['inventoryItem:id,name,sku', 'warehouseLocation:id,code,name'])
             ->orderByDesc('on_hand')
             ->limit(250)
             ->get()
             ->map(function ($row) {
                 return [
-                    'product_id' => $row->product_id,
-                    'product_name' => $row->product?->name,
-                    'product_code' => $row->product?->menu_code,
+                    'product_id' => $row->inventory_item_id,
+                    'inventory_item_id' => $row->inventory_item_id,
+                    'product_name' => $row->inventoryItem?->name,
+                    'product_code' => $row->inventoryItem?->sku,
                     'location' => $row->warehouseLocation ? ($row->warehouseLocation->code . ' · ' . $row->warehouseLocation->name) : 'No location',
                     'on_hand' => (float) $row->on_hand,
                     'reserved_qty' => 0,
@@ -671,7 +687,7 @@ class WarehouseController extends Controller
             ->get();
 
         $movements = InventoryTransaction::query()
-            ->with(['tenant:id,name', 'product:id,name,menu_code', 'warehouseLocation:id,code,name'])
+            ->with(['tenant:id,name', 'inventoryItem:id,name,sku', 'warehouseLocation:id,code,name'])
             ->where('warehouse_id', $warehouse->id)
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
@@ -699,6 +715,31 @@ class WarehouseController extends Controller
             ->orderBy('restaurant_id')
             ->get();
 
+        $configuredProducts = InventoryItem::query()->warehouseOperationalEligible()->count();
+        $linkedIngredients = Ingredient::query()->whereNotNull('inventory_item_id')->count();
+        $legacyOnlyIngredients = Ingredient::query()->whereNull('inventory_item_id')->count();
+        $stockedHereIds = InventoryTransaction::query()
+            ->where('warehouse_id', $warehouse->id)
+            ->distinct()
+            ->pluck('inventory_item_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values();
+        $stockedElsewhereIds = InventoryTransaction::query()
+            ->where('warehouse_id', '!=', $warehouse->id)
+            ->distinct()
+            ->pluck('inventory_item_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values();
+        $configuredWithoutMovements = max(
+            0,
+            $configuredProducts - InventoryTransaction::query()->distinct('inventory_item_id')->count('inventory_item_id')
+        );
+        $linkedIngredientsHere = Ingredient::query()
+            ->whereIn('inventory_item_id', $stockedHereIds->all())
+            ->count();
+
         return Inertia::render('App/Admin/Inventory/Warehouses/Show', [
             'warehouse' => $warehouse,
             'tab' => $tab,
@@ -707,6 +748,15 @@ class WarehouseController extends Controller
             'movements' => $movements,
             'valuation' => $valuation,
             'coverageAssignments' => $coverageAssignments,
+            'inventoryStatus' => [
+                'configured_products' => $configuredProducts,
+                'stocked_here_count' => $stockedHereIds->count(),
+                'stocked_elsewhere_count' => $stockedElsewhereIds->diff($stockedHereIds)->count(),
+                'configured_without_movements_count' => $configuredWithoutMovements,
+                'linked_ingredients' => $linkedIngredients,
+                'linked_ingredients_here' => $linkedIngredientsHere,
+                'legacy_only_ingredients' => $legacyOnlyIngredients,
+            ],
         ]);
     }
 

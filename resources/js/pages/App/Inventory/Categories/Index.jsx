@@ -292,7 +292,7 @@ export default function CategoryIndex({ categories, filters }) {
                                                 item
                                                 xs={12}
                                                 sx={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
-                                                onClick={() => router.visit(route(routeNameForContext('inventory.index'), { category_id: category.id }))}
+                                                onClick={() => router.visit(route(routeNameForContext('products.index'), { category_id: category.id }))}
                                             >
                                                 <div style={{ display: 'flex' }}>
                                                     <Box sx={{ width: 70, height: 70, mr: 2 }}>

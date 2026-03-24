@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, IconButton, Button, Card, CardContent, TextField, MenuItem, Grid, Alert } from '@mui/material';
+import { Box, Typography, IconButton, Button, Card, CardContent, TextField, MenuItem, Grid, Alert, Stack } from '@mui/material';
 import { Save as SaveIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { router } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
@@ -13,7 +13,7 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
     const [open, setOpen] = useState(true);
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
-        inventory_product_id: '',
+        inventory_item_id: '',
         description: '',
         total_quantity: '',
         unit: 'grams',
@@ -54,13 +54,28 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
             >
 
                 {/* Header */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <IconButton onClick={() => router.visit(route(routeNameForContext('ingredients.index')))}>
-                        <ArrowBackIcon sx={{ color: '#063455' }} />
-                    </IconButton>
-                    <Typography sx={{ fontWeight: '600', fontSize: '30px', color: '#063455' }}>
-                        Add New Ingredient
-                    </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <IconButton onClick={() => router.visit(route(routeNameForContext('ingredients.index')))}>
+                            <ArrowBackIcon sx={{ color: '#063455' }} />
+                        </IconButton>
+                        <Box>
+                            <Typography sx={{ fontWeight: '600', fontSize: '30px', color: '#063455' }}>
+                                Add New Ingredient
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                Ingredients power recipes. Link one to an Inventory Item when warehouse stock should be the source of truth.
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                        <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} sx={{ borderRadius: '16px', textTransform: 'none' }}>
+                            View Inventory Items
+                        </Button>
+                        <Button variant="contained" onClick={() => router.visit(route(routeNameForContext('inventory.create')))} sx={{ backgroundColor: '#063455', borderRadius: '16px', textTransform: 'none' }}>
+                            Create Inventory Item
+                        </Button>
+                    </Stack>
                 </Box>
 
                 {/* Form */}
@@ -90,19 +105,30 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
                                     <TextField
                                         fullWidth
                                         select
-                                        label="Linked Raw-Material Inventory Item"
-                                        value={data.inventory_product_id}
-                                        onChange={(e) => setData('inventory_product_id', e.target.value)}
-                                        error={!!errors.inventory_product_id}
-                                        helperText={errors.inventory_product_id || 'Only stock-managed raw-material products can be linked here for unified warehouse deduction.'}
+                                        label="Inventory Item"
+                                        value={data.inventory_item_id}
+                                        onChange={(e) => setData('inventory_item_id', e.target.value)}
+                                        error={!!errors.inventory_item_id}
+                                        helperText={errors.inventory_item_id || 'Link an inventory item when this ingredient should consume warehouse stock.'}
                                     >
                                         <MenuItem value="">Not linked yet</MenuItem>
-                                        {rawMaterialProducts.map((product) => (
-                                            <MenuItem key={product.id} value={product.id}>
-                                                {product.menu_code ? `${product.menu_code} · ` : ''}{product.name}
+                                        {rawMaterialProducts.map((inventoryItem) => (
+                                            <MenuItem key={inventoryItem.id} value={inventoryItem.id}>
+                                                {inventoryItem.menu_code ? `${inventoryItem.menu_code} · ` : ''}{inventoryItem.name}
                                             </MenuItem>
                                         ))}
                                     </TextField>
+                                </Grid>
+
+                                <Grid item xs={12}>
+                                    <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                                        <Button variant="outlined" size="small" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} sx={{ textTransform: 'none' }}>
+                                            Link Existing Inventory Item
+                                        </Button>
+                                        <Button variant="text" size="small" onClick={() => router.visit(route(routeNameForContext('inventory.create')))} sx={{ textTransform: 'none' }}>
+                                            Create Inventory Item
+                                        </Button>
+                                    </Stack>
                                 </Grid>
 
                                 <Grid item xs={12}>
@@ -149,7 +175,7 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
                                 <Grid item xs={12}>
                                     <Alert severity="info">
                                         <Typography variant="body2">
-                                            <strong>Note:</strong> Linked ingredients use warehouse stock as the source of truth. Legacy direct quantities are only for non-linked ingredients during migration.
+                                            <strong>Note:</strong> Inventory Items hold stock, purchasing, and warehouse movements. Ingredients only keep manual quantities when they are not yet linked to an Inventory Item.
                                         </Typography>
                                     </Alert>
                                 </Grid>

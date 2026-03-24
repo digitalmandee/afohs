@@ -49,14 +49,14 @@ class RestaurantInventoryResolver
 
     public function aggregateBalancesForAssignments(array $productIds, Collection|EloquentCollection $assignments): Collection
     {
-        $productIds = collect($productIds)->filter()->map(fn ($id) => (int) $id)->unique()->values();
-        if ($productIds->isEmpty() || $assignments->isEmpty()) {
+        $inventoryItemIds = collect($productIds)->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        if ($inventoryItemIds->isEmpty() || $assignments->isEmpty()) {
             return collect();
         }
 
         return InventoryTransaction::query()
-            ->selectRaw('product_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
-            ->whereIn('product_id', $productIds->all())
+            ->selectRaw('inventory_item_id, COALESCE(SUM(qty_in - qty_out), 0) as balance')
+            ->whereIn('inventory_item_id', $inventoryItemIds->all())
             ->where(function ($query) use ($assignments) {
                 foreach ($assignments as $assignment) {
                     $query->orWhere(function ($nested) use ($assignment) {
@@ -67,8 +67,8 @@ class RestaurantInventoryResolver
                     });
                 }
             })
-            ->groupBy('product_id')
-            ->pluck('balance', 'product_id')
+            ->groupBy('inventory_item_id')
+            ->pluck('balance', 'inventory_item_id')
             ->map(fn ($balance) => (float) $balance);
     }
 

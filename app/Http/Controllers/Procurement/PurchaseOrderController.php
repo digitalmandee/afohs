@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
-use App\Models\Product;
+use App\Models\Ingredient;
+use App\Models\InventoryItem;
+use App\Models\InventoryTransaction;
 use App\Models\PurchaseOrder;
 use App\Models\Tenant;
 use App\Models\Vendor;
@@ -104,20 +106,43 @@ class PurchaseOrderController extends Controller
 
     public function create()
     {
+        $warehouses = Warehouse::with('tenant:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'tenant_id', 'status']);
+
+        $products = $this->buildProcurementProductOptions($warehouses->pluck('id')->all());
+        $productCount = $products->count();
+        $legacyOnlyIngredients = Ingredient::query()->whereNull('inventory_item_id')->count();
+        $linkedIngredients = Ingredient::query()->whereNotNull('inventory_item_id')->count();
+
         return Inertia::render('App/Admin/Procurement/PurchaseOrders/Create', [
             'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
-            'warehouses' => Warehouse::with('tenant:id,name')
-                ->orderBy('name')
-                ->get(['id', 'name', 'tenant_id', 'status']),
-            'products' => Product::query()
-                ->procurementEligible()
-                ->orderBy('name')
-                ->get(['id', 'name', 'menu_code', 'base_price', 'unit_id']),
+            'warehouses' => $warehouses,
+            'products' => $products->values(),
+            'inventorySummary' => [
+                'product_count' => $productCount,
+                'linked_ingredients' => $linkedIngredients,
+                'legacy_only_ingredients' => $legacyOnlyIngredients,
+                'empty_reason' => $productCount === 0
+                    ? ($legacyOnlyIngredients > 0
+                        ? 'Ingredients exist, but they are not linked to warehouse inventory items yet.'
+                        : 'No purchasable inventory items are configured yet.')
+                    : null,
+            ],
         ]);
     }
 
     public function store(Request $request)
     {
+        $request->merge([
+            'items' => collect($request->input('items', []))->map(function ($item) {
+                if (!isset($item['inventory_item_id']) && isset($item['product_id'])) {
+                    $item['inventory_item_id'] = $item['product_id'];
+                }
+                return $item;
+            })->all(),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'vendor_id' => 'required|exists:vendors,id',
             'warehouse_id' => 'required|exists:warehouses,id',
@@ -126,9 +151,9 @@ class PurchaseOrderController extends Controller
             'currency' => 'nullable|string|max:8',
             'remarks' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => [
+            'items.*.inventory_item_id' => [
                 'required',
-                Rule::exists('products', 'id'),
+                Rule::exists('inventory_items', 'id'),
             ],
             'items.*.qty_ordered' => 'required|numeric|min:0.001',
             'items.*.unit_cost' => 'required|numeric|min:0',
@@ -150,13 +175,13 @@ class PurchaseOrderController extends Controller
 
         $data = $validator->validated();
         $submittedItemIds = collect($data['items'] ?? [])
-            ->pluck('product_id')
+            ->pluck('inventory_item_id')
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
 
-        $eligibleIds = Product::query()
+        $eligibleIds = InventoryItem::query()
             ->procurementEligible()
             ->whereIn('id', $submittedItemIds)
             ->pluck('id')
@@ -166,8 +191,8 @@ class PurchaseOrderController extends Controller
         if ($invalidIds->isNotEmpty()) {
             $ineligibleErrors = [];
             foreach (($data['items'] ?? []) as $index => $item) {
-                if (in_array((int) ($item['product_id'] ?? 0), $invalidIds->all(), true)) {
-                    $ineligibleErrors["items.{$index}.product_id"] = 'Only active purchasable raw-material items can be ordered in PO.';
+                if (in_array((int) ($item['inventory_item_id'] ?? 0), $invalidIds->all(), true)) {
+                    $ineligibleErrors["items.{$index}.inventory_item_id"] = 'Only active purchasable inventory items can be ordered in PO.';
                 }
             }
 
@@ -177,7 +202,7 @@ class PurchaseOrderController extends Controller
                 'user_id' => $request->user()?->id,
                 'vendor_id' => $data['vendor_id'] ?? null,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
-                'invalid_product_ids' => $invalidIds->all(),
+                'invalid_inventory_item_ids' => $invalidIds->all(),
             ]);
 
             throw ValidationException::withMessages($ineligibleErrors);
@@ -210,7 +235,8 @@ class PurchaseOrderController extends Controller
                 $lineTotal = $item['qty_ordered'] * $item['unit_cost'];
                 $subTotal += $lineTotal;
                 $order->items()->create([
-                    'product_id' => $item['product_id'],
+                    'product_id' => null,
+                    'inventory_item_id' => $item['inventory_item_id'],
                     'qty_ordered' => $item['qty_ordered'],
                     'unit_cost' => $item['unit_cost'],
                     'line_total' => $lineTotal,
@@ -309,5 +335,54 @@ class PurchaseOrderController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Purchase order rejected.');
+    }
+
+    protected function buildProcurementProductOptions(array $warehouseIds = [])
+    {
+        $products = InventoryItem::query()
+            ->procurementEligible()
+            ->with('unit:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku', 'default_unit_cost', 'unit_id']);
+
+        $productIds = $products->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $ingredientGroups = Ingredient::query()
+            ->whereIn('inventory_item_id', $productIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'inventory_item_id'])
+            ->groupBy('inventory_item_id');
+
+        $stockByProductAndWarehouse = InventoryTransaction::query()
+            ->when(!empty($warehouseIds), fn ($query) => $query->whereIn('warehouse_id', $warehouseIds))
+            ->whereIn('inventory_item_id', $productIds)
+            ->selectRaw('inventory_item_id, warehouse_id, COALESCE(SUM(qty_in - qty_out), 0) as on_hand')
+            ->groupBy('inventory_item_id', 'warehouse_id')
+            ->get()
+            ->groupBy('inventory_item_id');
+
+        return $products->map(function (InventoryItem $product) use ($ingredientGroups, $stockByProductAndWarehouse) {
+            $warehouseSnapshots = collect($stockByProductAndWarehouse->get($product->id, collect()))
+                ->mapWithKeys(fn ($row) => [(string) $row->warehouse_id => (float) $row->on_hand])
+                ->all();
+
+            $linkedIngredients = collect($ingredientGroups->get($product->id, collect()))
+                ->pluck('name')
+                ->values()
+                ->all();
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'menu_code' => $product->sku,
+                'base_price' => (float) ($product->default_unit_cost ?? 0),
+                'unit_id' => $product->unit_id,
+                'unit_name' => $product->unit?->name,
+                'linked_ingredient_names' => $linkedIngredients,
+                'linked_ingredient_count' => count($linkedIngredients),
+                'stock_on_hand_total' => (float) array_sum($warehouseSnapshots),
+                'stock_by_warehouse' => $warehouseSnapshots,
+            ];
+        });
     }
 }

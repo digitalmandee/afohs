@@ -12,6 +12,7 @@ class Ingredient extends BaseModel
     protected $fillable = [
         'name',
         'inventory_product_id',
+        'inventory_item_id',
         'description',
         'total_quantity',
         'used_quantity',
@@ -40,9 +41,14 @@ class Ingredient extends BaseModel
                     ->withTimestamps();
     }
 
+    public function inventoryItem()
+    {
+        return $this->belongsTo(InventoryItem::class, 'inventory_item_id');
+    }
+
     public function inventoryProduct()
     {
-        return $this->belongsTo(Product::class, 'inventory_product_id');
+        return $this->inventoryItem();
     }
 
     /**

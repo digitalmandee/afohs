@@ -23,7 +23,7 @@ const ProductsTrashed = ({ trashedProducts, filters }) => {
 
     const handleSearch = (e) => {
         setSearch(e.target.value);
-        router.get(route(routeNameForContext('inventory.trashed')), { search: e.target.value }, { preserveState: true, replace: true });
+        router.get(route(routeNameForContext('products.trashed')), { search: e.target.value }, { preserveState: true, replace: true });
     };
 
     // Restore
@@ -36,7 +36,7 @@ const ProductsTrashed = ({ trashedProducts, filters }) => {
         if (!selectedItem) return;
         setProcessing(true);
         router.post(
-            route(routeNameForContext('inventory.restore'), selectedItem.id),
+            route(routeNameForContext('products.restore'), selectedItem.id),
             {},
             {
                 onSuccess: () => {
@@ -59,7 +59,7 @@ const ProductsTrashed = ({ trashedProducts, filters }) => {
     const handleForceDelete = () => {
         if (!selectedItem) return;
         setProcessing(true);
-        router.delete(route(routeNameForContext('inventory.force-delete'), selectedItem.id), {
+        router.delete(route(routeNameForContext('products.force-delete'), selectedItem.id), {
             onSuccess: () => {
                 enqueueSnackbar('Product permanently deleted!', { variant: 'success' });
                 setDeleteModalOpen(false);
@@ -88,7 +88,7 @@ const ProductsTrashed = ({ trashedProducts, filters }) => {
             >
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
                     <Box display="flex" alignItems="center">
-                        <IconButton onClick={() => router.visit(route(routeNameForContext('inventory.index')))}>
+                        <IconButton onClick={() => router.visit(route(routeNameForContext('products.index')))}>
                             <ArrowBackIcon sx={{color:'#063455'}} />
                         </IconButton>
                         <Typography sx={{fontWeight:'700', fontSize:'30px', color:'#063455'}}>
@@ -152,7 +152,7 @@ const ProductsTrashed = ({ trashedProducts, filters }) => {
                 </TableContainer>
 
                 <Box mt={3} display="flex" justifyContent="center">
-                    <Pagination count={trashedProducts.last_page} page={trashedProducts.current_page} onChange={(e, p) => router.get(route(routeNameForContext('inventory.trashed')), { page: p, search }, { preserveState: true })} color="primary" />
+                    <Pagination count={trashedProducts.last_page} page={trashedProducts.current_page} onChange={(e, p) => router.get(route(routeNameForContext('products.trashed')), { page: p, search }, { preserveState: true })} color="primary" />
                 </Box>
             </Box>
 

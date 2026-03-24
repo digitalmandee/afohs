@@ -16,6 +16,7 @@ export default function WarehouseShow({
     movements = {},
     valuation = [],
     coverageAssignments = [],
+    inventoryStatus = {},
 }) {
     const onTabChange = (nextTab) => {
         router.get(route('inventory.warehouses.show', warehouse.id), { tab: nextTab }, { preserveState: true, preserveScroll: true, replace: true });
@@ -29,6 +30,9 @@ export default function WarehouseShow({
             actions={[
                 <Button key="back" variant="outlined" onClick={() => router.visit(route('inventory.warehouses.index'))}>
                     Back to Master
+                </Button>,
+                <Button key="items" variant="outlined" onClick={() => router.visit(route('pos.inventory.index'))}>
+                    Inventory Items
                 </Button>,
                 <Button key="ops" variant="contained" onClick={() => router.visit(route('inventory.operations.index'))}>
                     Stock Movements
@@ -72,6 +76,34 @@ export default function WarehouseShow({
 
             {tab === 'inventory' && (
                 <SurfaceCard title="Inventory" subtitle="On-hand and valuation by inventory item and location in this warehouse.">
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                        <Grid item xs={12} md={3}><StatCard label="Configured Inventory Items" value={inventoryStatus.configured_products || 0} tone="light" /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="Stocked Here" value={inventoryStatus.stocked_here_count || 0} tone="light" /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="Stocked Elsewhere" value={inventoryStatus.stocked_elsewhere_count || 0} tone="light" /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="No Movements Yet" value={inventoryStatus.configured_without_movements_count || 0} tone="muted" /></Grid>
+                    </Grid>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+                        <Chip size="small" variant="outlined" label={`Linked ingredients: ${inventoryStatus.linked_ingredients_here || 0} used here / ${inventoryStatus.linked_ingredients || 0} total`} />
+                        <Chip size="small" variant="outlined" color="warning" label={`Legacy-only ingredients: ${inventoryStatus.legacy_only_ingredients || 0}`} />
+                    </Stack>
+                    {inventory.length === 0 ? (
+                        <Box sx={{ mb: 2, p: 2, borderRadius: 3, border: '1px dashed', borderColor: 'divider', backgroundColor: 'rgba(6,52,85,0.03)' }}>
+                            <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                No warehouse stock is posted in this warehouse yet.
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                                Configured inventory items: {inventoryStatus.configured_products || 0}. Items stocked elsewhere: {inventoryStatus.stocked_elsewhere_count || 0}. Items with no posted movements anywhere: {inventoryStatus.configured_without_movements_count || 0}.
+                            </Typography>
+                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+                                <Button size="small" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                                    Add Inventory Item
+                                </Button>
+                                <Button size="small" variant="outlined" onClick={() => router.visit(route('pos.ingredients.index'))}>
+                                    Review Ingredients
+                                </Button>
+                            </Stack>
+                        </Box>
+                    ) : null}
                     <AdminDataTable
                         columns={[
                             { key: 'product', label: 'Inventory Item', minWidth: 260 },

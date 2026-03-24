@@ -36,7 +36,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                     name: ing.name,
                     unit: ing.unit,
                     remaining_quantity: ing.remaining_quantity,
-                    balance_source: ing.balance_source || (ing.inventory_product_id ? 'warehouse' : 'legacy'),
+                    balance_source: ing.balance_source || (ing.inventory_item_id ? 'warehouse' : 'legacy'),
                     quantity_used: ing.pivot?.quantity_used || 0,
                     cost: ing.pivot?.cost || 0,
                 })),
@@ -115,9 +115,9 @@ const ProductWithIngredients = ({ categories, product, id }) => {
         };
 
         if (id) {
-            put(route(routeNameForContext('inventory.update'), id), formData);
+            put(route(routeNameForContext('products.update'), id), formData);
         } else {
-            post(route(routeNameForContext('inventory.store')), formData);
+            post(route(routeNameForContext('products.store')), formData);
         }
     };
 
@@ -131,7 +131,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
         <Box sx={{ p: 3 }}>
             {/* Header */}
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Button startIcon={<BackIcon />} onClick={() => router.visit(route(routeNameForContext('inventory.index')))} sx={{ mr: 2 }}>
+                <Button startIcon={<BackIcon />} onClick={() => router.visit(route(routeNameForContext('products.index')))} sx={{ mr: 2 }}>
                     Back to Products
                 </Button>
                 <Typography variant="h4" fontWeight="bold">
@@ -381,7 +381,7 @@ const ProductWithIngredients = ({ categories, product, id }) => {
                     {/* Action Buttons */}
                     <Grid item xs={12}>
                         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                            <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} disabled={processing}>
+                            <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('products.index')))} disabled={processing}>
                                 Cancel
                             </Button>
                             <Button type="submit" variant="contained" startIcon={<SaveIcon />} disabled={processing} sx={{ backgroundColor: '#063455' }}>

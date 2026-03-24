@@ -6,6 +6,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 function SectionTable({ title, rows }) {
     return (
@@ -24,9 +25,9 @@ function SectionTable({ title, rows }) {
                     <TableRow key={`${row.code}-${index}`} hover>
                         <TableCell>{row.code}</TableCell>
                         <TableCell>{row.name}</TableCell>
-                        <TableCell align="right">{Number(row.balance || 0).toFixed(2)}</TableCell>
+                        <TableCell align="right">{formatReportAmount(row.balance)}</TableCell>
                         <TableCell align="right">
-                            <Button size="small" variant="outlined" onClick={() => router.get(row.ledger_url)}>
+                            <Button size="small" variant="outlined" onClick={() => row.ledger_url && router.get(row.ledger_url)} disabled={!row.ledger_url}>
                                 Ledger
                             </Button>
                         </TableCell>
@@ -38,35 +39,27 @@ function SectionTable({ title, rows }) {
 }
 
 export default function BalanceSheet({ assets = [], liabilities = [], equity = [], summary, filters }) {
+    const activeFilters = sanitizeFilters({
+        from: filters?.from || '',
+        to: filters?.to || '',
+    });
+
     return (
         <AppPage
             eyebrow="Accounting Reports"
             title="Balance Sheet"
             subtitle="Structured asset, liability, and equity visibility using the same premium reporting system as the upgraded accounting module."
             actions={[
-                <Button
-                    key="export"
-                    variant="outlined"
-                    onClick={() => {
-                        window.location.href = route('accounting.reports.balance-sheet', {
-                            from: filters?.from || '',
-                            to: filters?.to || '',
-                            export: 'csv',
-                        });
-                    }}
-                >
-                    Export CSV
-                </Button>,
-                <Button key="print" variant="outlined" onClick={() => window.print()}>
-                    Print
-                </Button>,
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.balance-sheet.pdf', activeFilters)}>Download PDF</Button>,
+                <Button key="export" variant="outlined" onClick={() => downloadReportCsv('accounting.reports.balance-sheet', activeFilters)}>Export CSV</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.balance-sheet.print', activeFilters)}>Print</Button>,
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Assets" value={Number(summary?.assets_total || 0).toFixed(2)} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Liabilities" value={Number(summary?.liabilities_total || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Equity" value={Number(summary?.equity_total || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Balance Gap" value={Number(summary?.difference || 0).toFixed(2)} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Assets" value={formatReportAmount(summary?.assets_total)} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Liabilities" value={formatReportAmount(summary?.liabilities_total)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Equity" value={formatReportAmount(summary?.equity_total)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Balance Gap" value={formatReportAmount(summary?.difference)} tone="muted" /></Grid>
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period while keeping the new accounting report layout consistent.">
@@ -80,7 +73,7 @@ export default function BalanceSheet({ assets = [], liabilities = [], equity = [
                         </Grid>
                         <Grid item xs={12} md={6}>
                             <Typography sx={{ mt: 1.5, color: 'text.secondary' }}>
-                                Liabilities + Equity: {Number(summary?.liabilities_equity_total || 0).toFixed(2)}
+                                Liabilities + Equity: {formatReportAmount(summary?.liabilities_equity_total)}
                             </Typography>
                         </Grid>
                     </Grid>

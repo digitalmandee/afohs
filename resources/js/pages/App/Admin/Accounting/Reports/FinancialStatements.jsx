@@ -6,6 +6,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 const metricRows = [
     { key: 'trial_balance_gap', label: 'Trial Balance Gap' },
@@ -23,9 +24,7 @@ const healthRows = [
     { key: 'net_margin', label: 'Net Margin', unit: '%', better: 'up' },
 ];
 
-function formatNumber(value, digits = 2) {
-    return Number(value || 0).toFixed(digits);
-}
+const formatNumber = formatReportAmount;
 
 export default function FinancialStatements({ filters, comparison = {}, currentHealth = {}, previousHealth = {}, healthComparison = {} }) {
     const [localFilters, setLocalFilters] = React.useState({
@@ -58,21 +57,9 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
             title="Financial Statements"
             subtitle="Executive comparison of current and previous periods with shared reporting components, cleaner metrics, and export-ready drilldown."
             actions={[
-                <Button
-                    key="csv"
-                    variant="outlined"
-                    onClick={() => {
-                        window.location.href = route('accounting.reports.financial-statements', {
-                            ...localFilters,
-                            export: 'csv',
-                        });
-                    }}
-                >
-                    Export CSV
-                </Button>,
-                <Button key="print" variant="outlined" onClick={() => window.print()}>
-                    Print
-                </Button>,
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.financial-statements.pdf', sanitizeFilters(localFilters))}>Download PDF</Button>,
+                <Button key="csv" variant="outlined" onClick={() => downloadReportCsv('accounting.reports.financial-statements', localFilters)}>Export CSV</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.financial-statements.print', sanitizeFilters(localFilters))}>Print</Button>,
             ]}
         >
             <Grid container spacing={2.25}>

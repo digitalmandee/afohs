@@ -25,24 +25,9 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
-const standardRuleCodes = [
-    { code: 'membership_invoice', label: 'Membership Invoice' },
-    { code: 'membership_receipt', label: 'Membership Receipt' },
-    { code: 'subscription_invoice', label: 'Subscription Invoice' },
-    { code: 'subscription_receipt', label: 'Subscription Receipt' },
-    { code: 'pos_invoice', label: 'POS Invoice' },
-    { code: 'pos_receipt', label: 'POS Receipt' },
-    { code: 'room_invoice', label: 'Room Invoice' },
-    { code: 'room_receipt', label: 'Room Receipt' },
-    { code: 'event_invoice', label: 'Event Invoice' },
-    { code: 'event_receipt', label: 'Event Receipt' },
-    { code: 'purchase_receipt', label: 'Goods Receipt' },
-    { code: 'vendor_bill', label: 'Vendor Bill' },
-    { code: 'vendor_payment', label: 'Vendor Payment' },
-];
-
-export default function Index({ rules, coaAccounts = [], filters }) {
+export default function Index({ rules, coaAccounts = [], filters, standardRules = [] }) {
     const [openModal, setOpenModal] = React.useState(false);
+    const [openBootstrap, setOpenBootstrap] = React.useState(false);
     const [editingRuleId, setEditingRuleId] = React.useState(null);
     const rows = rules?.data || [];
     const [localFilters, setLocalFilters] = React.useState({
@@ -69,7 +54,13 @@ export default function Index({ rules, coaAccounts = [], filters }) {
     }, [coaAccounts]);
 
     const existingCodes = React.useMemo(() => new Set(rows.map((rule) => rule.code)), [rows]);
-    const missingStandardRules = standardRuleCodes.filter((item) => !existingCodes.has(item.code));
+    const standardRuleMap = React.useMemo(() => {
+        const map = new Map();
+        (standardRules || []).forEach((rule) => map.set(rule.code, rule));
+        return map;
+    }, [standardRules]);
+    const missingStandardRules = (standardRules || []).filter((item) => item.status !== 'mapped');
+    const availableStandardRules = (standardRules || []).filter((item) => item.status !== 'mapped');
 
     const submitFilters = React.useCallback((nextFilters) => {
         const payload = {};
@@ -152,6 +143,28 @@ export default function Index({ rules, coaAccounts = [], filters }) {
         setOpenModal(true);
     };
 
+    const applyStandardPreset = (code) => {
+        if (!code) {
+            resetFormState();
+            return;
+        }
+
+        const preset = standardRuleMap.get(code);
+        if (!preset) return;
+
+        setData({
+            code: preset.code,
+            name: preset.name,
+            is_active: true,
+            lines: (preset.lines || []).map((line) => ({
+                account_id: line.use_payment_account ? '' : (line.account_id || ''),
+                side: line.side || 'debit',
+                ratio: line.ratio ?? 1,
+                use_payment_account: !!line.use_payment_account,
+            })),
+        });
+    };
+
     const openEdit = (rule) => {
         setEditingRuleId(rule.id);
         setData({
@@ -222,6 +235,9 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                 title="Posting Rules"
                 subtitle="Control how each source module posts into accounting with stronger visibility, coverage checks, and cleaner rule maintenance."
                 actions={[
+                    <Button key="load-standard" variant="outlined" onClick={() => setOpenBootstrap(true)}>
+                        Load Standard Rules
+                    </Button>,
                     <Button key="add" variant="contained" startIcon={<Add />} onClick={openCreate}>
                         Add Rule
                     </Button>,
@@ -235,30 +251,72 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                 </Grid>
 
                 {missingStandardRules.length > 0 ? (
-                    <Alert severity="warning" variant="outlined">
+                    <Alert
+                        severity="warning"
+                        variant="outlined"
+                        action={(
+                            <Button size="small" variant="outlined" onClick={() => setOpenBootstrap(true)}>
+                                Review
+                            </Button>
+                        )}
+                    >
                         Missing rule mappings: {missingStandardRules.map((item) => item.code).join(', ')}
                     </Alert>
                 ) : null}
 
                 <SurfaceCard title="Coverage Matrix" subtitle="Standard integration events that should be mapped before accounting cutover is considered complete.">
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {standardRuleCodes.map((item) => (
-                            <Chip
-                                key={item.code}
-                                label={`${item.label} (${item.code})`}
-                                size="small"
-                                color={existingCodes.has(item.code) ? 'success' : 'warning'}
-                                variant={existingCodes.has(item.code) ? 'filled' : 'outlined'}
-                            />
+                    <Grid container spacing={1.25}>
+                        {(standardRules || []).map((item) => (
+                            <Grid item xs={12} md={6} key={item.code}>
+                                <Box
+                                    sx={{
+                                        border: '1px solid rgba(226,232,240,0.95)',
+                                        borderRadius: '14px',
+                                        px: 1.25,
+                                        py: 1,
+                                        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)',
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                                        <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                            {item.label} ({item.code})
+                                        </Typography>
+                                        <Chip
+                                            size="small"
+                                            label={
+                                                item.status === 'mapped'
+                                                    ? 'Mapped'
+                                                    : item.status === 'ready'
+                                                        ? 'Ready'
+                                                        : item.status === 'ready_with_support'
+                                                            ? 'Auto COA'
+                                                            : 'Blocked'
+                                            }
+                                            color={
+                                                item.status === 'mapped'
+                                                    ? 'success'
+                                                    : item.status === 'blocked'
+                                                        ? 'error'
+                                                        : 'warning'
+                                            }
+                                            variant={item.status === 'mapped' ? 'filled' : 'outlined'}
+                                        />
+                                    </Box>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                        {item.detail}
+                                    </Typography>
+                                </Box>
+                            </Grid>
                         ))}
-                    </Box>
+                    </Grid>
                 </SurfaceCard>
 
                 <SurfaceCard title="Live Filters" subtitle="Filter posting rules by code, name, and activation status without using a manual search step.">
                     <FilterToolbar onReset={resetFilters}>
-                        <Grid container spacing={2}>
+                        <Grid container spacing={1.25}>
                             <Grid item xs={12} md={8}>
                                 <TextField
+                                    size="small"
                                     label="Search code or rule name"
                                     value={localFilters.search}
                                     onChange={(event) => updateFilters({ search: event.target.value })}
@@ -267,6 +325,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                             </Grid>
                             <Grid item xs={12} md={4}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Status"
                                     value={localFilters.status}
@@ -329,8 +388,29 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                 <form onSubmit={submit}>
                     <DialogContent>
                         <Grid container spacing={2} sx={{ mt: 0 }}>
+                            {!editingRuleId ? (
+                                <Grid item xs={12}>
+                                    <TextField
+                                        select
+                                        size="small"
+                                        label="Standard Preset"
+                                        value={availableStandardRules.find((rule) => rule.code === data.code)?.code || ''}
+                                        onChange={(event) => applyStandardPreset(event.target.value)}
+                                        fullWidth
+                                        helperText="Choose a standard rule to prefill debit and credit lines, or leave blank for a custom rule."
+                                    >
+                                        <MenuItem value="">Custom rule</MenuItem>
+                                        {availableStandardRules.map((rule) => (
+                                            <MenuItem key={rule.code} value={rule.code}>
+                                                {rule.label}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                </Grid>
+                            ) : null}
                             <Grid item xs={12} md={4}>
                                 <TextField
+                                    size="small"
                                     label="Code"
                                     value={data.code}
                                     onChange={(event) => setData('code', event.target.value)}
@@ -341,6 +421,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                             </Grid>
                             <Grid item xs={12} md={6}>
                                 <TextField
+                                    size="small"
                                     label="Name"
                                     value={data.name}
                                     onChange={(event) => setData('name', event.target.value)}
@@ -351,6 +432,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Active"
                                     value={data.is_active ? 'yes' : 'no'}
@@ -383,6 +465,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                                         <Grid item xs={12} md={5}>
                                             <TextField
                                                 select
+                                                size="small"
                                                 label="COA Account"
                                                 value={line.account_id}
                                                 onChange={(event) => updateLine(index, 'account_id', event.target.value)}
@@ -409,6 +492,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                                         <Grid item xs={12} md={2}>
                                             <TextField
                                                 select
+                                                size="small"
                                                 label="Side"
                                                 value={line.side}
                                                 onChange={(event) => updateLine(index, 'side', event.target.value)}
@@ -420,6 +504,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                                         </Grid>
                                         <Grid item xs={12} md={2}>
                                             <TextField
+                                                size="small"
                                                 label="Ratio"
                                                 type="number"
                                                 value={line.ratio}
@@ -432,6 +517,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                                         <Grid item xs={12} md={2}>
                                             <TextField
                                                 select
+                                                size="small"
                                                 label="Bank Map"
                                                 value={line.use_payment_account ? 'yes' : 'no'}
                                                 onChange={(event) => {
@@ -456,7 +542,7 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                                 );
                             })}
 
-                            <Button onClick={addLine}>Add Line</Button>
+                            <Button size="small" onClick={addLine}>Add Line</Button>
                         </Box>
                     </DialogContent>
                     <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -466,6 +552,69 @@ export default function Index({ rules, coaAccounts = [], filters }) {
                         </Button>
                     </DialogActions>
                 </form>
+            </Dialog>
+
+            <Dialog open={openBootstrap} onClose={() => setOpenBootstrap(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Standard Posting Rules</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Load the standard accounting integration rules and auto-provision the few supporting COA accounts needed for complete posting coverage.
+                    </Typography>
+                    <Grid container spacing={1.25}>
+                        {(standardRules || []).map((item) => (
+                            <Grid item xs={12} key={item.code}>
+                                <Box
+                                    sx={{
+                                        border: '1px solid rgba(226,232,240,0.95)',
+                                        borderRadius: '14px',
+                                        px: 1.5,
+                                        py: 1.2,
+                                        backgroundColor: 'rgba(248,250,252,0.75)',
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                            {item.label} ({item.code})
+                                        </Typography>
+                                        <Chip
+                                            size="small"
+                                            label={
+                                                item.status === 'mapped'
+                                                    ? 'Mapped'
+                                                    : item.status === 'ready'
+                                                        ? 'Ready to Create'
+                                                        : item.status === 'ready_with_support'
+                                                            ? 'Creates COA Support'
+                                                            : 'Blocked'
+                                            }
+                                            color={
+                                                item.status === 'mapped'
+                                                    ? 'success'
+                                                    : item.status === 'blocked'
+                                                        ? 'error'
+                                                        : 'warning'
+                                            }
+                                            variant={item.status === 'mapped' ? 'filled' : 'outlined'}
+                                        />
+                                    </Box>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                        {item.detail}
+                                    </Typography>
+                                </Box>
+                            </Grid>
+                        ))}
+                    </Grid>
+                </DialogContent>
+                <DialogActions sx={{ px: 3, pb: 2 }}>
+                    <Button onClick={() => setOpenBootstrap(false)}>Close</Button>
+                    <Button
+                        variant="contained"
+                        onClick={() => router.post(route('accounting.rules.bootstrap'))}
+                        disabled={missingStandardRules.length === 0}
+                    >
+                        Create Standard Rules
+                    </Button>
+                </DialogActions>
             </Dialog>
         </>
     );

@@ -7,6 +7,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportPdf, formatReportAmount, formatReportCount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 const buckets = ['current', '1-30', '31-60', '61-90', '90+'];
 
@@ -106,18 +107,22 @@ export default function ReceivablesAging({ rows, summary, filters }) {
             eyebrow="Accounting Reports"
             title="Receivables Aging"
             subtitle="Open invoice aging across members, corporate accounts, and other receivable sources with live filtering and denser review."
+            actions={[
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.receivables-aging.pdf', sanitizeFilters(localFilters))}>Download PDF</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.receivables-aging.print', sanitizeFilters(localFilters))}>Print</Button>,
+            ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Open Documents" value={summary?.records || 0} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Outstanding" value={Number(summary?.total_balance || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Average Age (Days)" value={summary?.average_age || 0} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="90+ Exposure" value={Number(summary?.bucket_balance?.['90+'] || 0).toFixed(2)} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Open Documents" value={formatReportCount(summary?.records)} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Total Outstanding" value={formatReportAmount(summary?.total_balance)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Average Age (Days)" value={formatReportCount(summary?.average_age)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="90+ Exposure" value={formatReportAmount(summary?.bucket_balance?.['90+'])} tone="muted" /></Grid>
             </Grid>
 
             <SurfaceCard
                 title="Aging Buckets"
                 subtitle="Live distribution of open receivables across aging bands."
-                actions={<Button variant="outlined" onClick={() => window.print()}>Print</Button>}
+                actions={<Button variant="outlined" onClick={() => openReportPrint('accounting.reports.receivables-aging.print', sanitizeFilters(localFilters))}>Print</Button>}
             >
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {buckets.map((bucket) => (
@@ -125,7 +130,7 @@ export default function ReceivablesAging({ rows, summary, filters }) {
                             key={bucket}
                             size="small"
                             variant="outlined"
-                            label={`${bucket}: ${summary?.bucket_count?.[bucket] || 0} | ${Number(summary?.bucket_balance?.[bucket] || 0).toFixed(2)}`}
+                            label={`${bucket}: ${formatReportCount(summary?.bucket_count?.[bucket])} | ${formatReportAmount(summary?.bucket_balance?.[bucket])}`}
                             sx={{ borderColor: 'primary.main', color: 'primary.main' }}
                         />
                     ))}
@@ -200,14 +205,14 @@ export default function ReceivablesAging({ rows, summary, filters }) {
                                     variant="outlined"
                                 />
                             </TableCell>
-                            <TableCell align="right">{Number(row.total || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right">{Number(row.paid || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(row.balance || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatReportAmount(row.total)}</TableCell>
+                            <TableCell align="right">{formatReportAmount(row.paid)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatReportAmount(row.balance)}</TableCell>
                         </TableRow>
                     )}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1.25, display: 'block' }}>
-                    Totals: Outstanding {Number(summary?.total_balance || 0).toFixed(2)} | 90+ Exposure {Number(summary?.bucket_balance?.['90+'] || 0).toFixed(2)}
+                    Totals: Outstanding {formatReportAmount(summary?.total_balance)} | 90+ Exposure {formatReportAmount(summary?.bucket_balance?.['90+'])}
                 </Typography>
             </SurfaceCard>
         </AppPage>

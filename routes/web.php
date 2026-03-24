@@ -55,6 +55,7 @@ use App\Http\Controllers\PayrollApiController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\Inventory\InventoryOperationController;
 use App\Http\Controllers\Inventory\WarehouseController;
+use App\Http\Controllers\InventoryItemController;
 use App\Http\Controllers\Procurement\GoodsReceiptController;
 use App\Http\Controllers\Procurement\ProcurementInsightsController;
 use App\Http\Controllers\Procurement\PurchaseOrderController;
@@ -222,15 +223,22 @@ Route::prefix('pos')->middleware('web')->group(function () {
         Route::delete('inventory/sub-categories/{id}', [\App\Http\Controllers\PosSubCategoryController::class, 'destroy'])->name('pos.sub-categories.destroy');
         Route::delete('inventory/sub-categories/{id}/force-delete', [\App\Http\Controllers\PosSubCategoryController::class, 'forceDelete'])->name('pos.sub-categories.force-delete');
 
-        Route::get('inventory/products/trashed', [\App\Http\Controllers\InventoryController::class, 'trashed'])->name('pos.inventory.trashed');
-        Route::post('inventory/products/{id}/restore', [\App\Http\Controllers\InventoryController::class, 'restore'])->name('pos.inventory.restore');
-        Route::delete('inventory/products/{id}/force-delete', [\App\Http\Controllers\InventoryController::class, 'forceDelete'])->name('pos.inventory.force-delete');
-        Route::get('inventory/products', [\App\Http\Controllers\InventoryController::class, 'index'])->name('pos.inventory.index');
+        Route::get('inventory/items', [InventoryItemController::class, 'index'])->name('pos.inventory.index');
+        Route::get('inventory/items/create', [InventoryItemController::class, 'create'])->name('pos.inventory.create');
+        Route::post('inventory/items', [InventoryItemController::class, 'store'])->name('pos.inventory.store');
+        Route::get('inventory/items/{inventoryItem}', [InventoryItemController::class, 'show'])->name('pos.inventory.show');
+        Route::put('inventory/items/{inventoryItem}', [InventoryItemController::class, 'update'])->name('pos.inventory.update');
+        Route::delete('inventory/items/{inventoryItem}', [InventoryItemController::class, 'destroy'])->name('pos.inventory.destroy');
+
+        Route::get('inventory/products/trashed', [\App\Http\Controllers\InventoryController::class, 'trashed'])->name('pos.products.trashed');
+        Route::post('inventory/products/{id}/restore', [\App\Http\Controllers\InventoryController::class, 'restore'])->name('pos.products.restore');
+        Route::delete('inventory/products/{id}/force-delete', [\App\Http\Controllers\InventoryController::class, 'forceDelete'])->name('pos.products.force-delete');
+        Route::get('inventory/products', [\App\Http\Controllers\InventoryController::class, 'index'])->name('pos.products.index');
         Route::get('inventory/products/create', [\App\Http\Controllers\InventoryController::class, 'create'])->name('pos.product.create');
-        Route::get('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'show'])->name('pos.inventory.show');
-        Route::put('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'update'])->name('pos.inventory.update');
-        Route::delete('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'destroy'])->name('pos.inventory.destroy');
-        Route::post('inventory/products', [\App\Http\Controllers\InventoryController::class, 'store'])->name('pos.inventory.store');
+        Route::get('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'show'])->name('pos.products.show');
+        Route::put('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'update'])->name('pos.products.update');
+        Route::delete('inventory/products/{id}', [\App\Http\Controllers\InventoryController::class, 'destroy'])->name('pos.products.destroy');
+        Route::post('inventory/products', [\App\Http\Controllers\InventoryController::class, 'store'])->name('pos.products.store');
         Route::get('inventory/products/{id}/single', [\App\Http\Controllers\InventoryController::class, 'singleProduct'])->name('pos.product.single');
 
         Route::get('api/sub-categories/{category_id}', [\App\Http\Controllers\InventoryController::class, 'getSubCategoriesByCategory'])->name('pos.api.sub-categories.by-category');
@@ -1567,18 +1575,33 @@ Route::prefix('admin/accounting')->middleware(['auth'])->group(function () {
     Route::post('budgets', [BudgetController::class, 'store'])->name('accounting.budgets.store');
 
     Route::get('rules', [AccountingRuleController::class, 'index'])->name('accounting.rules.index');
+    Route::post('rules/bootstrap', [AccountingRuleController::class, 'bootstrap'])->name('accounting.rules.bootstrap');
     Route::post('rules', [AccountingRuleController::class, 'store'])->name('accounting.rules.store');
     Route::put('rules/{accountingRule}', [AccountingRuleController::class, 'update'])->name('accounting.rules.update');
     Route::delete('rules/{accountingRule}', [AccountingRuleController::class, 'destroy'])->name('accounting.rules.destroy');
 
     Route::get('reports/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('accounting.reports.trial-balance');
+    Route::get('reports/trial-balance/print', [AccountingReportController::class, 'trialBalancePrint'])->name('accounting.reports.trial-balance.print');
+    Route::get('reports/trial-balance/pdf', [AccountingReportController::class, 'trialBalancePdf'])->name('accounting.reports.trial-balance.pdf');
     Route::get('reports/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('accounting.reports.balance-sheet');
+    Route::get('reports/balance-sheet/print', [AccountingReportController::class, 'balanceSheetPrint'])->name('accounting.reports.balance-sheet.print');
+    Route::get('reports/balance-sheet/pdf', [AccountingReportController::class, 'balanceSheetPdf'])->name('accounting.reports.balance-sheet.pdf');
     Route::get('reports/profit-loss', [AccountingReportController::class, 'profitLoss'])->name('accounting.reports.profit-loss');
+    Route::get('reports/profit-loss/print', [AccountingReportController::class, 'profitLossPrint'])->name('accounting.reports.profit-loss.print');
+    Route::get('reports/profit-loss/pdf', [AccountingReportController::class, 'profitLossPdf'])->name('accounting.reports.profit-loss.pdf');
     Route::get('reports/financial-statements', [AccountingReportController::class, 'financialStatements'])->name('accounting.reports.financial-statements');
+    Route::get('reports/financial-statements/print', [AccountingReportController::class, 'financialStatementsPrint'])->name('accounting.reports.financial-statements.print');
+    Route::get('reports/financial-statements/pdf', [AccountingReportController::class, 'financialStatementsPdf'])->name('accounting.reports.financial-statements.pdf');
     Route::get('reports/management-pack', [AccountingReportController::class, 'managementPack'])->name('accounting.reports.management-pack');
     Route::get('reports/receivables-aging', [AccountingReportController::class, 'receivablesAging'])->name('accounting.reports.receivables-aging');
+    Route::get('reports/receivables-aging/print', [AccountingReportController::class, 'receivablesAgingPrint'])->name('accounting.reports.receivables-aging.print');
+    Route::get('reports/receivables-aging/pdf', [AccountingReportController::class, 'receivablesAgingPdf'])->name('accounting.reports.receivables-aging.pdf');
     Route::get('reports/receivables-by-source', [AccountingReportController::class, 'receivablesAgingBySource'])->name('accounting.reports.receivables-by-source');
+    Route::get('reports/receivables-by-source/print', [AccountingReportController::class, 'receivablesBySourcePrint'])->name('accounting.reports.receivables-by-source.print');
+    Route::get('reports/receivables-by-source/pdf', [AccountingReportController::class, 'receivablesBySourcePdf'])->name('accounting.reports.receivables-by-source.pdf');
     Route::get('reports/payables-aging', [AccountingReportController::class, 'payablesAging'])->name('accounting.reports.payables-aging');
+    Route::get('reports/payables-aging/print', [AccountingReportController::class, 'payablesAgingPrint'])->name('accounting.reports.payables-aging.print');
+    Route::get('reports/payables-aging/pdf', [AccountingReportController::class, 'payablesAgingPdf'])->name('accounting.reports.payables-aging.pdf');
     Route::post('events/{event}/retry', [AccountingEventController::class, 'retry'])->name('accounting.events.retry');
     Route::post('events/retry-all', [AccountingEventController::class, 'retryAll'])->name('accounting.events.retry-all');
 });

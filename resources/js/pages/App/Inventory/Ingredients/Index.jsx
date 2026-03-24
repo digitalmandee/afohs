@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, TextField, MenuItem, Grid, InputAdornment, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, TextField, MenuItem, Grid, InputAdornment, IconButton, Tooltip, Alert, Stack } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as ViewIcon, AddBox as AddStockIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { router } from '@inertiajs/react';
 import POSLayout from "@/components/POSLayout";
@@ -85,27 +85,42 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                 backgroundColor: '#f5f5f5'
             }}>
                 {/* Header */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography sx={{
-                        fontWeight: '600',
-                        fontSize: '30px',
-                        color: '#063455'
-                    }}>
-                        Ingredients Management
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => router.visit(route(routeNameForContext('ingredients.create')))}
-                        sx={{
-                            backgroundColor: '#063455',
-                            borderRadius: '16px',
-                            height: 35,
-                            textTransform: 'none'
-                        }}>
-                        Add Ingredient
-                    </Button>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                    <Box>
+                        <Typography sx={{ fontWeight: '600', fontSize: '30px', color: '#063455' }}>
+                            Ingredients Management
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 820 }}>
+                            Ingredients are recipe components. Inventory Items are the stock-managed raw materials that live in warehouses and feed those ingredients when linked.
+                        </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                        <Button
+                            variant="outlined"
+                            onClick={() => router.visit(route(routeNameForContext('inventory.create')))}
+                            sx={{ borderRadius: '16px', textTransform: 'none' }}
+                        >
+                            Add Inventory Item
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={() => router.visit(route(routeNameForContext('ingredients.create')))}
+                            sx={{
+                                backgroundColor: '#063455',
+                                borderRadius: '16px',
+                                height: 35,
+                                textTransform: 'none'
+                            }}
+                        >
+                            Add Ingredient
+                        </Button>
+                    </Stack>
                 </Box>
+
+                <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
+                    Create an <strong>Inventory Item</strong> first when you need warehouse stock, purchasing, and stock movements. Then link the ingredient to that inventory item for warehouse-backed recipe deduction.
+                </Alert>
 
                 {/* Statistics Cards */}
                 <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -186,10 +201,27 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                     alignItems: 'center',
                                 }}>
                                 <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 500 }}>
-                                    Warehouse Managed
+                                    Linked to Inventory
                                 </Typography>
                                 <Typography sx={{ color: '#fff', fontSize: '20px', fontWeight: 600 }}>
                                     {stats.warehouse_managed || 0}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: '#063455', borderRadius: '16px' }}>
+                            <CardContent
+                                sx={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                }}>
+                                <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 500 }}>
+                                    Legacy-only
+                                </Typography>
+                                <Typography sx={{ color: '#fff', fontSize: '20px', fontWeight: 600 }}>
+                                    {stats.legacy_only || 0}
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -387,7 +419,12 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                                 </Typography>
                                                 <Box sx={{ mt: 0.5, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                                                     <Chip
-                                                        label={ingredient.balance_source === 'warehouse' ? 'Warehouse balance' : 'Legacy balance'}
+                                                        label={ingredient.balance_source === 'warehouse' ? 'Linked to inventory' : 'Not linked to inventory'}
+                                                        size="small"
+                                                        color={ingredient.balance_source === 'warehouse' ? 'success' : 'warning'}
+                                                    />
+                                                    <Chip
+                                                        label={ingredient.balance_source === 'warehouse' ? 'Stock comes from warehouse inventory' : 'Using manual ingredient quantity'}
                                                         size="small"
                                                         color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'}
                                                     />
@@ -399,8 +436,8 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                                                 )}
                                             </Box>
                                         </TableCell>
-                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Warehouse-managed' : ingredient.total_quantity}</TableCell>
-                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Warehouse-managed' : ingredient.used_quantity}</TableCell>
+                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Linked to inventory' : ingredient.total_quantity}</TableCell>
+                                        <TableCell>{ingredient.balance_source === 'warehouse' ? 'Linked to inventory' : ingredient.used_quantity}</TableCell>
                                         <TableCell>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                                 {stockInfo.icon}

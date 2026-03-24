@@ -118,8 +118,8 @@ const AddStock = ({ ingredient }) => {
                                     <form onSubmit={handleSubmit}>
                                         <Grid container spacing={3}>
                                             <Grid item xs={12}>
-                                                <Alert severity={ingredient.inventory_product_id ? 'warning' : 'info'} sx={{ mb: 2 }}>
-                                                    {ingredient.inventory_product_id
+                                                <Alert severity={ingredient.inventory_item_id ? 'warning' : 'info'} sx={{ mb: 2 }}>
+                                                    {ingredient.inventory_item_id
                                                         ? 'This ingredient is linked to warehouse inventory. Replenish it through goods receipt, opening balance, adjustment, or transfer instead of direct ingredient stock.'
                                                         : 'Adding stock will increase both total quantity and remaining quantity by the amount specified.'}
                                                 </Alert>
@@ -135,7 +135,7 @@ const AddStock = ({ ingredient }) => {
                                                     error={!!errors.quantity}
                                                     helperText={errors.quantity || `Enter the amount in ${ingredient.unit} to add to stock`}
                                                     inputProps={{ min: 0.01, step: 0.01 }}
-                                                    disabled={!!ingredient.inventory_product_id}
+                                                    disabled={!!ingredient.inventory_item_id}
                                                     required
                                                 />
                                             </Grid>
@@ -150,12 +150,12 @@ const AddStock = ({ ingredient }) => {
                                                     error={!!errors.cost_per_unit}
                                                     helperText={errors.cost_per_unit || 'Leave empty to keep current cost'}
                                                     inputProps={{ min: 0, step: 0.01 }}
-                                                    disabled={!!ingredient.inventory_product_id}
+                                                    disabled={!!ingredient.inventory_item_id}
                                                 />
                                             </Grid>
 
                                             {/* Preview */}
-                                            {data.quantity && !ingredient.inventory_product_id && (
+                                            {data.quantity && !ingredient.inventory_item_id && (
                                                 <Grid item xs={12}>
                                                     <Card variant="outlined" sx={{ backgroundColor: '#f8f9fa' }}>
                                                         <CardContent>
@@ -191,8 +191,8 @@ const AddStock = ({ ingredient }) => {
                                                     <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('ingredients.index')))} disabled={processing}>
                                                         Cancel
                                                     </Button>
-                                                    <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={processing || !!ingredient.inventory_product_id} sx={{ backgroundColor: '#063455' }}>
-                                                        {ingredient.inventory_product_id ? 'Use Warehouse Operations' : processing ? 'Adding Stock...' : 'Add Stock'}
+                                                    <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={processing || !!ingredient.inventory_item_id} sx={{ backgroundColor: '#063455' }}>
+                                                        {ingredient.inventory_item_id ? 'Use Warehouse Operations' : processing ? 'Adding Stock...' : 'Add Stock'}
                                                     </Button>
                                                 </Box>
                                             </Grid>

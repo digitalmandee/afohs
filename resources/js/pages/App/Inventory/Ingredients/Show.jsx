@@ -76,7 +76,7 @@ const ShowIngredient = ({ ingredient }) => {
                                 startIcon={<AddIcon />}
                                 onClick={() => router.visit(route(routeNameForContext('ingredients.add-stock.form'), ingredient.id))}
                                 sx={{ backgroundColor: '#063455' }}
-                                disabled={!!ingredient.inventory_product_id}
+                                disabled={!!ingredient.inventory_item_id}
                             >
                                 Add Stock
                             </Button>
@@ -146,8 +146,8 @@ const ShowIngredient = ({ ingredient }) => {
                                         <Typography variant="h6" color={ingredient.remaining_quantity <= 0 ? 'error' : 'success'}>
                                             {ingredient.remaining_quantity} {ingredient.unit}
                                         </Typography>
-                                        {ingredient.inventory_product_id && (
-                                            <Chip size="small" color="info" label="Warehouse-managed" sx={{ mt: 1 }} />
+                                        {ingredient.inventory_item_id && (
+                                            <Chip size="small" color="info" label="Linked to inventory" sx={{ mt: 1 }} />
                                         )}
                                     </Box>
 

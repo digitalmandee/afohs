@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Tenant;
 use App\Models\VendorBill;
 use App\Models\VendorPayment;
+use Illuminate\Support\Facades\Route;
 
 class AccountingSourceResolver
 {
@@ -25,12 +26,14 @@ class AccountingSourceResolver
             ?? $this->restaurantName($restaurantId);
 
         $sourceId = (int) $invoice->id;
-        $documentUrl = route('finance.invoice.pay', $invoice->id);
+        $documentUrl = $this->safeRoute('finance.invoice.pay', $invoice->id);
         $resolutionStatus = 'resolved';
 
         if ($module === 'pos') {
             $sourceId = (int) (data_get($invoice, 'data.order_id')
                 ?? ($invoice->invoiceable_type === Order::class ? $invoice->invoiceable_id : $invoice->id));
+            $documentUrl = null;
+            $resolutionStatus = 'unresolved';
         }
 
         if ($module === 'room') {
@@ -38,7 +41,7 @@ class AccountingSourceResolver
                 ?? ($invoice->invoiceable_type === \App\Models\RoomBooking::class ? $invoice->invoiceable_id : 0));
             if ($bookingId > 0) {
                 $sourceId = $bookingId;
-                $documentUrl = route('rooms.invoice', $bookingId);
+                $documentUrl = $this->safeRoute('rooms.invoice', $bookingId);
             }
         }
 
@@ -47,7 +50,7 @@ class AccountingSourceResolver
                 ?? ($invoice->invoiceable_type === \App\Models\EventBooking::class ? $invoice->invoiceable_id : 0));
             if ($bookingId > 0) {
                 $sourceId = $bookingId;
-                $documentUrl = route('events.booking.invoice', $bookingId);
+                $documentUrl = $this->safeRoute('events.booking.invoice', $bookingId);
             }
         }
 
@@ -84,13 +87,13 @@ class AccountingSourceResolver
             'source_type' => 'financial_receipt',
             'source_id' => (int) $receipt->id,
             'document_no' => (string) ($receipt->receipt_no ?: 'Receipt #' . $receipt->id),
-            'document_url' => $linkedInvoice ? route('finance.invoice.pay', $linkedInvoice->id) : null,
+            'document_url' => $linkedInvoice ? $this->safeRoute('finance.invoice.pay', $linkedInvoice->id) : null,
             'restaurant_id' => $restaurantId,
             'restaurant_name' => $restaurantName,
             'posting_status' => $event?->status ?? ($journal ? 'posted' : 'not_configured'),
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
-            'source_resolution_status' => $linkedInvoice ? 'resolved' : 'unresolved',
+            'source_resolution_status' => $linkedInvoice && $this->safeRoute('finance.invoice.pay', $linkedInvoice->id) ? 'resolved' : 'unresolved',
         ];
     }
 
@@ -104,13 +107,13 @@ class AccountingSourceResolver
             'source_type' => 'vendor_bill',
             'source_id' => (int) $bill->id,
             'document_no' => (string) ($bill->bill_no ?: 'Bill #' . $bill->id),
-            'document_url' => route('procurement.vendor-bills.edit', $bill->id),
+            'document_url' => $this->safeRoute('procurement.vendor-bills.edit', $bill->id),
             'restaurant_id' => $event?->restaurant_id ?? $bill->tenant_id,
             'restaurant_name' => $event?->restaurant?->name ?? $bill->tenant?->name ?? $this->restaurantName($bill->tenant_id),
             'posting_status' => $event?->status ?? ($journal ? 'posted' : 'not_configured'),
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
-            'source_resolution_status' => 'resolved',
+            'source_resolution_status' => $this->safeRoute('procurement.vendor-bills.edit', $bill->id) ? 'resolved' : 'unresolved',
         ];
     }
 
@@ -124,13 +127,13 @@ class AccountingSourceResolver
             'source_type' => 'vendor_payment',
             'source_id' => (int) $payment->id,
             'document_no' => (string) ($payment->payment_no ?: 'Payment #' . $payment->id),
-            'document_url' => route('procurement.vendor-payments.edit', $payment->id),
+            'document_url' => $this->safeRoute('procurement.vendor-payments.edit', $payment->id),
             'restaurant_id' => $event?->restaurant_id ?? $payment->tenant_id,
             'restaurant_name' => $event?->restaurant?->name ?? $payment->tenant?->name ?? $this->restaurantName($payment->tenant_id),
             'posting_status' => $event?->status ?? ($journal ? 'posted' : 'not_configured'),
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
-            'source_resolution_status' => 'resolved',
+            'source_resolution_status' => $this->safeRoute('procurement.vendor-payments.edit', $payment->id) ? 'resolved' : 'unresolved',
         ];
     }
 
@@ -144,13 +147,13 @@ class AccountingSourceResolver
             'source_type' => 'goods_receipt',
             'source_id' => (int) $receipt->id,
             'document_no' => (string) ($receipt->grn_no ?: 'GRN #' . $receipt->id),
-            'document_url' => route('procurement.goods-receipts.index', ['search' => $receipt->grn_no]),
+            'document_url' => $this->safeRoute('procurement.goods-receipts.index', ['search' => $receipt->grn_no]),
             'restaurant_id' => $event?->restaurant_id ?? $receipt->tenant_id,
             'restaurant_name' => $event?->restaurant?->name ?? $receipt->tenant?->name ?? $this->restaurantName($receipt->tenant_id),
             'posting_status' => $event?->status ?? ($journal ? 'posted' : 'not_configured'),
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
-            'source_resolution_status' => 'resolved',
+            'source_resolution_status' => $this->safeRoute('procurement.goods-receipts.index', ['search' => $receipt->grn_no]) ? 'resolved' : 'unresolved',
         ];
     }
 
@@ -364,5 +367,18 @@ class AccountingSourceResolver
         }
 
         return $this->restaurantNameCache[$restaurantId];
+    }
+
+    private function safeRoute(string $name, mixed $parameters = []): ?string
+    {
+        if (!Route::has($name)) {
+            return null;
+        }
+
+        try {
+            return route($name, $parameters);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

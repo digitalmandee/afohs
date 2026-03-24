@@ -6,15 +6,17 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   Grid,
   MenuItem,
   IconButton,
   TextField,
   Typography,
+  Stack,
 } from '@mui/material';
 import { DeleteOutline } from '@mui/icons-material';
 
-export default function Create({ vendors, warehouses, products }) {
+export default function Create({ vendors, warehouses, products, inventorySummary = {} }) {
   const { data, setData, post, processing, errors } = useForm({
     vendor_id: '',
     warehouse_id: '',
@@ -22,7 +24,7 @@ export default function Create({ vendors, warehouses, products }) {
     expected_date: '',
     currency: 'PKR',
     remarks: '',
-    items: [{ product_id: '', qty_ordered: 1, unit_cost: 0 }],
+    items: [{ inventory_item_id: '', qty_ordered: 1, unit_cost: 0 }],
   });
 
   const productMap = React.useMemo(() => {
@@ -35,7 +37,7 @@ export default function Create({ vendors, warehouses, products }) {
     const items = [...data.items];
     items[index] = { ...items[index], [field]: value };
 
-    if (field === 'product_id') {
+    if (field === 'inventory_item_id') {
       const selected = productMap.get(Number(value));
       if (selected) {
         items[index].unit_cost = Number(selected.base_price ?? selected.price ?? 0) || 0;
@@ -46,7 +48,7 @@ export default function Create({ vendors, warehouses, products }) {
   };
 
   const addItem = () => {
-    setData('items', [...data.items, { product_id: '', qty_ordered: 1, unit_cost: 0 }]);
+    setData('items', [...data.items, { inventory_item_id: '', qty_ordered: 1, unit_cost: 0 }]);
   };
 
   const removeItem = (index) => {
@@ -64,6 +66,10 @@ export default function Create({ vendors, warehouses, products }) {
     () => (warehouses || []).find((warehouse) => String(warehouse.id) === String(data.warehouse_id)),
     [warehouses, data.warehouse_id]
   );
+  const warehouseStockForProduct = React.useCallback((product) => {
+    if (!product || !data.warehouse_id) return null;
+    return Number(product.stock_by_warehouse?.[String(data.warehouse_id)] ?? 0);
+  }, [data.warehouse_id]);
 
   const submit = (e) => {
     e.preventDefault();
@@ -156,7 +162,25 @@ export default function Create({ vendors, warehouses, products }) {
               <Typography variant="h6" sx={{ mb: 1 }}>Items</Typography>
               {products.length === 0 && (
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  No procurement-eligible raw materials found. Create active raw-material items and mark them purchasable to place POs.
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {inventorySummary.empty_reason || 'No stock-managed raw-material inventory items are ready for purchasing yet.'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    Create an Inventory Item first, then mark it purchasable so it can appear in Purchase Orders.
+                  </Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+                    <Button size="small" variant="contained" onClick={() => window.location.href = route('pos.inventory.create')}>
+                      Add Inventory Item
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => window.location.href = route('pos.ingredients.index')}>
+                      Review Ingredients
+                    </Button>
+                  </Stack>
+                </Alert>
+              )}
+              {inventorySummary.legacy_only_ingredients > 0 && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {inventorySummary.legacy_only_ingredients} ingredient{inventorySummary.legacy_only_ingredients === 1 ? '' : 's'} are not linked to inventory items yet, so they will not appear in Purchase Orders or warehouse stock until linked.
                 </Alert>
               )}
               {data.items.map((item, index) => (
@@ -165,17 +189,60 @@ export default function Create({ vendors, warehouses, products }) {
                     <TextField
                       select
                       label="Inventory Item"
-                      value={item.product_id}
-                      onChange={(e) => updateItem(index, 'product_id', e.target.value)}
+                      value={item.inventory_item_id}
+                      onChange={(e) => updateItem(index, 'inventory_item_id', e.target.value)}
                       fullWidth
                     >
                       {products.length === 0 && <MenuItem value="" disabled>No items available</MenuItem>}
                       {products.map((p) => (
                         <MenuItem key={p.id} value={p.id}>
                           {p.menu_code ? `${p.menu_code} · ` : ''}{p.name}
+                          {p.unit_name ? ` · ${p.unit_name}` : ''}
                         </MenuItem>
                       ))}
                     </TextField>
+                    {(() => {
+                      const selected = productMap.get(Number(item.inventory_item_id));
+                      if (!selected) return null;
+                      const currentWarehouseStock = warehouseStockForProduct(selected);
+
+                      return (
+                        <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                          {selected.unit_name ? (
+                            <Chip size="small" variant="outlined" label={`Unit: ${selected.unit_name}`} />
+                          ) : null}
+                          <Chip size="small" variant="outlined" label={`Total on hand: ${Number(selected.stock_on_hand_total || 0).toFixed(3)}`} />
+                          {currentWarehouseStock !== null ? (
+                            <Chip
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                              label={`In ${selectedWarehouse?.name || 'warehouse'}: ${currentWarehouseStock.toFixed(3)}`}
+                            />
+                          ) : null}
+                          {selected.linked_ingredient_count > 0 ? (
+                            <Chip
+                              size="small"
+                              color="secondary"
+                              variant="outlined"
+                              label={`Feeds ${selected.linked_ingredient_count} ingredient${selected.linked_ingredient_count === 1 ? '' : 's'}`}
+                            />
+                          ) : (
+                            <Chip size="small" variant="outlined" label="No linked ingredients yet" />
+                          )}
+                        </Box>
+                      );
+                    })()}
+                    {(() => {
+                      const selected = productMap.get(Number(item.inventory_item_id));
+                      if (!selected || !selected.linked_ingredient_names?.length) return null;
+
+                      return (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                          Linked ingredients: {selected.linked_ingredient_names.join(', ')}
+                        </Typography>
+                      );
+                    })()}
                   </Grid>
                   <Grid item xs={12} md={3}>
                     <TextField
@@ -218,6 +285,9 @@ export default function Create({ vendors, warehouses, products }) {
                 <Typography variant="body2" color="text.secondary">Estimated Grand Total</Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
                   {Number(totalAmount || 0).toFixed(2)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Inventory items available: {inventorySummary.product_count || 0} · Linked ingredients: {inventorySummary.linked_ingredients || 0} · Not linked to inventory: {inventorySummary.legacy_only_ingredients || 0}
                 </Typography>
               </CardContent>
             </Card>

@@ -167,9 +167,14 @@ const createMenuGroups = (url) => ([
         label: 'Catalog',
         items: [
             {
-                text: 'Products & Menu',
+                text: 'Inventory Items',
                 icon: <RestaurantMenuRoundedIcon />,
                 path: safeRouteForContext('inventory.index', url),
+            },
+            {
+                text: 'Products & Menu',
+                icon: <RestaurantMenuRoundedIcon />,
+                path: safeRouteForContext('products.index', url),
             },
             {
                 text: 'Categories',

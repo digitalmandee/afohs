@@ -8,12 +8,12 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
   const selectedOrder = purchaseOrder || null;
   const defaultItems = selectedOrder?.items?.map((item) => ({
     purchase_order_item_id: item.id,
-    product_id: item.product_id,
+    inventory_item_id: item.inventory_item_id || item.product_id,
     qty_ordered: item.qty_ordered || 0,
     qty_received_before: item.qty_received || 0,
     qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
     unit_cost: item.unit_cost,
-    product_name: item.product?.name || `Inventory Item #${item.product_id}`,
+    product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
   })) || [];
 
   const { data, setData, post, processing, errors } = useForm({
@@ -35,12 +35,12 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     const nextOrder = orders.find((order) => String(order.id) === String(value));
     const nextItems = (nextOrder?.items || []).map((item) => ({
       purchase_order_item_id: item.id,
-      product_id: item.product_id,
+      inventory_item_id: item.inventory_item_id || item.product_id,
       qty_ordered: item.qty_ordered || 0,
       qty_received_before: item.qty_received || 0,
       qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
       unit_cost: item.unit_cost,
-      product_name: item.product?.name || `Inventory Item #${item.product_id}`,
+      product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
     }));
 
     setData('purchase_order_id', value);
@@ -172,7 +172,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
                   <Grid item xs={12} md={4}>
                     <TextField
                       label="Inventory Item"
-                      value={item.product_name || `Inventory Item #${item.product_id}`}
+                      value={item.product_name || `Inventory Item #${item.inventory_item_id}`}
                       fullWidth
                       disabled
                     />

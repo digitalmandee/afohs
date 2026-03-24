@@ -6,9 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class PurchaseOrderItem extends Model
 {
+    protected $appends = ['resolved_product_id'];
+
     protected $fillable = [
         'purchase_order_id',
         'product_id',
+        'inventory_item_id',
         'description',
         'qty_ordered',
         'qty_received',
@@ -32,8 +35,23 @@ class PurchaseOrderItem extends Model
         return $this->belongsTo(PurchaseOrder::class);
     }
 
+    public function inventoryItem()
+    {
+        return $this->belongsTo(InventoryItem::class, 'inventory_item_id');
+    }
+
     public function product()
     {
-        return $this->belongsTo(Product::class);
+        return $this->inventoryItem();
+    }
+
+    public function getProductIdAttribute($value)
+    {
+        return $value ?: $this->inventory_item_id;
+    }
+
+    public function getResolvedProductIdAttribute(): ?int
+    {
+        return $this->product_id;
     }
 }

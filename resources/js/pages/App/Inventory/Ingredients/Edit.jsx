@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Button, Card, CardContent, TextField, MenuItem, Grid, Alert, IconButton } from '@mui/material';
+import { Box, Typography, Button, Card, CardContent, TextField, MenuItem, Grid, Alert, IconButton, Stack } from '@mui/material';
 import { Save as SaveIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { router } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
@@ -13,7 +13,7 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
     const [open, setOpen] = useState(true);
     const { data, setData, put, processing, errors, reset } = useForm({
         name: ingredient.name || '',
-        inventory_product_id: ingredient.inventory_product_id || '',
+        inventory_item_id: ingredient.inventory_item_id || '',
         description: ingredient.description || '',
         total_quantity: ingredient.total_quantity || '',
         unit: ingredient.unit || 'grams',
@@ -55,13 +55,28 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
             >
                 <Box sx={{ p: 3 }}>
                     {/* Header */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                        <IconButton onClick={() => window.history.back()}>
-                            <ArrowBackIcon sx={{ color: '#063455' }} />
-                        </IconButton>
-                        <Typography variant="h5" sx={{ fontWeight: '600' }}>
-                            Edit Ingredient
-                        </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <IconButton onClick={() => window.history.back()}>
+                                <ArrowBackIcon sx={{ color: '#063455' }} />
+                            </IconButton>
+                            <Box>
+                                <Typography variant="h5" sx={{ fontWeight: '600' }}>
+                                    Edit Ingredient
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                    Link this ingredient to an Inventory Item when warehouse stock should drive usage and replenishment.
+                                </Typography>
+                            </Box>
+                        </Box>
+                        <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                            <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} sx={{ textTransform: 'none' }}>
+                                View Inventory Items
+                            </Button>
+                            <Button variant="contained" onClick={() => router.visit(route(routeNameForContext('inventory.create')))} sx={{ backgroundColor: '#063455', textTransform: 'none' }}>
+                                Create Inventory Item
+                            </Button>
+                        </Stack>
                     </Box>
 
                     <Card>
@@ -91,26 +106,37 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
                                         <TextField
                                             fullWidth
                                             select
-                                            label="Linked Raw-Material Inventory Item"
-                                            value={data.inventory_product_id}
-                                            onChange={(e) => setData('inventory_product_id', e.target.value)}
-                                            error={!!errors.inventory_product_id}
-                                        helperText={errors.inventory_product_id || 'Only stock-managed raw-material products can be linked here for warehouse-backed recipe deduction.'}
+                                            label="Inventory Item"
+                                            value={data.inventory_item_id}
+                                            onChange={(e) => setData('inventory_item_id', e.target.value)}
+                                            error={!!errors.inventory_item_id}
+                                        helperText={errors.inventory_item_id || 'Link an inventory item when this ingredient should consume warehouse stock.'}
                                         >
                                             <MenuItem value="">Not linked yet</MenuItem>
-                                            {rawMaterialProducts.map((product) => (
-                                                <MenuItem key={product.id} value={product.id}>
-                                                    {product.menu_code ? `${product.menu_code} · ` : ''}{product.name}
+                                            {rawMaterialProducts.map((inventoryItem) => (
+                                                <MenuItem key={inventoryItem.id} value={inventoryItem.id}>
+                                                    {inventoryItem.menu_code ? `${inventoryItem.menu_code} · ` : ''}{inventoryItem.name}
                                                 </MenuItem>
                                             ))}
                                         </TextField>
                                     </Grid>
 
                                     <Grid item xs={12}>
-                                        <Alert severity={data.inventory_product_id ? 'info' : 'warning'}>
-                                            {data.inventory_product_id
-                                                ? 'This ingredient is warehouse-managed. Quantity changes should come from warehouse operations, not direct ingredient stock edits.'
-                                                : 'This ingredient is still using legacy direct quantities until it is linked to a warehouse raw-material item.'}
+                                        <Stack direction="row" spacing={1.25} useFlexGap flexWrap="wrap">
+                                            <Button variant="outlined" size="small" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} sx={{ textTransform: 'none' }}>
+                                                Link Existing Inventory Item
+                                            </Button>
+                                            <Button variant="text" size="small" onClick={() => router.visit(route(routeNameForContext('inventory.create')))} sx={{ textTransform: 'none' }}>
+                                                Create Inventory Item
+                                            </Button>
+                                        </Stack>
+                                    </Grid>
+
+                                    <Grid item xs={12}>
+                                        <Alert severity={data.inventory_item_id ? 'info' : 'warning'}>
+                                            {data.inventory_item_id
+                                                ? 'This ingredient is linked to inventory. Stock should move through warehouse operations, not direct ingredient quantity edits.'
+                                                : 'This ingredient is not linked to inventory yet, so it is still using manual ingredient quantities.'}
                                         </Alert>
                                     </Grid>
 

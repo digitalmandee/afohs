@@ -26,11 +26,14 @@ export default function Dashboard({
                 <Button key="locations" variant="outlined" onClick={() => router.visit(route('inventory.locations.index'))}>
                     Locations
                 </Button>,
+                <Button key="items" variant="outlined" onClick={() => router.visit(route('pos.inventory.index'))}>
+                    Inventory Items
+                </Button>,
                 <Button key="ops" variant="outlined" onClick={() => router.visit(route('inventory.operations.index'))}>
                     Stock Movements
                 </Button>,
-                <Button key="create" variant="contained" onClick={() => router.visit(route('inventory.warehouses.index'))}>
-                    Create Warehouse
+                <Button key="create" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                    Add Inventory Item
                 </Button>,
             ]}
         >
@@ -43,7 +46,30 @@ export default function Dashboard({
                 <Grid item xs={12} md={4}><StatCard label="Today In Qty" value={Number(todayMovements.in || 0).toFixed(3)} tone="light" /></Grid>
                 <Grid item xs={12} md={4}><StatCard label="Today Out Qty" value={Number(todayMovements.out || 0).toFixed(3)} tone="light" /></Grid>
                 <Grid item xs={12} md={4}><StatCard label="Today Transfers" value={todayMovements.transfer || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Configured Inventory Items" value={summary.configured_products || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Inventory Items With Stock" value={summary.tracked_products || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Linked Ingredients" value={summary.linked_ingredients || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Legacy-only Ingredients" value={summary.legacy_only_ingredients || 0} tone="muted" /></Grid>
             </Grid>
+
+            <SurfaceCard title="Inventory Model" subtitle="Keep stock in inventory items, then link ingredients when recipes should consume warehouse balances.">
+                <Stack direction="row" spacing={1.2} useFlexGap flexWrap="wrap" sx={{ mb: 1.25 }}>
+                    <Chip size="small" color="primary" variant="outlined" label={`Configured inventory items: ${summary.configured_products || 0}`} />
+                    <Chip size="small" color="success" variant="outlined" label={`Linked ingredients: ${summary.linked_ingredients || 0}`} />
+                    <Chip size="small" color="warning" variant="outlined" label={`Not linked to inventory: ${summary.legacy_only_ingredients || 0}`} />
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                    Ingredients are recipe records. Inventory Items are the stock-managed raw materials that appear in warehouses, stock movements, and purchasing.
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
+                    <Button size="small" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                        Add Inventory Item
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => router.visit(route('pos.ingredients.index'))}>
+                        Review Ingredients
+                    </Button>
+                </Stack>
+            </SurfaceCard>
 
             <Grid container spacing={2.25}>
                 <Grid item xs={12} lg={6}>
@@ -141,4 +167,3 @@ export default function Dashboard({
         </AppPage>
     );
 }
-

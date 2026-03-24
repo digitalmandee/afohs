@@ -332,10 +332,16 @@ const UserManagement = () => {
                     <Grid item xs={12} md={4}><StatCard label="View" value={showTrashed ? 'Trashed' : 'Active'} tone="muted" /></Grid>
                 </Grid>
 
-                <SurfaceCard title="Find Users" subtitle="Search by name or email and keep the register aligned with the same shared settings filter pattern.">
+                <SurfaceCard
+                    title="Find Users"
+                    subtitle="Search by name or email and keep the register aligned with the same shared settings filter pattern."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     <FilterToolbar onReset={() => { setSearch(''); router.get(route(showTrashed ? 'admin.users.trashed' : 'admin.users.index'), {}, { preserveState: true }); }}>
                         <Box component="form" onSubmit={handleSearch}>
                             <TextField
+                                size="small"
                                 placeholder="Search users by name or email..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}

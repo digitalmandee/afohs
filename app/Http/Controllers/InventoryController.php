@@ -29,7 +29,7 @@ class InventoryController extends Controller
     {
         $category_id = $request->query('category_id');
 
-        $query = Product::latest()->with(['category', 'variants', 'variants.values', 'ingredients:id,name,inventory_product_id']);
+        $query = Product::latest()->with(['category', 'variants', 'variants.values', 'ingredients:id,name,inventory_item_id']);
 
         if ($category_id) {
             $query->where('category_id', $category_id);
@@ -96,7 +96,7 @@ class InventoryController extends Controller
             'current_stock', 'minimal_stock', 'status', 'images',
             'description'
         ])
-            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values', 'ingredients:id,name,inventory_product_id']);
+            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values', 'ingredients:id,name,inventory_item_id']);
 
         // Filter by name (case-insensitive)
         if ($request->filled('name')) {
@@ -179,7 +179,7 @@ class InventoryController extends Controller
             'is_taxable' => 'nullable|boolean',
             'notify_when_out_of_stock' => 'nullable|boolean',
             'unit_id' => 'nullable|exists:pos_units,id',
-            'item_type' => 'required|string|in:finished_product,raw_material',
+            'item_type' => 'required|string|in:finished_product',
             'available_order_types' => 'required|array|min:1',
             'available_order_types.*' => 'string',
             'cost_of_goods_sold' => 'required|numeric|min:0',
@@ -196,6 +196,12 @@ class InventoryController extends Controller
             'max_discount_type' => 'required_with:max_discount|string|in:percentage,amount',
             'manage_stock' => 'nullable|boolean',
         ]);
+
+        if ($request->input('item_type') !== 'finished_product' || $request->boolean('manage_stock')) {
+            return back()->withErrors([
+                'inventory_split' => 'Stock-managed materials must be created under Inventory Items. The product form is now only for sellable or manufactured products.',
+            ])->withInput();
+        }
 
         if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
             return back()->withErrors([
@@ -235,7 +241,7 @@ class InventoryController extends Controller
             'is_taxable' => $request->input('is_taxable', false),
             'notify_when_out_of_stock' => $request->input('notify_when_out_of_stock', false),
             'unit_id' => $request->input('unit_id'),
-            'item_type' => $request->input('item_type', 'finished_product'),
+            'item_type' => 'finished_product',
             'available_order_types' => $request->input('available_order_types'),
             'cost_of_goods_sold' => $request->input('cost_of_goods_sold'),
             'base_price' => $request->input('base_price'),
@@ -245,7 +251,7 @@ class InventoryController extends Controller
             'created_by' => Auth::id(),
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
-            'manage_stock' => $manageStock,
+            'manage_stock' => false,
         ]);
 
         // Auto-generate item code if not provided
@@ -300,7 +306,7 @@ class InventoryController extends Controller
     // Get Single Product
     public function getProduct(Request $request, $id)
     {
-        $product = Product::with(['variants:id,product_id,name', 'variants.values', 'kitchen', 'category', 'ingredients:id,name,inventory_product_id'])
+        $product = Product::with(['variants:id,product_id,name', 'variants.values', 'kitchen', 'category', 'ingredients:id,name,inventory_item_id'])
             ->find($id);
         if ($product && $request->routeIs('pos.*')) {
             $this->hydrateAssignedProductBalances(new EloquentCollection([$product]), (int) ($request->session()->get('active_restaurant_id') ?? 0));
@@ -321,7 +327,7 @@ class InventoryController extends Controller
      */
     public function show(Request $request, string $id)
     {
-        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items', 'category', 'kitchen', 'ingredients.inventoryProduct'])
+        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items', 'category', 'kitchen', 'ingredients.inventoryItem'])
             ->find($id);
         if ($product) {
             $this->annotateInventoryReadiness(new EloquentCollection([$product]));
@@ -361,7 +367,7 @@ class InventoryController extends Controller
             'is_taxable' => 'nullable|boolean',
             'notify_when_out_of_stock' => 'nullable|boolean',
             'unit_id' => 'nullable|exists:pos_units,id',
-            'item_type' => 'required|string|in:finished_product,raw_material',
+            'item_type' => 'required|string|in:finished_product',
             'available_order_types' => 'required|array|min:1',
             'available_order_types.*' => 'string',
             'cost_of_goods_sold' => 'required|numeric|min:0',
@@ -379,6 +385,12 @@ class InventoryController extends Controller
             'max_discount_type' => 'required_with:max_discount|string|in:percentage,amount',
             'manage_stock' => 'nullable|boolean',
         ]);
+
+        if ($request->input('item_type') !== 'finished_product' || $request->boolean('manage_stock')) {
+            return back()->withErrors([
+                'inventory_split' => 'Stock-managed materials must be managed as Inventory Items. Products no longer create warehouse stock records.',
+            ])->withInput();
+        }
 
         if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
             return back()->withErrors([
@@ -450,7 +462,7 @@ class InventoryController extends Controller
             'is_taxable' => $request->input('is_taxable', false),
             'notify_when_out_of_stock' => $request->input('notify_when_out_of_stock', false),
             'unit_id' => $request->input('unit_id'),
-            'item_type' => $request->input('item_type', 'finished_product'),
+            'item_type' => 'finished_product',
             'available_order_types' => $request->input('available_order_types'),
             'cost_of_goods_sold' => $request->input('cost_of_goods_sold'),
             'base_price' => $request->input('base_price'),
@@ -459,7 +471,7 @@ class InventoryController extends Controller
             'updated_by' => Auth::id(),
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
-            'manage_stock' => $manageStock,
+            'manage_stock' => false,
         ]);
 
         if ($request->has('variants')) {
@@ -627,7 +639,7 @@ class InventoryController extends Controller
             $issues = [];
             $ingredients = collect($product->ingredients ?? []);
             $unlinkedIngredients = $ingredients
-                ->filter(fn ($ingredient) => empty($ingredient->inventory_product_id))
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
                 ->values();
 
             if ($unlinkedIngredients->isNotEmpty()) {

@@ -6,15 +6,13 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 export default function TrialBalance({ rows = [], summary, filters, error = null }) {
-    const downloadCsv = () => {
-        window.location.href = route('accounting.reports.trial-balance', {
-            from: filters?.from || '',
-            to: filters?.to || '',
-            export: 'csv',
-        });
-    };
+    const activeFilters = sanitizeFilters({
+        from: filters?.from || '',
+        to: filters?.to || '',
+    });
 
     return (
         <AppPage
@@ -22,14 +20,15 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
             title="Trial Balance"
             subtitle="Summarized account balances with ledger drilldown, grouped totals, and shared premium report styling."
             actions={[
-                <Button key="export" variant="outlined" onClick={downloadCsv}>Export CSV</Button>,
-                <Button key="print" variant="outlined" onClick={() => window.print()}>Print</Button>,
+                <Button key="pdf" variant="outlined" onClick={() => downloadReportPdf('accounting.reports.trial-balance.pdf', activeFilters)}>Download PDF</Button>,
+                <Button key="export" variant="outlined" onClick={() => downloadReportCsv('accounting.reports.trial-balance', activeFilters)}>Export CSV</Button>,
+                <Button key="print" variant="outlined" onClick={() => openReportPrint('accounting.reports.trial-balance.print', activeFilters)}>Print</Button>,
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={4}><StatCard label="Total Debit" value={Number(summary?.total_debit || 0).toFixed(2)} accent /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Total Credit" value={Number(summary?.total_credit || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Difference" value={Number(summary?.difference || 0).toFixed(2)} tone="muted" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Total Debit" value={formatReportAmount(summary?.total_debit)} accent /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Total Credit" value={formatReportAmount(summary?.total_credit)} tone="light" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Difference" value={formatReportAmount(summary?.difference)} tone="muted" /></Grid>
             </Grid>
 
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
@@ -47,7 +46,7 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
                 </FilterToolbar>
                 <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
                     {Object.entries(summary?.type_totals || {}).map(([type, data]) => (
-                        <Chip key={type} size="small" variant="outlined" label={`${type}: D ${Number(data?.debit || 0).toFixed(2)} | C ${Number(data?.credit || 0).toFixed(2)}`} />
+                        <Chip key={type} size="small" variant="outlined" label={`${type}: D ${formatReportAmount(data?.debit)} | C ${formatReportAmount(data?.credit)}`} />
                     ))}
                 </Stack>
             </SurfaceCard>
@@ -82,8 +81,8 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
                                     <Chip size="small" variant="outlined" color={row.normal_balance === 'credit' ? 'warning' : 'primary'} label={row.normal_balance === 'credit' ? 'Credit Normal' : 'Debit Normal'} />
                                 </Stack>
                             </TableCell>
-                            <TableCell align="right">{Number(row.debit || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right">{Number(row.credit || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatReportAmount(row.debit)}</TableCell>
+                            <TableCell align="right">{formatReportAmount(row.credit)}</TableCell>
                             <TableCell align="right">
                                 {row.ledger_url ? (
                                     <Button size="small" variant="outlined" onClick={() => router.get(row.ledger_url)}>

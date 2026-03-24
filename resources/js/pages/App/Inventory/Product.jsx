@@ -25,15 +25,15 @@ const AddProduct = ({ product, id }) => {
                   sub_category_id: product.sub_category_id || '',
                   manufacturer_id: product.manufacturer_id || '',
                   unit_id: product.unit_id || '',
-                  item_type: product.item_type || 'finished_product',
+                  item_type: 'finished_product',
                   is_salable: product.is_salable ?? true,
                   is_purchasable: product.is_purchasable ?? true,
                   is_returnable: product.is_returnable ?? true,
                   is_taxable: product.is_taxable ?? false,
-                  current_stock: product.current_stock || 0,
-                  minimal_stock: product.minimal_stock || 0,
-                  manage_stock: product.manage_stock ?? false,
-                  notify_when_out_of_stock: product.notify_when_out_of_stock ?? false,
+                  current_stock: 0,
+                  minimal_stock: 0,
+                  manage_stock: false,
+                  notify_when_out_of_stock: false,
                   available_order_types: product.available_order_types || [],
                   cost_of_goods_sold: product.cost_of_goods_sold || '',
                   base_price: product.base_price || '',
@@ -148,10 +148,6 @@ const AddProduct = ({ product, id }) => {
         const errors = [];
         if (!menu.name.trim()) errors.push('Name is required');
         if (!menu.category_id) errors.push('Category is required');
-        if (menu.manage_stock) {
-            if (menu.current_stock !== '' && menu.current_stock !== null && isNaN(menu.current_stock)) errors.push('Current stock must be a valid number');
-            if (menu.minimal_stock !== '' && menu.minimal_stock !== null && isNaN(menu.minimal_stock)) errors.push('Minimal stock must be a valid number');
-        }
         if (!menu.available_order_types || menu.available_order_types.length === 0) errors.push('At least one order type must be selected');
         if (menu.cost_of_goods_sold === '' || menu.cost_of_goods_sold === null || isNaN(menu.cost_of_goods_sold)) errors.push('COGS must be a valid number');
         if (menu.base_price === '' || menu.base_price === null || isNaN(menu.base_price)) errors.push('Base price must be a valid number');
@@ -184,17 +180,13 @@ const AddProduct = ({ product, id }) => {
         setFieldErrors((prev) => ({ ...prev, [name]: '' }));
     };
 
-    const handleManageStockToggle = (checked) => {
+    const handleManageStockToggle = () => {
         setData((prev) => ({
             ...prev,
-            manage_stock: checked,
-            ...(checked
-                ? {}
-                : {
-                      current_stock: 0,
-                      minimal_stock: 0,
-                      notify_when_out_of_stock: false,
-                  }),
+            manage_stock: false,
+            current_stock: 0,
+            minimal_stock: 0,
+            notify_when_out_of_stock: false,
         }));
         setFieldErrors((prev) => ({
             ...prev,
@@ -360,7 +352,7 @@ const AddProduct = ({ product, id }) => {
                     remaining_quantity: ingredient.remaining_quantity,
                     quantity_used: 0,
                     cost: ingredient.cost_per_unit || 0,
-                    balance_source: ingredient.balance_source || (ingredient.inventory_product_id ? 'warehouse' : 'legacy'),
+                    balance_source: ingredient.balance_source || (ingredient.inventory_item_id ? 'warehouse' : 'legacy'),
                 },
             ]);
         }
@@ -389,10 +381,11 @@ const AddProduct = ({ product, id }) => {
         transform((data) => ({
             ...data,
             deleted_images: deletedImages, // Include deleted images for backend processing
-            manage_stock: Boolean(data.manage_stock),
-            current_stock: data.manage_stock ? 0 : normalizeInt(data.current_stock),
-            minimal_stock: data.manage_stock ? normalizeInt(data.minimal_stock) : 0,
-            notify_when_out_of_stock: data.manage_stock ? Boolean(data.notify_when_out_of_stock) : false,
+            item_type: 'finished_product',
+            manage_stock: false,
+            current_stock: 0,
+            minimal_stock: 0,
+            notify_when_out_of_stock: false,
             ingredients: selectedIngredients.map((ing) => ({
                 id: ing.id,
                 quantity_used: ing.quantity_used,
@@ -400,7 +393,7 @@ const AddProduct = ({ product, id }) => {
             })),
         }));
         const isEdit = Boolean(id);
-        const routeName = isEdit ? 'inventory.update' : 'inventory.store';
+        const routeName = isEdit ? 'products.update' : 'products.store';
         const url = isEdit ? route(routeNameForContext(routeName), { id }) : route(routeNameForContext(routeName));
         submit(isEdit ? 'put' : 'post', url, {
             onSuccess: () => {
@@ -409,7 +402,7 @@ const AddProduct = ({ product, id }) => {
                 setUploadedImages([]);
                 setExistingImages([]);
                 setDeletedImages([]);
-                router.visit(route(routeNameForContext('inventory.index')));
+                router.visit(route(routeNameForContext('products.index')));
             },
             onError: (errors) => {
                 console.log(errors);
@@ -496,7 +489,7 @@ const AddProduct = ({ product, id }) => {
                     remaining_quantity: ing.remaining_quantity,
                     quantity_used: ing.pivot?.quantity_used || 0,
                     cost: ing.pivot?.cost || ing.cost_per_unit || 0,
-                    balance_source: ing.balance_source || (ing.inventory_product_id ? 'warehouse' : 'legacy'),
+                    balance_source: ing.balance_source || (ing.inventory_item_id ? 'warehouse' : 'legacy'),
                 })),
             );
         }
@@ -522,18 +515,22 @@ const AddProduct = ({ product, id }) => {
                 <Box sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
                     <ArrowBackIcon 
                     sx={{ color: '#063455', cursor: 'pointer' }} 
-                    onClick={() => router.visit(route(routeNameForContext('inventory.index')))} 
+                    onClick={() => router.visit(route(routeNameForContext('products.index')))} 
                     />
-                    <Typography
-                        sx={{
-                            fontSize: '30px',
-                            color: '#063455',
-                            fontWeight:'700',
-                            marginLeft: 3,
-                        }}
-                    >
-                        {id ? 'Edit Menu' : 'Add Menu'}
-                    </Typography>
+                    <Box sx={{ ml: 3 }}>
+                        <Typography
+                            sx={{
+                                fontSize: '30px',
+                                color: '#063455',
+                                fontWeight:'700',
+                            }}
+                        >
+                            {id ? 'Edit Product' : 'Add Product'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            Use this screen for sellable or manufactured products. Stockable materials now live under Inventory Items and feed products through ingredients.
+                        </Typography>
+                    </Box>
                 </Box>
                 <Box
                     sx={{
@@ -611,6 +608,9 @@ const AddProduct = ({ product, id }) => {
                         {/* Step 1: General Information */}
                         {addMenuStep === 1 && (
                             <Box sx={{ px: 3, pb: 3 }}>
+                                <Alert severity="info" sx={{ mb: 3 }}>
+                                    Products and inventory are now separate. Create warehouse stock under Inventory Items, then link those inventory items to ingredients so product recipes consume real stock.
+                                </Alert>
                                 <Grid container spacing={3}>
                                     <Grid item xs={12} md={6}>
                                         <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
@@ -724,68 +724,37 @@ const AddProduct = ({ product, id }) => {
                                     </Grid>
                                     <Grid item xs={12}>
                                         <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
-                                            Item Type
+                                            Product Type
                                         </Typography>
-                                        <Box sx={{ display: 'flex', gap: 2 }}>
-                                            {['finished_product', 'raw_material'].map((type) => (
-                                                <Button key={type} variant={data.item_type === type ? 'contained' : 'outlined'} onClick={() => setData('item_type', type)} sx={{ textTransform: 'capitalize' }}>
-                                                    {type.replace('_', ' ')}
-                                                </Button>
-                                            ))}
-                                        </Box>
+                                        <Alert severity="info" sx={{ borderRadius: 2 }}>
+                                            This form now creates products only. To add stock-managed materials for purchasing or warehouses, use Inventory Items.
+                                        </Alert>
                                     </Grid>
                                     <Grid item xs={12}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                            <Switch checked={Boolean(data.manage_stock)} onChange={(e) => handleManageStockToggle(e.target.checked)} color="primary" />
+                                            <Switch checked={false} onChange={handleManageStockToggle} color="primary" disabled />
                                             <Box sx={{ ml: 1 }}>
                                                 <Typography variant="body1" sx={{ color: '#121212', fontSize: '14px', fontWeight: 500 }}>
-                                                    Manage Stock
+                                                    Inventory Items Manage Stock
                                                 </Typography>
                                                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                                    Enable to track stock levels and prevent sales when out of stock
+                                                    Stock tracking moved to Inventory Items. Products consume stock through ingredients linked to those inventory items.
                                                 </Typography>
                                             </Box>
                                         </Box>
                                     </Grid>
-                                    {Boolean(data.manage_stock) && (
-                                        <>
-                                            <Grid item xs={12}>
-                                                <Alert severity="info">
-                                                    Warehouse-managed stock is updated through opening balance, goods receipt, adjustment, and transfer. Direct product stock entry is disabled here.
-                                                </Alert>
-                                            </Grid>
-                                            <Grid item xs={6}>
-                                                <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
-                                                    Minimal Stock
-                                                </Typography>
-                                                <Box>
-                                                    <Box sx={{ display: 'flex' }}>
-                                                        <TextField fullWidth placeholder="10" name="minimal_stock" value={data.minimal_stock} onChange={handleInputChange} variant="outlined" size="small" type="number" error={!!fieldErrors.minimal_stock} />
-                                                        <Box
-                                                            sx={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                border: '1px solid #e0e0e0',
-                                                                borderLeft: 'none',
-                                                                px: 2,
-                                                                borderTopRightRadius: 4,
-                                                                borderBottomRightRadius: 4,
-                                                                borderColor: fieldErrors.minimal_stock ? 'error.main' : '#e0e0e0', // Highlight border if error
-                                                            }}
-                                                        >
-                                                            <Typography variant="body2">Pcs</Typography>
-                                                        </Box>
-                                                    </Box>
-                                                    {fieldErrors.minimal_stock && (
-                                                        <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1 }}>
-                                                            {fieldErrors.minimal_stock}
-                                                        </Typography>
-                                                    )}
-                                                </Box>
-                                            </Grid>
-                                        </>
-                                    )}
+                                    <Grid item xs={12}>
+                                        <Alert
+                                            severity="warning"
+                                            action={
+                                                <Button color="inherit" size="small" onClick={() => router.visit(route(routeNameForContext('inventory.create')))}>
+                                                    Add Inventory Item
+                                                </Button>
+                                            }
+                                        >
+                                            Inventory, purchasing, warehouse balances, and reorder levels are now handled in Inventory Items, not the product builder.
+                                        </Alert>
+                                    </Grid>
                                     <Grid item xs={12} container spacing={2}>
                                         {[
                                             { label: 'Salable', field: 'is_salable' },
@@ -1036,11 +1005,6 @@ const AddProduct = ({ product, id }) => {
                                                 {errors.variants}
                                             </Alert>
                                         )}
-                                        {Boolean(data.manage_stock) && (
-                                            <Alert severity="warning" sx={{ mb: 2 }}>
-                                                Warehouse-managed products cannot use variant-level stock yet. Keep variants for pricing only, or disable stock management until warehouse-backed variants are added.
-                                            </Alert>
-                                        )}
                                         <Box sx={{ mb: 2 }}>
                                             <Typography
                                                 variant="h6"
@@ -1082,7 +1046,7 @@ const AddProduct = ({ product, id }) => {
                                                             </Grid>
                                                             <Grid item xs={3}>
                                                                 <Typography variant="body2" color="text.secondary">
-                                                                    {data.manage_stock ? 'Stock (Unsupported)' : 'Stock'}
+                                                                    Stock
                                                                 </Typography>
                                                             </Grid>
                                                         </Grid>
@@ -1096,7 +1060,7 @@ const AddProduct = ({ product, id }) => {
                                                                     <TextField size="small" type="number" placeholder="Price" value={item.additional_price} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'additional_price', e.target.value)} sx={{ width: 130, mr: 1 }} />
                                                                 </Grid>
                                                                 <Grid item xs={3}>
-                                                                    <TextField size="small" type="number" placeholder="Stock" value={item.stock} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} disabled={Boolean(data.manage_stock)} />
+                                                                    <TextField size="small" type="number" placeholder="Stock" value={item.stock} inputProps={{ min: 0 }} onChange={(e) => updateVariantItem(variantIndex, itemIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} />
                                                                 </Grid>
                                                                 <Grid item xs={1}>
                                                                     <IconButton size="small" onClick={() => removeVariantItem(variantIndex, itemIndex)} color="error">
@@ -1121,7 +1085,7 @@ const AddProduct = ({ product, id }) => {
                                                                         </Box>
                                                                     </Grid>
                                                                     <Grid item xs={3}>
-                                                                        <TextField type="number" placeholder="0" size="small" value={variant.newItem?.stock || ''} onChange={(e) => updateNewVariantField(variantIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} inputProps={{ min: 0 }} disabled={Boolean(data.manage_stock)} />
+                                                                        <TextField type="number" placeholder="0" size="small" value={variant.newItem?.stock || ''} onChange={(e) => updateNewVariantField(variantIndex, 'stock', e.target.value)} sx={{ width: 130, mr: 1 }} inputProps={{ min: 0 }} />
                                                                     </Grid>
                                                                     <Grid item xs={1}>
                                                                         <IconButton size="small" onClick={() => addVariantItem(variantIndex)} color="primary">
@@ -1129,7 +1093,7 @@ const AddProduct = ({ product, id }) => {
                                                                         </IconButton>
                                                                     </Grid>
                                                                 </Grid>
-                                                                <Button variant="text" startIcon={<AddIcon />} onClick={() => addVariantItem(variantIndex)} sx={{ mt: 1 }} disabled={Boolean(data.manage_stock)}>
+                                                                <Button variant="text" startIcon={<AddIcon />} onClick={() => addVariantItem(variantIndex)} sx={{ mt: 1 }}>
                                                                     Add Variant Item
                                                                 </Button>
                                                             </>

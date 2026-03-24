@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class InventoryTransaction extends Model
 {
+    protected $appends = ['resolved_product_id'];
+
     protected $fillable = [
         'product_id',
+        'inventory_item_id',
         'tenant_id',
         'warehouse_id',
         'warehouse_location_id',
@@ -37,9 +40,24 @@ class InventoryTransaction extends Model
         return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 
+    public function inventoryItem()
+    {
+        return $this->belongsTo(InventoryItem::class, 'inventory_item_id');
+    }
+
     public function product()
     {
-        return $this->belongsTo(Product::class);
+        return $this->inventoryItem();
+    }
+
+    public function getProductIdAttribute($value)
+    {
+        return $value ?: $this->inventory_item_id;
+    }
+
+    public function getResolvedProductIdAttribute(): ?int
+    {
+        return $this->product_id;
     }
 
     public function warehouse()

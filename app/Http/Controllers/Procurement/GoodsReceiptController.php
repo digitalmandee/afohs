@@ -97,10 +97,10 @@ class GoodsReceiptController extends Controller
     {
         $purchaseOrder = null;
         if ($request->filled('purchase_order_id')) {
-            $purchaseOrder = PurchaseOrder::with(['items.product', 'warehouse.locations', 'warehouse.tenant', 'tenant', 'vendor'])->find($request->purchase_order_id);
+            $purchaseOrder = PurchaseOrder::with(['items.inventoryItem', 'warehouse.locations', 'warehouse.tenant', 'tenant', 'vendor'])->find($request->purchase_order_id);
         }
 
-        $purchaseOrders = PurchaseOrder::with(['vendor:id,name', 'warehouse:id,name,tenant_id', 'warehouse.locations:id,warehouse_id,name,code,status,is_primary', 'items.product:id,name', 'tenant:id,name'])
+        $purchaseOrders = PurchaseOrder::with(['vendor:id,name', 'warehouse:id,name,tenant_id', 'warehouse.locations:id,warehouse_id,name,code,status,is_primary', 'items.inventoryItem:id,name', 'tenant:id,name'])
             ->orderByDesc('order_date')
             ->limit(200)
             ->get(['id', 'po_no', 'vendor_id', 'warehouse_id', 'tenant_id', 'order_date', 'status']);
@@ -113,6 +113,15 @@ class GoodsReceiptController extends Controller
 
     public function store(Request $request, InventoryMovementService $inventoryMovementService)
     {
+        $request->merge([
+            'items' => collect($request->input('items', []))->map(function ($item) {
+                if (!isset($item['inventory_item_id']) && isset($item['product_id'])) {
+                    $item['inventory_item_id'] = $item['product_id'];
+                }
+                return $item;
+            })->all(),
+        ]);
+
         $data = $request->validate([
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'received_date' => 'required|date',
@@ -120,7 +129,7 @@ class GoodsReceiptController extends Controller
             'remarks' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.purchase_order_item_id' => 'required|exists:purchase_order_items,id',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.inventory_item_id' => 'required|exists:inventory_items,id',
             'items.*.qty_received' => 'required|numeric|min:0.001',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
@@ -155,9 +164,9 @@ class GoodsReceiptController extends Controller
                 ]);
             }
 
-            if ((int) $poItem->product_id !== (int) $item['product_id']) {
+            if ((int) $poItem->inventory_item_id !== (int) $item['inventory_item_id']) {
                 throw ValidationException::withMessages([
-                    "items.{$index}.product_id" => 'Product mismatch for selected purchase order item.',
+                    "items.{$index}.inventory_item_id" => 'Inventory item mismatch for selected purchase order item.',
                 ]);
             }
 
@@ -189,14 +198,16 @@ class GoodsReceiptController extends Controller
             $total += $lineTotal;
             $receipt->items()->create([
                 'purchase_order_item_id' => $item['purchase_order_item_id'],
-                'product_id' => $item['product_id'],
+                'product_id' => null,
+                'inventory_item_id' => $item['inventory_item_id'],
                 'qty_received' => $item['qty_received'],
                 'unit_cost' => $item['unit_cost'],
                 'line_total' => $lineTotal,
             ]);
 
             $inventoryMovementService->record([
-                'product_id' => $item['product_id'],
+                'product_id' => null,
+                'inventory_item_id' => $item['inventory_item_id'],
                 'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
                 'warehouse_id' => $po->warehouse_id,
                 'warehouse_location_id' => $locationId,

@@ -297,11 +297,14 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
             <SurfaceCard
                 title="Transaction Feed"
                 subtitle="Filter the latest accounting activity by status, source module, and date range."
+                cardSx={{ borderRadius: '18px' }}
+                contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
             >
                 <FilterToolbar onReset={resetFilters}>
-                    <Grid container spacing={2}>
+                    <Grid container spacing={1.25}>
                         <Grid item xs={12} md={3}>
                             <TextField
+                                size="small"
                                 label="Search entry or description"
                                 value={filters.search}
                                 onChange={(e) => updateFilters({ search: e.target.value })}
@@ -310,6 +313,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         </Grid>
                         <Grid item xs={12} md={2}>
                             <TextField
+                                size="small"
                                 select
                                 label="Status"
                                 value={filters.status}
@@ -324,6 +328,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         </Grid>
                         <Grid item xs={12} md={3}>
                             <TextField
+                                size="small"
                                 select
                                 label="Module"
                                 value={filters.module_type}
@@ -338,6 +343,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         </Grid>
                         <Grid item xs={12} md={2}>
                             <TextField
+                                size="small"
                                 select
                                 label="Restaurant"
                                 value={filters.tenant_id}
@@ -352,6 +358,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         </Grid>
                         <Grid item xs={12} md={2}>
                             <TextField
+                                size="small"
                                 label="From"
                                 type="date"
                                 value={filters.from}
@@ -362,6 +369,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         </Grid>
                         <Grid item xs={12} md={2}>
                             <TextField
+                                size="small"
                                 label="To"
                                 type="date"
                                 value={filters.to}

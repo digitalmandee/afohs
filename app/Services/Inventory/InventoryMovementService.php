@@ -3,8 +3,8 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryDocument;
+use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
-use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -13,7 +13,8 @@ class InventoryMovementService
     public function record(array $attributes): InventoryTransaction
     {
         $transaction = InventoryTransaction::create([
-            'product_id' => $attributes['product_id'],
+            'product_id' => $attributes['product_id'] ?? null,
+            'inventory_item_id' => $attributes['inventory_item_id'],
             'tenant_id' => $attributes['tenant_id'] ?? null,
             'warehouse_id' => $attributes['warehouse_id'],
             'warehouse_location_id' => $attributes['warehouse_location_id'] ?? null,
@@ -32,16 +33,16 @@ class InventoryMovementService
 
         $delta = (float) ($transaction->qty_in ?? 0) - (float) ($transaction->qty_out ?? 0);
         if (abs($delta) > 0.0001) {
-            Product::query()->whereKey($transaction->product_id)->increment('current_stock', $delta);
+            InventoryItem::query()->whereKey($transaction->inventory_item_id)->increment('current_stock', $delta);
         }
 
         return $transaction;
     }
 
-    public function availableQuantity(int $productId, int $warehouseId, ?int $locationId = null): float
+    public function availableQuantity(int $inventoryItemId, int $warehouseId, ?int $locationId = null): float
     {
         return (float) InventoryTransaction::query()
-            ->where('product_id', $productId)
+            ->where('inventory_item_id', $inventoryItemId)
             ->where('warehouse_id', $warehouseId)
             ->when($locationId, fn ($query) => $query->where('warehouse_location_id', $locationId))
             ->selectRaw('COALESCE(SUM(qty_in - qty_out), 0) as balance')
@@ -63,7 +64,8 @@ class InventoryMovementService
             ]);
 
             $this->record([
-                'product_id' => $payload['product_id'],
+                'product_id' => $payload['product_id'] ?? null,
+                'inventory_item_id' => $payload['inventory_item_id'],
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'warehouse_id' => $payload['warehouse_id'],
                 'warehouse_location_id' => $payload['warehouse_location_id'] ?? null,
@@ -92,7 +94,7 @@ class InventoryMovementService
 
             if ($direction === 'out') {
                 $available = $this->availableQuantity(
-                    (int) $payload['product_id'],
+                    (int) $payload['inventory_item_id'],
                     (int) $payload['warehouse_id'],
                     $payload['warehouse_location_id'] ?? null,
                 );
@@ -116,7 +118,8 @@ class InventoryMovementService
             ]);
 
             $this->record([
-                'product_id' => $payload['product_id'],
+                'product_id' => $payload['product_id'] ?? null,
+                'inventory_item_id' => $payload['inventory_item_id'],
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'warehouse_id' => $payload['warehouse_id'],
                 'warehouse_location_id' => $payload['warehouse_location_id'] ?? null,
@@ -152,7 +155,7 @@ class InventoryMovementService
             $quantity = (float) $payload['quantity'];
 
             $available = $this->availableQuantity(
-                (int) $payload['product_id'],
+                (int) $payload['inventory_item_id'],
                 (int) $payload['source_warehouse_id'],
                 $payload['source_warehouse_location_id'] ?? null,
             );
@@ -175,7 +178,8 @@ class InventoryMovementService
             ]);
 
             $base = [
-                'product_id' => $payload['product_id'],
+                'product_id' => $payload['product_id'] ?? null,
+                'inventory_item_id' => $payload['inventory_item_id'],
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'transaction_date' => $payload['transaction_date'],
                 'unit_cost' => $payload['unit_cost'] ?? 0,

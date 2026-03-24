@@ -402,11 +402,16 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
                         </Button>,
                     ]}
                 >
-                    <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search or change any membership filter.">
+                    <SurfaceCard
+                        title="Live Filters"
+                        subtitle="Results update automatically while you search or change any membership filter."
+                        cardSx={{ borderRadius: '18px' }}
+                        contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                    >
                         <FilterToolbar
                             onReset={resetFilters}
                             actions={
-                                <Button variant="contained" onClick={handleApplyFilters} sx={{ borderRadius: '14px', textTransform: 'none', backgroundColor: '#063455', '&:hover': { backgroundColor: '#052a42' } }}>
+                                <Button size="small" variant="contained" onClick={handleApplyFilters} sx={{ borderRadius: '12px', textTransform: 'none', backgroundColor: '#063455', '&:hover': { backgroundColor: '#052a42' } }}>
                                     Search
                                 </Button>
                             }
@@ -415,7 +420,7 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
                                 sx={{
                                     display: 'grid',
                                     gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' },
-                                    gap: 2,
+                                    gap: 1.25,
                                 }}
                             >
                                 <Autocomplete

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ingredient;
+use App\Models\InventoryItem;
 use App\Models\Product;
 use App\Services\Inventory\RestaurantInventoryResolver;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ class IngredientController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Ingredient::query()->with('inventoryProduct:id,name,menu_code,item_type,manage_stock');
+        $query = Ingredient::query()->with('inventoryItem:id,name,sku,manage_stock');
 
         // Search functionality
         if ($request->filled('search')) {
@@ -72,7 +73,7 @@ class IngredientController extends Controller
 
         // Statistics
         $statsCollection = Ingredient::query()
-            ->with('inventoryProduct:id,name,menu_code,item_type,manage_stock')
+            ->with('inventoryItem:id,name,sku,manage_stock')
             ->get();
         $this->hydrateWarehouseBalances($statsCollection, $restaurantId);
         $stats = [
@@ -81,6 +82,7 @@ class IngredientController extends Controller
             'low_stock' => $statsCollection->filter(fn (Ingredient $ingredient) => (float) $ingredient->remaining_quantity > 0 && (float) $ingredient->remaining_quantity <= 10)->count(),
             'out_of_stock' => $statsCollection->filter(fn (Ingredient $ingredient) => (float) $ingredient->remaining_quantity <= 0)->count(),
             'warehouse_managed' => $statsCollection->where('balance_source', 'warehouse')->count(),
+            'legacy_only' => $statsCollection->where('balance_source', 'legacy')->count(),
         ];
 
         return Inertia::render('App/Inventory/Ingredients/Index', [
@@ -96,10 +98,10 @@ class IngredientController extends Controller
     public function create()
     {
         return Inertia::render('App/Inventory/Ingredients/Create', [
-            'rawMaterialProducts' => Product::query()
-                ->rawMaterialStockManaged()
+            'rawMaterialProducts' => InventoryItem::query()
+                ->warehouseOperationalEligible()
                 ->orderBy('name')
-                ->get(['id', 'name', 'menu_code']),
+                ->get(['id', 'name', 'sku']),
         ]);
     }
 
@@ -110,10 +112,9 @@ class IngredientController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:ingredients,name',
-            'inventory_product_id' => [
+            'inventory_item_id' => [
                 'nullable',
-                Rule::exists('products', 'id')->where(fn ($query) => $query
-                    ->where('item_type', 'raw_material')
+                Rule::exists('inventory_items', 'id')->where(fn ($query) => $query
                     ->where('manage_stock', true)),
             ],
             'description' => 'nullable|string',
@@ -123,6 +124,10 @@ class IngredientController extends Controller
             'expiry_date' => 'nullable|date|after:today',
             'status' => 'required|in:active,inactive'
         ]);
+
+        if (!array_key_exists('inventory_item_id', $validated)) {
+            $validated['inventory_item_id'] = $request->input('inventory_item_id') ?? $request->input('inventory_product_id');
+        }
 
         // Calculate remaining quantity (initially same as total)
         $validated['remaining_quantity'] = $validated['total_quantity'];
@@ -141,7 +146,7 @@ class IngredientController extends Controller
     {
         $ingredient->load(['products' => function ($query) {
             $query->withPivot('quantity_used', 'cost');
-        }, 'inventoryProduct:id,name,menu_code,item_type']);
+        }, 'inventoryItem:id,name,sku']);
 
         $this->hydrateWarehouseBalances(collect([$ingredient]), (int) (request()->session()->get('active_restaurant_id') ?? 0));
 
@@ -156,11 +161,11 @@ class IngredientController extends Controller
     public function edit(Ingredient $ingredient)
     {
         return Inertia::render('App/Inventory/Ingredients/Edit', [
-            'ingredient' => $ingredient->load('inventoryProduct:id,name,menu_code,item_type'),
-            'rawMaterialProducts' => Product::query()
-                ->rawMaterialStockManaged()
+            'ingredient' => $ingredient->load('inventoryItem:id,name,sku'),
+            'rawMaterialProducts' => InventoryItem::query()
+                ->warehouseOperationalEligible()
                 ->orderBy('name')
-                ->get(['id', 'name', 'menu_code']),
+                ->get(['id', 'name', 'sku']),
         ]);
     }
 
@@ -171,10 +176,9 @@ class IngredientController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('ingredients')->ignore($ingredient->id)],
-            'inventory_product_id' => [
+            'inventory_item_id' => [
                 'nullable',
-                Rule::exists('products', 'id')->where(fn ($query) => $query
-                    ->where('item_type', 'raw_material')
+                Rule::exists('inventory_items', 'id')->where(fn ($query) => $query
                     ->where('manage_stock', true)),
             ],
             'description' => 'nullable|string',
@@ -184,6 +188,10 @@ class IngredientController extends Controller
             'expiry_date' => 'nullable|date',
             'status' => 'required|in:active,inactive,expired'
         ]);
+
+        if (!array_key_exists('inventory_item_id', $validated)) {
+            $validated['inventory_item_id'] = $request->input('inventory_item_id') ?? $request->input('inventory_product_id');
+        }
 
         // Recalculate remaining quantity if total quantity changed
         if ($validated['total_quantity'] != $ingredient->total_quantity) {
@@ -219,7 +227,7 @@ class IngredientController extends Controller
     public function showAddStock(Ingredient $ingredient)
     {
         return Inertia::render('App/Inventory/Ingredients/AddStock', [
-            'ingredient' => $ingredient->load('inventoryProduct:id,name,menu_code,item_type')
+            'ingredient' => $ingredient->load('inventoryItem:id,name,sku')
         ]);
     }
 
@@ -228,7 +236,7 @@ class IngredientController extends Controller
      */
     public function addStock(Request $request, Ingredient $ingredient)
     {
-        if ($ingredient->inventory_product_id) {
+        if ($ingredient->inventory_item_id) {
             return back()->with('error', 'This ingredient is warehouse-managed. Add stock through goods receipt, opening balance, adjustment, or transfer.');
         }
 
@@ -251,13 +259,13 @@ class IngredientController extends Controller
      */
     public function getIngredients(Request $request)
     {
-        $query = Ingredient::active()->with('inventoryProduct:id,name,menu_code');
+        $query = Ingredient::active()->with('inventoryItem:id,name,sku');
 
         if ($request->filled('search')) {
             $query->where('name', 'like', "%{$request->search}%");
         }
 
-        $ingredients = $query->select('id', 'name', 'inventory_product_id', 'remaining_quantity', 'unit', 'cost_per_unit')
+        $ingredients = $query->select('id', 'name', 'inventory_item_id', 'remaining_quantity', 'unit', 'cost_per_unit')
             ->orderBy('name')
             ->get();
 
@@ -281,7 +289,7 @@ class IngredientController extends Controller
         $allAvailable = true;
 
         foreach ($validated['ingredients'] as $ingredientData) {
-            $ingredient = Ingredient::with('inventoryProduct:id,name,menu_code')->find($ingredientData['id']);
+            $ingredient = Ingredient::with('inventoryItem:id,name,sku')->find($ingredientData['id']);
             $this->hydrateWarehouseBalances(collect([$ingredient]), (int) ($request->session()->get('active_restaurant_id') ?? 0));
             $available = $ingredient->hasEnoughQuantity($ingredientData['quantity']);
             
@@ -314,36 +322,36 @@ class IngredientController extends Controller
             }
 
             $ingredient->legacy_remaining_quantity = (float) $ingredient->remaining_quantity;
-            $ingredient->warehouse_managed = (bool) $ingredient->inventory_product_id;
-            $ingredient->balance_source = $ingredient->inventory_product_id ? 'warehouse' : 'legacy';
+            $ingredient->warehouse_managed = (bool) $ingredient->inventory_item_id;
+            $ingredient->balance_source = $ingredient->inventory_item_id ? 'warehouse' : 'legacy';
         }
 
         if ($restaurantId <= 0) {
             return;
         }
 
-        $inventoryProductIds = collect($ingredients)
-            ->pluck('inventory_product_id')
+        $inventoryItemIds = collect($ingredients)
+            ->pluck('inventory_item_id')
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values()
             ->all();
 
-        if (empty($inventoryProductIds)) {
+        if (empty($inventoryItemIds)) {
             return;
         }
 
         $resolver = app(RestaurantInventoryResolver::class);
         $assignments = $resolver->assignmentsForRestaurant($restaurantId, ['sellable', 'primary_issue_source']);
-        $balances = $resolver->aggregateBalancesForAssignments($inventoryProductIds, $assignments);
+        $balances = $resolver->aggregateBalancesForAssignments($inventoryItemIds, $assignments);
 
         foreach ($ingredients as $ingredient) {
-            if (!$ingredient->inventory_product_id) {
+            if (!$ingredient->inventory_item_id) {
                 continue;
             }
 
-            $balance = (float) $balances->get((int) $ingredient->inventory_product_id, 0.0);
+            $balance = (float) $balances->get((int) $ingredient->inventory_item_id, 0.0);
             $ingredient->remaining_quantity = $balance;
             $ingredient->warehouse_managed = true;
             $ingredient->balance_source = 'warehouse';
