@@ -34,7 +34,7 @@ const toneStyles = {
     },
 };
 
-export default function StatCard({ label, value, caption, icon = null, tone = 'dark', accent = false }) {
+export default function StatCard({ label, value, caption, icon = null, tone = 'dark', accent = false, compact = false }) {
     const resolvedTone = accent ? 'dark' : toneStyles[tone] ? tone : 'light';
     const styles = toneStyles[resolvedTone];
 
@@ -47,8 +47,8 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                 boxShadow: styles.boxShadow,
             }}
         >
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                <Stack spacing={1}>
+            <CardContent sx={{ p: compact ? 1.5 : 2, '&:last-child': { pb: compact ? 1.5 : 2 } }}>
+                <Stack spacing={compact ? 0.6 : 1}>
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Box>
                             <Typography
@@ -57,6 +57,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                                     color: styles.labelColor,
                                     fontWeight: 700,
                                     letterSpacing: '0.02em',
+                                    fontSize: compact ? '0.8rem' : undefined,
                                 }}
                             >
                                 {label}
@@ -65,14 +66,14 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                         {icon ? (
                             <Box
                                 sx={{
-                                    width: 42,
-                                    height: 42,
+                                    width: compact ? 34 : 42,
+                                    height: compact ? 34 : 42,
                                     display: 'grid',
                                     placeItems: 'center',
-                                    borderRadius: '14px',
+                                    borderRadius: compact ? '12px' : '14px',
                                     bgcolor: styles.iconBg,
                                     color: styles.iconColor,
-                                    '& svg': { fontSize: '1.25rem' },
+                                    '& svg': { fontSize: compact ? '1rem' : '1.25rem' },
                                 }}
                             >
                                 {icon}
@@ -86,6 +87,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                             fontWeight: 800,
                             letterSpacing: '-0.03em',
                             lineHeight: 1.15,
+                            fontSize: compact ? '1.5rem' : undefined,
                         }}
                     >
                         {value}

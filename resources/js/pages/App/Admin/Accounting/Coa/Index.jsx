@@ -125,18 +125,41 @@ const baseFormValues = {
 };
 
 const sectionCardSx = {
-    borderRadius: '22px',
-    border: '1px solid rgba(226,232,240,0.9)',
-    background: 'linear-gradient(180deg, rgba(248,250,253,0.98) 0%, rgba(255,255,255,0.98) 100%)',
-    p: { xs: 2, md: 2.5 },
+    borderRadius: '18px',
+    border: '1px solid rgba(226,232,240,0.85)',
+    background: 'rgba(255,255,255,0.94)',
+    p: { xs: 1.5, md: 2 },
+    boxShadow: '0 10px 28px rgba(15,23,42,0.04)',
 };
 
 const dialogPaperSx = {
-    borderRadius: { xs: '22px', md: '28px' },
-    width: 'min(100%, 940px)',
-    maxHeight: 'calc(100vh - 40px)',
+    borderRadius: { xs: '20px', md: '24px' },
+    width: 'min(100%, 820px)',
+    height: 'min(100vh - 32px, 860px)',
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
     backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(248,250,252,0.98) 100%)',
+    boxShadow: '0 28px 80px rgba(15,23,42,0.18)',
+};
+
+const compactTextFieldSx = {
+    '& .MuiInputBase-root': {
+        borderRadius: '14px',
+    },
+    '& .MuiFormHelperText-root': {
+        mt: 0.5,
+    },
+};
+
+const compactHierarchyChipSx = {
+    height: 22,
+    borderRadius: '10px',
+    '& .MuiChip-label': {
+        px: 1,
+        fontSize: '0.72rem',
+        fontWeight: 600,
+    },
 };
 
 const FormFields = ({
@@ -154,41 +177,52 @@ const FormFields = ({
     <>
         <DialogTitle
             sx={{
-                px: { xs: 2.5, md: 3.5 },
-                pt: { xs: 2.5, md: 3 },
-                pb: 1.5,
+                px: { xs: 2, md: 2.5 },
+                pt: { xs: 2, md: 2.25 },
+                pb: 1.25,
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
-                gap: 2,
+                gap: 1.5,
                 borderBottom: '1px solid rgba(226,232,240,0.85)',
                 backgroundColor: 'rgba(255,255,255,0.94)',
                 backdropFilter: 'blur(10px)',
+                flexShrink: 0,
             }}
         >
             <Box>
-                <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.03em', fontSize: { xs: '1.8rem', md: '2.1rem' } }}>
+                <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.03em', fontSize: { xs: '1.45rem', md: '1.8rem' }, lineHeight: 1.1 }}>
                     {mode === 'edit' ? 'Edit Chart Of Account' : 'Create Chart Of Account'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 560 }}>
                     Build a structured chart with guided parent hierarchy, proper balances, and a live code preview.
                 </Typography>
             </Box>
-            <IconButton onClick={onClose}>
+            <IconButton onClick={onClose} size="small" sx={{ backgroundColor: 'rgba(148,163,184,0.08)' }}>
                 <Close />
             </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ px: { xs: 2.5, md: 3.5 }, py: 2.25, pb: 2.5 }}>
-            <Stack spacing={2.25}>
+        <DialogContent
+            sx={{
+                px: { xs: 2, md: 2.5 },
+                py: 1.75,
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                overscrollBehavior: 'contain',
+            }}
+        >
+            <Stack spacing={1.5}>
                 <Box sx={sectionCardSx}>
-                    <Stack spacing={2.25}>
+                    <Stack spacing={1.5}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
                             Account Setup
                         </Typography>
-                        <Grid container spacing={2.25}>
+                        <Grid container spacing={1.5}>
                             <Grid item xs={12} md={6}>
                                 <TextField
+                                    size="small"
                                     select
                                     label="Account Type"
                                     value={formData.type}
@@ -201,6 +235,7 @@ const FormFields = ({
                                     helperText={errors.type || (formMode.parent ? `Locked to parent type: ${typeLabels[formMode.parent.type] || formMode.parent.type}` : 'Select the account family for this branch.')}
                                     disabled={!!formMode.parent}
                                     fullWidth
+                                    sx={compactTextFieldSx}
                                 >
                                     {Object.entries(typeLabels).map(([value, label]) => (
                                         <MenuItem key={value} value={value}>{label}</MenuItem>
@@ -210,6 +245,7 @@ const FormFields = ({
 
                             <Grid item xs={12} md={6}>
                                 <TextField
+                                    size="small"
                                     label="Account Name"
                                     placeholder="Enter Account Name"
                                     value={formData.name}
@@ -217,6 +253,7 @@ const FormFields = ({
                                     error={!!errors.name}
                                     helperText={errors.name}
                                     fullWidth
+                                    sx={compactTextFieldSx}
                                 />
                             </Grid>
 
@@ -225,16 +262,19 @@ const FormFields = ({
                                     direction={{ xs: 'column', md: 'row' }}
                                     justifyContent="space-between"
                                     alignItems={{ xs: 'flex-start', md: 'center' }}
-                                    spacing={1}
-                                    sx={{ borderRadius: '18px', backgroundColor: 'rgba(255,255,255,0.7)', px: 1.5, py: 1 }}
+                                    spacing={0.75}
+                                    sx={{ borderRadius: '14px', backgroundColor: 'rgba(248,250,252,0.95)', px: 1.25, py: 0.75, border: '1px solid rgba(226,232,240,0.7)' }}
                                 >
                                     <FormControlLabel
-                                        control={<Switch checked={!!formData.is_active} onChange={(event) => setFormData('is_active', event.target.checked)} color="success" />}
+                                        sx={{ mr: 0 }}
+                                        control={<Switch size="small" checked={!!formData.is_active} onChange={(event) => setFormData('is_active', event.target.checked)} color="success" />}
                                         label="Is Active"
                                     />
                                     <FormControlLabel
+                                        sx={{ mr: 0 }}
                                         control={(
                                             <Checkbox
+                                                size="small"
                                                 checked={!!formData.is_sub_account}
                                                 onChange={(event) => {
                                                     const checked = event.target.checked;
@@ -255,14 +295,15 @@ const FormFields = ({
                 </Box>
 
                 <Box sx={sectionCardSx}>
-                    <Stack spacing={2.25}>
+                    <Stack spacing={1.5}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
                             Hierarchy
                         </Typography>
-                        <Grid container spacing={2.25}>
+                        <Grid container spacing={1.5}>
                             {formData.is_sub_account ? (
                                 <Grid item xs={12}>
                                     <TextField
+                                        size="small"
                                         select
                                         label="Parent Account"
                                         value={formData.parent_id}
@@ -279,6 +320,7 @@ const FormFields = ({
                                         error={!!errors.parent_id}
                                         helperText={errors.parent_id || 'Pick the header account this new account should sit under.'}
                                         fullWidth
+                                        sx={compactTextFieldSx}
                                     >
                                         <MenuItem value="">Select Parent Account</MenuItem>
                                         {parentOptions.map((account) => (
@@ -292,6 +334,7 @@ const FormFields = ({
 
                             <Grid item xs={12}>
                                 <TextField
+                                    size="small"
                                     label="Account Code"
                                     placeholder={formMode.parent ? `Enter ${SEGMENT_LABELS[formMode.nextSegmentIndex]}` : 'Enter root account code'}
                                     value={formData.segment_value}
@@ -308,12 +351,13 @@ const FormFields = ({
                                             : 'For a root account, enter the first segment code.')
                                     }
                                     fullWidth
+                                    sx={compactTextFieldSx}
                                 />
                             </Grid>
 
                             {formMode.parent ? (
                                 <Grid item xs={12}>
-                                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                                    <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
                                         {formMode.segments.map((segment, index) => (
                                             <Chip
                                                 key={SEGMENT_LABELS[index]}
@@ -321,6 +365,7 @@ const FormFields = ({
                                                 size="small"
                                                 variant={index === formMode.nextSegmentIndex ? 'filled' : 'outlined'}
                                                 color={index === formMode.nextSegmentIndex ? 'primary' : 'default'}
+                                                sx={{ borderRadius: '10px', height: 24 }}
                                             />
                                         ))}
                                     </Stack>
@@ -328,15 +373,15 @@ const FormFields = ({
                             ) : null}
 
                             <Grid item xs={12}>
-                                <Box sx={{ borderRadius: '18px', backgroundColor: 'rgba(255,255,255,0.78)', border: '1px dashed rgba(148,163,184,0.45)', p: 2 }}>
-                                    <Stack spacing={0.75}>
+                                <Box sx={{ borderRadius: '14px', backgroundColor: 'rgba(248,250,252,0.82)', border: '1px dashed rgba(148,163,184,0.4)', p: 1.5 }}>
+                                    <Stack spacing={0.5}>
                                         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                                             Hierarchy Preview
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography variant="caption" color="text.secondary">
                                             {submitLabel} level: {formMode.hierarchyInfo.level || 'n/a'} · Parent path: {formMode.parent ? `${formMode.parent.full_code} - ${formMode.parent.name}` : 'Root account'}
                                         </Typography>
-                                        <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 800 }}>
                                             Final code: {formMode.segments.filter((part) => String(part || '').trim() !== '').join('-') || '—'}
                                         </Typography>
                                         <Typography variant="caption" color={formMode.hierarchyInfo.hasGap ? 'error.main' : 'text.secondary'}>
@@ -354,17 +399,17 @@ const FormFields = ({
                 </Box>
 
                 <Box sx={sectionCardSx}>
-                    <Stack spacing={2.25}>
+                    <Stack spacing={1.5}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
                             Balances and Metadata
                         </Typography>
-                        <Grid container spacing={2.25}>
+                        <Grid container spacing={1.5}>
                             <Grid item xs={12} md={6}>
                                 <FormControl fullWidth>
-                                    <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Normal Balance</FormLabel>
+                                    <FormLabel sx={{ mb: 0.25, color: 'text.primary', fontWeight: 700, fontSize: '0.9rem' }}>Normal Balance</FormLabel>
                                     <RadioGroup row value={formData.normal_balance} onChange={(event) => setFormData('normal_balance', event.target.value)}>
-                                        <FormControlLabel value="debit" control={<Radio color="success" />} label="Debit" />
-                                        <FormControlLabel value="credit" control={<Radio color="success" />} label="Credit" />
+                                        <FormControlLabel sx={{ mr: 1.5 }} value="debit" control={<Radio size="small" color="success" />} label="Debit" />
+                                        <FormControlLabel value="credit" control={<Radio size="small" color="success" />} label="Credit" />
                                     </RadioGroup>
                                 </FormControl>
                             </Grid>
@@ -374,12 +419,13 @@ const FormFields = ({
                                     direction={{ xs: 'column', md: 'row' }}
                                     justifyContent="space-between"
                                     alignItems={{ xs: 'flex-start', md: 'center' }}
-                                    spacing={1}
-                                    sx={{ borderRadius: '18px', backgroundColor: 'rgba(255,255,255,0.7)', px: 1.5, py: 1.1, height: '100%' }}
+                                    spacing={0.75}
+                                    sx={{ borderRadius: '14px', backgroundColor: 'rgba(248,250,252,0.95)', px: 1.25, py: 0.9, height: '100%', border: '1px solid rgba(226,232,240,0.7)' }}
                                 >
                                     <FormControlLabel
                                         control={(
                                             <Switch
+                                                size="small"
                                                 checked={!!formData.is_postable}
                                                 onChange={(event) => setFormData('is_postable', event.target.checked)}
                                                 color="primary"
@@ -396,6 +442,7 @@ const FormFields = ({
 
                             <Grid item xs={12} md={6}>
                                 <TextField
+                                    size="small"
                                     label="Opening Balance"
                                     type="number"
                                     inputProps={{ step: '0.01' }}
@@ -404,21 +451,25 @@ const FormFields = ({
                                     error={!!errors.opening_balance}
                                     helperText={errors.opening_balance || 'Stored as the starting configured balance for this account.'}
                                     fullWidth
+                                    sx={compactTextFieldSx}
                                 />
                             </Grid>
 
                             <Grid item xs={12} md={6}>
                                 <TextField
+                                    size="small"
                                     label="Current Balance"
                                     value={Number(derivedCurrentBalance || 0).toFixed(2)}
                                     helperText="Read-only derived balance from opening balance plus posted ledger movement."
                                     fullWidth
                                     InputProps={{ readOnly: true }}
+                                    sx={compactTextFieldSx}
                                 />
                             </Grid>
 
                             <Grid item xs={12}>
                                 <TextField
+                                    size="small"
                                     label="Description"
                                     placeholder="Enter Description"
                                     value={formData.description}
@@ -426,8 +477,9 @@ const FormFields = ({
                                     error={!!errors.description}
                                     helperText={errors.description}
                                     multiline
-                                    minRows={3}
+                                    minRows={2.5}
                                     fullWidth
+                                    sx={compactTextFieldSx}
                                 />
                             </Grid>
                         </Grid>
@@ -706,24 +758,24 @@ export default function Index({ accounts, error = null }) {
                         display: 'flex',
                         alignItems: { xs: 'flex-start', lg: 'center' },
                         flexDirection: { xs: 'column', lg: 'row' },
-                        gap: 1.5,
-                        py: 1.5,
-                        px: 1.75,
-                        mb: 1,
-                        borderRadius: '18px',
-                        border: '1px solid rgba(226,232,240,0.9)',
+                        gap: 1,
+                        py: 1,
+                        px: 1.25,
+                        mb: 0.75,
+                        borderRadius: '14px',
+                        border: '1px solid rgba(226,232,240,0.82)',
                         background: depth === 0
-                            ? 'linear-gradient(180deg, rgba(248,250,253,0.98) 0%, rgba(255,255,255,0.98) 100%)'
-                            : '#ffffff',
-                        pl: { xs: 1.25, lg: 1.75 + depth * 2.25 },
+                            ? 'linear-gradient(180deg, rgba(248,250,253,0.96) 0%, rgba(255,255,255,0.98) 100%)'
+                            : 'rgba(255,255,255,0.98)',
+                        pl: { xs: 1, lg: 1.25 + depth * 1.5 },
                     }}
                 >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: { xs: '100%', lg: 132 } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: { xs: '100%', lg: 118 } }}>
                         <IconButton size="small" onClick={() => toggleExpand(node.id)} disabled={!hasChildren}>
                             {hasChildren ? (isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />) : <ChevronRight sx={{ opacity: 0.22 }} fontSize="small" />}
                         </IconButton>
                         <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.15 }}>
                                 {node.full_code}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
@@ -733,7 +785,7 @@ export default function Index({ accounts, error = null }) {
                     </Box>
 
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        <Typography variant="body1" sx={{ fontWeight: 700, color: 'text.primary', lineHeight: 1.2 }}>
                             {node.name}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
@@ -741,22 +793,23 @@ export default function Index({ accounts, error = null }) {
                         </Typography>
                     </Box>
 
-                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ maxWidth: { xs: '100%', lg: 440 } }}>
-                        <Chip label={typeLabels[node.type] || node.type} size="small" color={typeTone[node.type] || 'default'} variant="outlined" />
-                        <Chip label={node.is_postable ? 'Postable' : 'Header'} size="small" variant="outlined" />
-                        <Chip label={`L${node.level} ${node.is_postable ? 'Postable' : 'Header'}`} size="small" variant="outlined" />
-                        {node.parent_summary ? <Chip label={`Parent ${node.parent_summary.name}`} size="small" variant="outlined" /> : null}
-                        {(node.usage?.rules || 0) > 0 ? <Chip label={`Rules ${node.usage.rules}`} size="small" color="info" variant="outlined" /> : null}
-                        {(node.usage?.payment_accounts || 0) > 0 ? <Chip label={`Banks ${node.usage.payment_accounts}`} size="small" color="info" variant="outlined" /> : null}
-                        {(node.usage?.journal_lines || 0) > 0 ? <Chip label={`Entries ${node.usage.journal_lines}`} size="small" color="info" variant="outlined" /> : null}
-                        {!node.is_active ? <Chip label="Inactive" size="small" color="warning" variant="outlined" /> : null}
+                    <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" sx={{ maxWidth: { xs: '100%', lg: 400 } }}>
+                        <Chip label={typeLabels[node.type] || node.type} size="small" color={typeTone[node.type] || 'default'} variant="outlined" sx={compactHierarchyChipSx} />
+                        <Chip label={`L${node.level}`} size="small" variant="outlined" sx={compactHierarchyChipSx} />
+                        <Chip label={node.is_postable ? 'Postable' : 'Header'} size="small" variant="outlined" sx={compactHierarchyChipSx} />
+                        {node.parent_summary ? <Chip label={`Parent ${node.parent_summary.name}`} size="small" variant="outlined" sx={compactHierarchyChipSx} /> : null}
+                        {(node.usage?.rules || 0) > 0 ? <Chip label={`Rules ${node.usage.rules}`} size="small" color="info" variant="outlined" sx={compactHierarchyChipSx} /> : null}
+                        {(node.usage?.payment_accounts || 0) > 0 ? <Chip label={`Banks ${node.usage.payment_accounts}`} size="small" color="info" variant="outlined" sx={compactHierarchyChipSx} /> : null}
+                        {(node.usage?.journal_lines || 0) > 0 ? <Chip label={`Entries ${node.usage.journal_lines}`} size="small" color="info" variant="outlined" sx={compactHierarchyChipSx} /> : null}
+                        {!node.is_active ? <Chip label="Inactive" size="small" color="warning" variant="outlined" sx={compactHierarchyChipSx} /> : null}
                     </Stack>
 
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', ml: { lg: 'auto' } }}>
+                    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', ml: { lg: 'auto' } }}>
                         {!node.is_postable && Number(node.level) < 5 ? (
                             <Button
                                 size="small"
                                 variant="contained"
+                                sx={{ minWidth: 0, px: 1.25 }}
                                 onClick={() => {
                                     setData({
                                         ...baseFormValues,
@@ -776,25 +829,25 @@ export default function Index({ accounts, error = null }) {
                             </Button>
                         ) : null}
                         {node.ledger_url ? (
-                            <Button size="small" variant="outlined" endIcon={<OpenInNew fontSize="small" />} onClick={() => router.visit(node.ledger_url)}>
+                            <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1.1 }} endIcon={<OpenInNew fontSize="small" />} onClick={() => router.visit(node.ledger_url)}>
                                 Ledger
                             </Button>
                         ) : (
-                            <Button size="small" variant="outlined" disabled>
+                            <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1.1 }} disabled>
                                 Unavailable
                             </Button>
                         )}
-                        <Button size="small" variant="outlined" onClick={() => openEdit(node)}>
+                        <Button size="small" variant="outlined" sx={{ minWidth: 0, px: 1.1 }} onClick={() => openEdit(node)}>
                             Edit
                         </Button>
-                        <Button size="small" color="error" variant="outlined" startIcon={<DeleteOutline fontSize="small" />} onClick={() => router.delete(route('accounting.coa.destroy', node.id))}>
+                        <Button size="small" color="error" variant="outlined" sx={{ minWidth: 0, px: 1.1 }} startIcon={<DeleteOutline fontSize="small" />} onClick={() => router.delete(route('accounting.coa.destroy', node.id))}>
                             Delete
                         </Button>
                     </Box>
                 </Box>
 
                 {hasChildren && isExpanded ? (
-                    <Box sx={{ ml: { xs: 0, lg: 1 } }}>
+                    <Box sx={{ ml: { xs: 0, lg: 0.75 } }}>
                         {node.children.map((child) => renderNode(child, depth + 1))}
                     </Box>
                 ) : null}
@@ -837,21 +890,27 @@ export default function Index({ accounts, error = null }) {
                     }}
                 />
 
-                <Grid container spacing={2.25}>
-                    <Grid item xs={12} md={2}><StatCard label="Total Accounts" value={summary.total} accent /></Grid>
-                    <Grid item xs={12} md={2}><StatCard label="Assets" value={summary.assets} tone="light" /></Grid>
-                    <Grid item xs={12} md={2}><StatCard label="Liabilities" value={summary.liabilities} tone="light" /></Grid>
-                    <Grid item xs={12} md={2}><StatCard label="Equity" value={summary.equity} tone="muted" /></Grid>
-                    <Grid item xs={12} md={2}><StatCard label="Revenue" value={summary.income} tone="light" /></Grid>
-                    <Grid item xs={12} md={2}><StatCard label="Expenses" value={summary.expense} tone="muted" /></Grid>
-                    <Grid item xs={12} md={3}><StatCard label="Postable Accounts" value={summary.postable} tone="light" /></Grid>
-                    <Grid item xs={12} md={3}><StatCard label="Inactive Accounts" value={summary.inactive} tone="muted" /></Grid>
+                <Grid container spacing={1.5}>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Total Accounts" value={summary.total} accent compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Postable Accounts" value={summary.postable} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Inactive Accounts" value={summary.inactive} tone="muted" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Revenue Branches" value={summary.income} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Assets" value={summary.assets} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Liabilities" value={summary.liabilities} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Equity" value={summary.equity} tone="muted" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Expenses" value={summary.expense} tone="muted" compact /></Grid>
                 </Grid>
 
                 {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
-                <SurfaceCard title="Live Filters" subtitle="Search by code or name, isolate a level or parent branch, and control whether inactive accounts are included in the hierarchy view.">
+                <SurfaceCard
+                    title="Live Filters"
+                    subtitle="Search by code or name, isolate a level or parent branch, and control whether inactive accounts are included in the hierarchy view."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     <FilterToolbar
+                        compact
                         onReset={() => {
                             setQuery('');
                             setTypeFilter('all');
@@ -860,18 +919,18 @@ export default function Index({ accounts, error = null }) {
                             setShowInactive(false);
                         }}
                         actions={(
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={0.75}>
                                 <Button size="small" variant="outlined" onClick={expandAll}>Expand All</Button>
                                 <Button size="small" variant="outlined" onClick={collapseAll}>Collapse All</Button>
                             </Stack>
                         )}
                     >
-                        <Grid container spacing={2}>
+                        <Grid container spacing={1.25}>
                             <Grid item xs={12} md={4}>
-                                <TextField label="Search by account code or name" value={query} onChange={(event) => setQuery(event.target.value)} fullWidth />
+                                <TextField size="small" label="Search by account code or name" value={query} onChange={(event) => setQuery(event.target.value)} fullWidth />
                             </Grid>
                             <Grid item xs={12} md={2.5}>
-                                <TextField select label="Category" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} fullWidth>
+                                <TextField size="small" select label="Category" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} fullWidth>
                                     <MenuItem value="all">All Categories</MenuItem>
                                     <MenuItem value="asset">Assets</MenuItem>
                                     <MenuItem value="liability">Liabilities</MenuItem>
@@ -881,13 +940,13 @@ export default function Index({ accounts, error = null }) {
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={2.5}>
-                                <TextField select label="Level" value={levelFilter} onChange={(event) => setLevelFilter(event.target.value)} fullWidth>
+                                <TextField size="small" select label="Level" value={levelFilter} onChange={(event) => setLevelFilter(event.target.value)} fullWidth>
                                     <MenuItem value="all">All Levels</MenuItem>
                                     {[1, 2, 3, 4, 5].map((level) => <MenuItem key={level} value={level}>{`Level ${level}`}</MenuItem>)}
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={3}>
-                                <TextField select label="Parent Branch" value={parentFilter} onChange={(event) => setParentFilter(event.target.value)} fullWidth>
+                                <TextField size="small" select label="Parent Branch" value={parentFilter} onChange={(event) => setParentFilter(event.target.value)} fullWidth>
                                     <MenuItem value="all">All Parents</MenuItem>
                                     {parentOptions.map((account) => (
                                         <MenuItem key={account.id} value={account.id}>
@@ -897,7 +956,7 @@ export default function Index({ accounts, error = null }) {
                                 </TextField>
                             </Grid>
                             <Grid item xs={12}>
-                                <Button variant={showInactive ? 'contained' : 'outlined'} onClick={() => setShowInactive((value) => !value)}>
+                                <Button size="small" variant={showInactive ? 'contained' : 'outlined'} onClick={() => setShowInactive((value) => !value)}>
                                     {showInactive ? 'Hiding inactive disabled' : 'Show inactive'}
                                 </Button>
                             </Grid>
@@ -905,18 +964,23 @@ export default function Index({ accounts, error = null }) {
                     </FilterToolbar>
                 </SurfaceCard>
 
-                <SurfaceCard title="Account Hierarchy" subtitle="A cleaner tree view with parent metadata, account usage, and ledger drilldown from each node.">
+                <SurfaceCard
+                    title="Account Hierarchy"
+                    subtitle="A cleaner tree view with parent metadata, account usage, and ledger drilldown from each node."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     {groupedRoots.length === 0 ? (
                         <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>No accounts found.</Box>
                     ) : null}
 
                     {groupedRoots.map((group) => (
-                        <Box key={group.type} sx={{ mb: 2.5 }}>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.25 }}>
-                                <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 800 }}>
+                        <Box key={group.type} sx={{ mb: 1.75 }}>
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.9 }}>
+                                <Typography variant="subtitle1" sx={{ color: 'primary.main', fontWeight: 800 }}>
                                     {group.label}
                                 </Typography>
-                                <Chip label={`${group.count} accounts`} size="small" color="primary" />
+                                <Chip label={`${group.count} accounts`} size="small" color="primary" sx={compactHierarchyChipSx} />
                             </Stack>
                             {group.nodes.map((node) => renderNode(node))}
                         </Box>
@@ -929,9 +993,10 @@ export default function Index({ accounts, error = null }) {
                 onClose={() => setOpenModal(false)}
                 maxWidth="lg"
                 fullWidth
+                scroll="paper"
                 PaperProps={{ sx: dialogPaperSx }}
             >
-                <form onSubmit={submit}>
+                <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
                     <FormFields
                         formData={data}
                         setFormData={setData}
@@ -946,19 +1011,20 @@ export default function Index({ accounts, error = null }) {
                     />
                     <DialogActions
                         sx={{
-                            px: { xs: 2.5, md: 3.5 },
-                            py: 2,
+                            px: { xs: 2, md: 2.5 },
+                            py: 1.5,
                             borderTop: '1px solid rgba(226,232,240,0.85)',
                             backgroundColor: 'rgba(255,255,255,0.96)',
                             justifyContent: 'space-between',
+                            flexShrink: 0,
                         }}
                     >
                         <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', md: 'block' } }}>
                             Accounts are created with guided hierarchy and live code validation.
                         </Typography>
-                        <Stack direction="row" spacing={1.25}>
+                        <Stack direction="row" spacing={1}>
                             <Button onClick={() => setOpenModal(false)}>Cancel</Button>
-                            <Button type="submit" variant="contained" disabled={processing} sx={{ minWidth: 152, borderRadius: '14px' }}>
+                            <Button type="submit" variant="contained" disabled={processing} sx={{ minWidth: 128, borderRadius: '12px' }}>
                                 Create
                             </Button>
                         </Stack>
@@ -971,9 +1037,10 @@ export default function Index({ accounts, error = null }) {
                 onClose={closeEdit}
                 maxWidth="lg"
                 fullWidth
+                scroll="paper"
                 PaperProps={{ sx: dialogPaperSx }}
             >
-                <form onSubmit={submitEdit}>
+                <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
                     <FormFields
                         formData={editData}
                         setFormData={setEditData}
@@ -988,19 +1055,20 @@ export default function Index({ accounts, error = null }) {
                     />
                     <DialogActions
                         sx={{
-                            px: { xs: 2.5, md: 3.5 },
-                            py: 2,
+                            px: { xs: 2, md: 2.5 },
+                            py: 1.5,
                             borderTop: '1px solid rgba(226,232,240,0.85)',
                             backgroundColor: 'rgba(255,255,255,0.96)',
                             justifyContent: 'space-between',
+                            flexShrink: 0,
                         }}
                     >
                         <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', md: 'block' } }}>
                             Editing preserves current hierarchy safety and used-account restrictions.
                         </Typography>
-                        <Stack direction="row" spacing={1.25}>
+                        <Stack direction="row" spacing={1}>
                             <Button onClick={closeEdit}>Cancel</Button>
-                            <Button type="submit" variant="contained" disabled={editProcessing} sx={{ minWidth: 152, borderRadius: '14px' }}>
+                            <Button type="submit" variant="contained" disabled={editProcessing} sx={{ minWidth: 128, borderRadius: '12px' }}>
                                 Save
                             </Button>
                         </Stack>
