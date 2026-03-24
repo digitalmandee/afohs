@@ -18,6 +18,16 @@ const statusColor = {
     not_configured: 'default',
 };
 
+const amountFormatter = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+const countFormatter = new Intl.NumberFormat(undefined);
+
+const formatAmount = (value) => amountFormatter.format(Number(value || 0));
+const formatCount = (value) => countFormatter.format(Number(value || 0));
+
 export default function Dashboard({ statistics, recent_transactions, transaction_filters = {} }) {
     const rows = recent_transactions?.data || [];
 
@@ -48,27 +58,63 @@ export default function Dashboard({ statistics, recent_transactions, transaction
                 </Button>,
             ]}
         >
-            <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Invoices" value={statistics?.total_transactions || 0} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Revenue" value={Number(statistics?.total_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Open Invoices" value={statistics?.open_invoices || 0} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Paid Invoices" value={statistics?.paid_invoices || 0} tone="muted" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Membership Revenue" value={Number(statistics?.membership_fee_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Maintenance Revenue" value={Number(statistics?.maintenance_fee_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Subscription Revenue" value={Number(statistics?.subscription_fee_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posting Failures" value={statistics?.failed_postings || 0} tone="muted" /></Grid>
+            <Grid container spacing={1.5}>
+                <Grid item xs={12} sm={6} md={3}>
+                    <StatCard label="Invoices" value={formatCount(statistics?.total_transactions)} accent compact />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                    <StatCard label="Total Revenue" value={formatAmount(statistics?.total_revenue)} tone="light" compact />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                    <StatCard label="Open Invoices" value={formatCount(statistics?.open_invoices)} tone="light" compact />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                    <StatCard
+                        label="Integration Coverage"
+                        value={`${Number(statistics?.integration_coverage_percent || 0).toFixed(1)}%`}
+                        caption={`${formatCount(statistics?.linked_invoices)} linked`}
+                        tone="muted"
+                        compact
+                    />
+                </Grid>
             </Grid>
 
-            <SurfaceCard title="Revenue Mix" subtitle="Keep the legacy finance overview while making the breakdown easier to compare against the new accounting module.">
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={3}><StatCard label="Room Revenue" value={Number(statistics?.room_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                    <Grid item xs={12} md={3}><StatCard label="Event Revenue" value={Number(statistics?.event_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                    <Grid item xs={12} md={3}><StatCard label="Food Revenue" value={Number(statistics?.food_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                    <Grid item xs={12} md={3}><StatCard label="Booking Revenue" value={Number(statistics?.total_booking_revenue || 0).toFixed(2)} tone="light" /></Grid>
+            <SurfaceCard
+                title="Revenue Mix"
+                subtitle="Keep the legacy finance overview while making the breakdown easier to compare against the new accounting module."
+                cardSx={{ borderRadius: '18px' }}
+                contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+            >
+                <Grid container spacing={1.5}>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Membership Revenue" value={formatAmount(statistics?.membership_fee_revenue)} tone="light" compact />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Maintenance Revenue" value={formatAmount(statistics?.maintenance_fee_revenue)} tone="light" compact />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Subscription Revenue" value={formatAmount(statistics?.subscription_fee_revenue)} tone="muted" compact />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                            <Chip size="small" variant="outlined" label={`Paid ${formatCount(statistics?.paid_invoices)}`} />
+                            <Chip size="small" variant="outlined" label={`Open ${formatCount(statistics?.open_invoices)}`} />
+                            <Chip size="small" variant="outlined" label={`Failed ${formatCount(statistics?.failed_postings)}`} />
+                            <Chip size="small" variant="outlined" label={`Pending ${formatCount(statistics?.pending_postings)}`} />
+                            <Chip size="small" variant="outlined" label={`Unlinked ${formatCount(statistics?.unlinked_invoices)}`} />
+                            <Chip size="small" variant="outlined" label={`Booking ${formatAmount(statistics?.total_booking_revenue)}`} />
+                            <Chip size="small" variant="outlined" label={`Food ${formatAmount(statistics?.food_revenue)}`} />
+                        </Stack>
+                    </Grid>
                 </Grid>
             </SurfaceCard>
 
-            <SurfaceCard title="Recent Transactions" subtitle="Latest legacy finance invoices with accounting-backed posting and journal visibility.">
+            <SurfaceCard
+                title="Recent Transactions"
+                subtitle="Latest legacy finance invoices with accounting-backed posting and journal visibility."
+                cardSx={{ borderRadius: '18px' }}
+                contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+            >
                 <AdminDataTable
                     columns={columns}
                     rows={rows}
@@ -100,8 +146,8 @@ export default function Dashboard({ statistics, recent_transactions, transaction
                             </TableCell>
                             <TableCell>{row.fee_type_formatted || '-'}</TableCell>
                             <TableCell>{row.restaurant_name || '-'}</TableCell>
-                            <TableCell align="right">{Number(row.total_price || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(row.balance || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(row.total_price)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(row.balance)}</TableCell>
                             <TableCell>
                                 <Chip size="small" label={row.status || '-'} color={statusColor[row.status] || 'default'} />
                             </TableCell>

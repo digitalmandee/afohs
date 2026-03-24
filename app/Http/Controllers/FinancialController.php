@@ -112,6 +112,48 @@ class FinancialController extends Controller
             ->groupBy('status')
             ->pluck('total', 'status');
 
+        $journalLinkedIds = JournalEntry::query()
+            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+            ->pluck('module_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $postedEventIds = AccountingEventQueue::query()
+            ->where('source_type', FinancialInvoice::class)
+            ->where('status', 'posted')
+            ->pluck('source_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $failedEventIds = AccountingEventQueue::query()
+            ->where('source_type', FinancialInvoice::class)
+            ->where('status', 'failed')
+            ->pluck('source_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $pendingEventIds = AccountingEventQueue::query()
+            ->where('source_type', FinancialInvoice::class)
+            ->where('status', 'pending')
+            ->pluck('source_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $linkedInvoiceIds = $journalLinkedIds->merge($postedEventIds)->unique()->values();
+        $inFlightInvoiceIds = $failedEventIds->merge($pendingEventIds)->unique()->values();
+        $unlinkedCount = max(0, $totalTransactions - $linkedInvoiceIds->count() - $inFlightInvoiceIds->count());
+        $coveragePercent = $totalTransactions > 0
+            ? round(($linkedInvoiceIds->count() / $totalTransactions) * 100, 1)
+            : 0;
+
         return Inertia::render('App/Admin/Finance/Dashboard', [
             'statistics' => [
                 'total_members' => $totalMembers,
@@ -139,6 +181,9 @@ class FinancialController extends Controller
                     ->where('source_type', FinancialInvoice::class)
                     ->where('status', 'pending')
                     ->count(),
+                'linked_invoices' => $linkedInvoiceIds->count(),
+                'unlinked_invoices' => $unlinkedCount,
+                'integration_coverage_percent' => $coveragePercent,
             ],
             'recent_transactions' => $recentTransactions,
             'transaction_filters' => $request->only(['per_page']),

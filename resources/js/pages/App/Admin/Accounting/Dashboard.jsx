@@ -122,6 +122,39 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
         { key: 'description', label: 'Description', sx: { minWidth: 320 } },
     ];
 
+    const amountFormatter = React.useMemo(
+        () => new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }),
+        [],
+    );
+
+    const countFormatter = React.useMemo(() => new Intl.NumberFormat('en-US'), []);
+
+    const formatAmount = React.useCallback((value) => amountFormatter.format(Number(value || 0)), [amountFormatter]);
+    const formatCount = React.useCallback((value) => countFormatter.format(Number(value || 0)), [countFormatter]);
+
+    const integrationResolved =
+        (exceptions.posted_postings || 0) +
+        (exceptions.pending_postings || 0) +
+        (exceptions.failed_postings || 0) +
+        (exceptions.skipped_postings || 0);
+    const integrationCoverage = integrationResolved === 0
+        ? 100
+        : Math.max(0, Math.round(((integrationResolved - (exceptions.unresolved_postings || 0)) / integrationResolved) * 100));
+
+    const secondaryMetrics = [
+        { label: 'Total Accounts', value: formatCount(stats.total_accounts) },
+        { label: 'Vendors', value: formatCount(stats.total_vendors) },
+        { label: 'Bank Accounts', value: formatCount(stats.bank_accounts) },
+        { label: 'Cash Accounts', value: formatCount(stats.cash_accounts) },
+        { label: 'Posting Failures', value: formatCount(exceptions.failed_postings) },
+        { label: 'Posting Pending', value: formatCount(exceptions.pending_postings) },
+        { label: 'Posting Skipped', value: formatCount(exceptions.skipped_postings || 0) },
+        { label: 'Source Unresolved', value: formatCount(exceptions.unresolved_postings || 0) },
+    ];
+
     const feedColumns = [
         { key: 'entry_no', label: 'Entry No' },
         { key: 'entry_date', label: 'Date' },
@@ -147,21 +180,67 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Total Accounts" value={stats.total_accounts} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Receivables" value={Number(stats.receivables || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Payables" value={Number(stats.payables || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="AR 90+ Exposure" value={Number(stats.receivables_90_plus || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="AP 90+ Exposure" value={Number(stats.payables_90_plus || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Vendors" value={stats.total_vendors} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Bank Accounts" value={stats.bank_accounts} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Cash Accounts" value={stats.cash_accounts} /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Posting Failures" value={exceptions.failed_postings} /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Posting Pending" value={exceptions.pending_postings} /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Posting Skipped" value={exceptions.skipped_postings || 0} /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Source Unresolved" value={exceptions.unresolved_postings || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}>
+                    <StatCard
+                        label="Receivables"
+                        value={formatAmount(stats.receivables)}
+                        caption="Open customer exposure"
+                        accent
+                        compact
+                    />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                    <StatCard
+                        label="Payables"
+                        value={formatAmount(stats.payables)}
+                        caption="Outstanding vendor balance"
+                        compact
+                    />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                    <StatCard
+                        label="AR 90+ Exposure"
+                        value={formatAmount(stats.receivables_90_plus)}
+                        caption="Receivables older than 90 days"
+                        compact
+                    />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                    <StatCard
+                        label="Integration Health"
+                        value={`${formatCount(integrationCoverage)}%`}
+                        caption={`${formatCount(exceptions.failed_postings || 0)} failed · ${formatCount(exceptions.pending_postings || 0)} pending`}
+                        tone="muted"
+                        compact
+                    />
+                </Grid>
             </Grid>
 
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
+
+            <SurfaceCard
+                title="Operations Snapshot"
+                subtitle="Compact accounting readiness and exception counters."
+                contentSx={{ p: { xs: 1.75, md: 2 }, '&:last-child': { pb: { xs: 1.75, md: 2 } } }}
+            >
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {secondaryMetrics.map((metric) => (
+                        <Chip
+                            key={metric.label}
+                            label={`${metric.label}: ${metric.value}`}
+                            size="small"
+                            sx={{
+                                borderRadius: '999px',
+                                bgcolor: 'rgba(6,52,85,0.06)',
+                                border: '1px solid rgba(6,52,85,0.12)',
+                                color: 'text.primary',
+                                fontWeight: 700,
+                                px: 0.35,
+                            }}
+                        />
+                    ))}
+                </Box>
+            </SurfaceCard>
 
             <SurfaceCard title="Quick Actions" subtitle="Jump into the highest-traffic accounting workflows.">
                 <Grid container spacing={1.5}>

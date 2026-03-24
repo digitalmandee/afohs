@@ -39,6 +39,16 @@ const statusColor = {
     not_configured: 'default',
 };
 
+const amountFormatter = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+const countFormatter = new Intl.NumberFormat(undefined);
+
+const formatAmount = (value) => amountFormatter.format(Number(value || 0));
+const formatCount = (value) => countFormatter.format(Number(value || 0));
+
 const defaultFilters = (filters, transactions) => ({
     search: filters?.search || '',
     invoice_no: filters?.invoice_no || '',
@@ -210,21 +220,29 @@ export default function Transaction({ transactions, filters, users = [], transac
                     </Button>,
                 ]}
             >
-                <Grid container spacing={2.25}>
-                    <Grid item xs={12} md={2.4}><StatCard label="Transactions" value={summary?.count || 0} accent /></Grid>
-                    <Grid item xs={12} md={2.4}><StatCard label="Total Amount" value={Number(summary?.total_amount || 0).toFixed(2)} tone="light" /></Grid>
-                    <Grid item xs={12} md={2.4}><StatCard label="Paid Amount" value={Number(summary?.paid_amount || 0).toFixed(2)} tone="light" /></Grid>
-                    <Grid item xs={12} md={2.4}><StatCard label="Open Balance" value={Number(summary?.balance || 0).toFixed(2)} tone="muted" /></Grid>
-                    <Grid item xs={12} md={1.2}><StatCard label="Failed" value={summary?.failed_postings || 0} tone="muted" /></Grid>
-                    <Grid item xs={12} md={1.2}><StatCard label="Pending" value={summary?.pending_postings || 0} tone="light" /></Grid>
+                <Grid container spacing={1.5}>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Transactions" value={formatCount(summary?.count)} accent compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Total Amount" value={formatAmount(summary?.total_amount)} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Open Balance" value={formatAmount(summary?.balance)} tone="muted" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Posting Exceptions" value={formatCount((summary?.failed_postings || 0) + (summary?.pending_postings || 0))} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Paid Amount" value={formatAmount(summary?.paid_amount)} tone="light" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Failed Postings" value={formatCount(summary?.failed_postings)} tone="muted" compact /></Grid>
+                    <Grid item xs={12} sm={6} md={3}><StatCard label="Pending Postings" value={formatCount(summary?.pending_postings)} tone="light" compact /></Grid>
                 </Grid>
 
-                <SurfaceCard title="Live Filters" subtitle="Refine finance transactions by invoice, party, type, status, creator, and date without using the older manual search workflow.">
+                <SurfaceCard
+                    title="Live Filters"
+                    subtitle="Refine finance transactions by invoice, party, type, status, creator, and date without using the older manual search workflow."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     <FilterToolbar
+                        compact
                         onReset={resetFilters}
                         actions={(
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
                                 <Button
+                                    size="small"
                                     variant="outlined"
                                     disabled={selectedIds.length === 0}
                                     onClick={() => setBulkDialog({ open: true, type: 'discount', amount: '', is_percent: false })}
@@ -232,6 +250,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                                     Bulk Discount
                                 </Button>
                                 <Button
+                                    size="small"
                                     variant="outlined"
                                     disabled={selectedIds.length === 0}
                                     onClick={() => setBulkDialog({ open: true, type: 'overdue', amount: '', is_percent: false })}
@@ -241,21 +260,21 @@ export default function Transaction({ transactions, filters, users = [], transac
                             </Stack>
                         )}
                     >
-                        <Grid container spacing={2}>
+                        <Grid container spacing={1.25}>
+                            <Grid item xs={12} md={4}>
+                                <TextField size="small" label="Search invoice or payment method" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                                <TextField size="small" label="Invoice #" value={localFilters.invoice_no} onChange={(event) => updateFilters({ invoice_no: event.target.value })} fullWidth />
+                            </Grid>
                             <Grid item xs={12} md={3}>
-                                <TextField label="Search invoice or payment method" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />
+                                <TextField size="small" label="Member / customer" value={localFilters.member_name} onChange={(event) => updateFilters({ member_name: event.target.value })} fullWidth />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField size="small" label="Membership / customer #" value={localFilters.membership_no} onChange={(event) => updateFilters({ membership_no: event.target.value })} fullWidth />
                             </Grid>
                             <Grid item xs={12} md={2}>
-                                <TextField label="Invoice #" value={localFilters.invoice_no} onChange={(event) => updateFilters({ invoice_no: event.target.value })} fullWidth />
-                            </Grid>
-                            <Grid item xs={12} md={2.5}>
-                                <TextField label="Member / customer" value={localFilters.member_name} onChange={(event) => updateFilters({ member_name: event.target.value })} fullWidth />
-                            </Grid>
-                            <Grid item xs={12} md={2.5}>
-                                <TextField label="Membership / customer #" value={localFilters.membership_no} onChange={(event) => updateFilters({ membership_no: event.target.value })} fullWidth />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                                <TextField select label="Status" value={localFilters.status} onChange={(event) => updateFilters({ status: event.target.value }, { immediate: true })} fullWidth>
+                                <TextField size="small" select label="Status" value={localFilters.status} onChange={(event) => updateFilters({ status: event.target.value }, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All</MenuItem>
                                     <MenuItem value="paid">Paid</MenuItem>
                                     <MenuItem value="unpaid">Unpaid</MenuItem>
@@ -264,7 +283,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={2.5}>
-                                <TextField select label="Customer Type" value={localFilters.customer_type} onChange={(event) => updateFilters({ customer_type: event.target.value }, { immediate: true })} fullWidth>
+                                <TextField size="small" select label="Customer Type" value={localFilters.customer_type} onChange={(event) => updateFilters({ customer_type: event.target.value }, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All</MenuItem>
                                     <MenuItem value="member">Primary Member</MenuItem>
                                     <MenuItem value="corporate">Corporate</MenuItem>
@@ -272,7 +291,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={3}>
-                                <TextField select label="Transaction Type" value={localFilters.type} onChange={(event) => updateFilters({ type: event.target.value }, { immediate: true })} fullWidth>
+                                <TextField size="small" select label="Transaction Type" value={localFilters.type} onChange={(event) => updateFilters({ type: event.target.value }, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All types</MenuItem>
                                     {Object.entries(transactionTypes).map(([id, label]) => (
                                         <MenuItem key={id} value={`type_${id}`}>{label}</MenuItem>
@@ -280,7 +299,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={2.5}>
-                                <TextField select label="Created By" value={localFilters.created_by} onChange={(event) => updateFilters({ created_by: event.target.value }, { immediate: true })} fullWidth>
+                                <TextField size="small" select label="Created By" value={localFilters.created_by} onChange={(event) => updateFilters({ created_by: event.target.value }, { immediate: true })} fullWidth>
                                     <MenuItem value="all">All users</MenuItem>
                                     {users.map((user) => (
                                         <MenuItem key={user.id} value={user.id}>{user.name}</MenuItem>
@@ -288,16 +307,21 @@ export default function Transaction({ transactions, filters, users = [], transac
                                 </TextField>
                             </Grid>
                             <Grid item xs={12} md={2}>
-                                <TextField label="From" type="date" value={localFilters.start_date} onChange={(event) => updateFilters({ start_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
+                                <TextField size="small" label="From" type="date" value={localFilters.start_date} onChange={(event) => updateFilters({ start_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
                             </Grid>
                             <Grid item xs={12} md={2}>
-                                <TextField label="To" type="date" value={localFilters.end_date} onChange={(event) => updateFilters({ end_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
+                                <TextField size="small" label="To" type="date" value={localFilters.end_date} onChange={(event) => updateFilters({ end_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
                             </Grid>
                         </Grid>
                     </FilterToolbar>
                 </SurfaceCard>
 
-                <SurfaceCard title="Transaction Register" subtitle="Operational finance table with selection, payment action, posting state, and accounting journal linkage.">
+                <SurfaceCard
+                    title="Transaction Register"
+                    subtitle="Operational finance table with selection, payment action, posting state, and accounting journal linkage."
+                    cardSx={{ borderRadius: '18px' }}
+                    contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
+                >
                     <AdminDataTable
                         columns={columns}
                         rows={rows}
@@ -330,9 +354,9 @@ export default function Transaction({ transactions, filters, users = [], transac
                                     </TableCell>
                                     <TableCell>{row.fee_type_formatted || '-'}</TableCell>
                                     <TableCell>{row.restaurant_name || '-'}</TableCell>
-                                    <TableCell align="right">{Number(row.total_price || 0).toFixed(2)}</TableCell>
-                                    <TableCell align="right">{Number(row.paid_amount || 0).toFixed(2)}</TableCell>
-                                    <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(row.balance || 0).toFixed(2)}</TableCell>
+                                    <TableCell align="right">{formatAmount(row.total_price)}</TableCell>
+                                    <TableCell align="right">{formatAmount(row.paid_amount)}</TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(row.balance)}</TableCell>
                                     <TableCell>
                                         <Chip size="small" label={row.status || '-'} color={statusColor[row.status] || 'default'} />
                                     </TableCell>
