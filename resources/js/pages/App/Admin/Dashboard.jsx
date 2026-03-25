@@ -1,39 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, MenuList, Card, CardContent, Grid, Button, TextField, InputAdornment, MenuItem, List, ListItem, ListItemText, Divider, CircularProgress, ListItemAvatar, Avatar, ListItemButton } from '@mui/material';
-import { CalendarToday as CalendarIcon, Print as PrintIcon, People as PeopleIcon, ShoppingBag as ShoppingBagIcon, CreditCard as CreditCardIcon } from '@mui/icons-material';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import usePermission from '@/hooks/usePermission';
-import axios from 'axios';
-
-// const drawerWidthOpen = 240;
-// const drawerWidthClosed = 110;
-
+import React, { useEffect, useMemo, useState } from 'react';
 import { usePage, router } from '@inertiajs/react';
-import { useSnackbar } from 'notistack';
+import {
+    Avatar,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Divider,
+    Grid,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemText,
+    MenuItem,
+    Stack,
+    TextField,
+    Typography,
+} from '@mui/material';
+import { CalendarToday as CalendarIcon, Print as PrintIcon } from '@mui/icons-material';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import axios from 'axios';
+import usePermission from '@/hooks/usePermission';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import StatCard from '@/components/App/ui/StatCard';
 
-const Dashboard = () => {
-    const { hasPermission } = usePermission();
-    const { auth, recentActivities: initialActivities } = usePage().props;
-    const { enqueueSnackbar } = useSnackbar();
+const money = (amount) => `Rs ${Number(amount || 0).toLocaleString()}`;
 
-    const [activities, setActivities] = useState(initialActivities || []);
+const generateMonths = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    useEffect(() => {
-        console.log('Dashboard mounted. Auth:', auth);
-        console.log('Initial Activities:', initialActivities);
-        console.log('Current Activities State:', activities);
-    }, [activities, auth]);
-
-    const currentMonth = new Date().toLocaleString('default', {
-        month: 'short',
+    return Array.from({ length: 12 }, (_, index) => {
+        const monthIndex = (currentMonth - index + 12) % 12;
+        const year = currentMonth - index < 0 ? currentYear - 1 : currentYear;
+        return `${monthNames[monthIndex]}-${year}`;
     });
-    const currentYear = new Date().getFullYear();
+};
 
-    // Available months for the dropdown
-    // const months = ['Jan-2025', 'Feb-2025', 'Mar-2025', 'Apr-2025', 'May-2025', 'Jun-2025', 'Jul-2025', 'Aug-2025', 'Sep-2025', 'Oct-2025', 'Nov-2025', 'Dec-2025'];
-    const [selectedMonth, setSelectedMonth] = useState(`${currentMonth}-${currentYear}`);
+export default function Dashboard() {
+    const { hasPermission } = usePermission();
+    const { auth, recentActivities: initialActivities = [] } = usePage().props;
+    const [activities, setActivities] = useState(initialActivities);
+    const [selectedMonth, setSelectedMonth] = useState(() => {
+        const now = new Date();
+        return `${now.toLocaleString('default', { month: 'short' })}-${now.getFullYear()}`;
+    });
     const [revenueType, setRevenueType] = useState('Revenue');
-    const [chartYear, setChartYear] = useState('2025');
+    const [chartYear] = useState(String(new Date().getFullYear()));
     const [isLoading, setIsLoading] = useState(true);
     const [stats, setStats] = useState({
         totalRevenue: 0,
@@ -49,63 +65,75 @@ const Dashboard = () => {
     });
     const [chartData, setChartData] = useState([]);
 
-    // Fetch dashboard stats
-    const fetchDashboardStats = async () => {
-        setIsLoading(true);
-        try {
-            const params = {
-                month: selectedMonth,
-                year: chartYear,
-            };
-            const res = await axios.get('/api/dashboard/stats', { params });
-            if (res.data.success) {
-                setStats(res.data.stats);
-                setChartData(res.data.chartData);
-            }
-        } catch (error) {
-            console.error('Error fetching dashboard stats:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     useEffect(() => {
+        const fetchDashboardStats = async () => {
+            setIsLoading(true);
+            try {
+                const response = await axios.get('/api/dashboard/stats', {
+                    params: { month: selectedMonth, year: chartYear },
+                });
+
+                if (response.data.success) {
+                    setStats(response.data.stats || {});
+                    setChartData(response.data.chartData || []);
+                }
+            } catch (error) {
+                console.error('dashboard.stats.fetch_failed', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
         fetchDashboardStats();
     }, [selectedMonth, chartYear]);
 
     useEffect(() => {
-        if (auth?.user?.id) {
-            console.log(`Subscribing to channel: App.Models.User.${auth.user.id}`);
-            window.Echo.private(`App.Models.User.${auth.user.id}`).notification((notification) => {
-                console.log('Notification received:', notification);
-                const newActivity = {
-                    id: notification.id, // Ensure ID is passed in broadcast if available, or fetch it
-                    text: notification.description,
-                    time: 'Just now',
-                    title: notification.title,
-                    read_at: null,
-                    actor_name: notification.actor_name,
-                };
-
-                setActivities((prev) => [newActivity, ...prev].slice(0, 15));
-
-                // enqueueSnackbar handled globally in Layout.jsx now
-            });
+        if (!auth?.user?.id || !window.Echo) {
+            return undefined;
         }
 
+        const channelName = `App.Models.User.${auth.user.id}`;
+        window.Echo.private(channelName).notification((notification) => {
+            const newActivity = {
+                id: notification.id,
+                text: notification.description,
+                time: 'Just now',
+                title: notification.title,
+                read_at: null,
+                actor_name: notification.actor_name,
+            };
+
+            setActivities((previous) => [newActivity, ...previous].slice(0, 15));
+        });
+
         return () => {
-            if (auth?.user?.id) {
-                window.Echo.leave(`App.Models.User.${auth.user.id}`);
-            }
+            window.Echo.leave(channelName);
         };
     }, [auth?.user?.id]);
 
-    // Format currency
-    const formatCurrency = (amount) => {
-        return `Rs ${amount.toLocaleString()}`;
-    };
+    const months = useMemo(() => generateMonths(), []);
 
-    // Print function - opens print route in new window
+    const chartTotals = useMemo(() => {
+        return chartData.reduce(
+            (accumulator, row) => ({
+                income: accumulator.income + Number(row.income || 0),
+                expenses: accumulator.expenses + Number(row.expenses || 0),
+                profit: accumulator.profit + Number(row.profit || 0),
+            }),
+            { income: 0, expenses: 0, profit: 0 }
+        );
+    }, [chartData]);
+
+    const summaryCards = [
+        { label: 'Total Revenue', value: isLoading ? '...' : money(stats.totalRevenue), caption: 'Current period revenue', accent: true },
+        { label: 'Total Profit', value: isLoading ? '...' : money(stats.totalProfit), caption: 'Net profit after expenses', tone: 'muted' },
+        { label: 'Total Bookings', value: isLoading ? '...' : stats.totalBookings, caption: `${stats.totalRoomBookings || 0} room / ${stats.totalEventBookings || 0} event`, tone: 'light' },
+        { label: 'Total Members', value: isLoading ? '...' : stats.totalMembers, caption: `${stats.totalCustomers || 0} customers`, tone: 'light' },
+        { label: 'Employees', value: isLoading ? '...' : stats.totalEmployees, caption: 'Active people in system', tone: 'light' },
+        { label: 'Product Orders', value: isLoading ? '...' : stats.totalProductOrders, caption: 'Menu item orders', tone: 'muted' },
+        { label: 'Subscription Orders', value: isLoading ? '...' : stats.totalSubscriptionOrders, caption: 'Recurring service orders', tone: 'muted' },
+    ];
+
     const handlePrint = () => {
         const params = new URLSearchParams({
             month: selectedMonth,
@@ -114,607 +142,171 @@ const Dashboard = () => {
         window.open(`/dashboard/print?${params.toString()}`, '_blank');
     };
 
-    const getResponsiveFontSize = (value) => {
-        const length = value?.toString()?.length || 0;
-
-        if (length <= 10) return "36px";   // up to 1,000,000,000
-        if (length <= 13) return "30px";   // millions
-        if (length <= 16) return "26px";   // billions
-        if (length <= 19) return "22px";   // very large
-        return "20px";                     // extreme values
-    };
-
-    const generateMonths = () => {
-        const now = new Date(); // Jan 5, 2026
-        const currentMonth = now.getMonth(); // 0 (January)
-        const currentYear = now.getFullYear(); // 2026
-
-        const monthNames = [
-            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-        ];
-
-        const months = [];
-        for (let i = 0; i < 12; i++) {
-            const monthIndex = (currentMonth - i + 12) % 12; // Subtract i instead of adding
-            const year = currentMonth - i < 0 ? currentYear - 1 : currentYear; // Go back a year if needed
-            months.push(`${monthNames[monthIndex]}-${year}`);
-        }
-        return months;
-    };
-
-    const months = generateMonths();
-
     return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            {/* <div
-                style={{
-                    marginLeft: open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`,
-                    transition: 'margin-left 0.3s ease-in-out',
-                    marginTop: '5rem',
-                }}
-            > */}
-            <Box sx={{ p: 2, bgcolor: '#f5f5f5' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography sx={{ fontSize: '30px', fontWeight: 700, color: '#063455' }}>Dashboard</Typography>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                        {/* <TextField
-                            select
-                            size="small"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            sx={{
-                                width: '200px',
-                                // bgcolor: 'white',
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: '16px',
-                                    '& .MuiOutlinedInput-root': {
-                                        borderRadius: '4px',
-                                        '& .MuiSelect-select': {
-                                            color: '#7F7F7F',
-                                        }
-                                    },
-                                },
-                            }
-                            }
-                            SelectProps={{
-                                IconComponent: () => null,
-                            }}
-                            InputProps={{
-                                endAdornment: (
-                                    <InputAdornment position="end">
-                                        <CalendarIcon fontSize="small" />
-                                    </InputAdornment>
-                                ),
-                            }}
-                        >
-                            {months.map((month) => (
-                                <MenuItem key={month} value={month}>
-                                    {month}
-                                </MenuItem>
-                            ))}
-                        </TextField> */}
-                        <TextField
-                            select
-                            size="small"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            // renderValue={(selected) => selected || getCurrentMonth()}
-                            // onChange={(e) => setSelectedMonth(e.target.value || '')}
-                            SelectProps={{
-                                IconComponent: () => null,
-                                MenuProps: {
-                                    sx: {
-                                        mt: 0.5,
-                                        '& .MuiMenu-paper': {
-                                            borderRadius: '16px',
-                                            '& .MuiMenuItem-root': {
-                                                // transition: 'background-color 0.2s ease',
-                                                '&:hover': {
-                                                    backgroundColor: '#063455 !important',
-                                                    color: 'white !important',
-                                                    borderRadius: '16px !important',
-                                                    mx: 1,
-                                                    my: 0.3
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }}
-                            sx={{
-                                width: '170px',
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: '16px',
-                                    '& .MuiSelect-select': {
-                                        color: '#7F7F7F',
-                                        '&:focus': {
-                                            color: '#000'
-                                        }
-                                    }
-                                }
-                            }}
-                            InputProps={{
-                                endAdornment: (
-                                    <InputAdornment position="end">
-                                        <CalendarIcon fontSize="small" style={{ cursor: 'pointer' }} />
-                                    </InputAdornment>
-                                ),
-                            }}
-                        >
-                            {months.map((month) => (
-                                <MenuItem key={month} value={month}>
-                                    {month}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-
-                        <Button
-                            variant="contained"
-                            startIcon={<PrintIcon />}
-                            onClick={handlePrint}
-                            sx={{
-                                bgcolor: '#063455',
-                                '&:hover': { bgcolor: '#063455' },
-                                textTransform: 'none',
-                                borderRadius: '16px',
-                            }}
-                        >
-                            Print
-                        </Button>
-                    </Box>
-                </Box>
-
-                <Grid container spacing={1}>
-                    {/* Left side content - 8/12 width */}
-                    {hasPermission('dashboard.stats.view') ? (
-                        <Grid item xs={12} md={9}>
-                            <Grid container spacing={2}>
-                                {/* Revenue and Profit */}
-                                <Grid item xs={7}>
-                                    <Card
-                                        sx={{
-                                            bgcolor: '#063455',
-                                            color: 'white',
-                                            borderRadius: '16px',
-                                            // height: '166px',
-                                            height: { xs: 'auto', md: '166px' },
-                                        }}
-                                    >
-                                        <CardContent
-                                            sx={{
-                                                display: 'flex',
-                                                flexDirection: { xs: 'column', md: 'row' }, // 👈 KEY FIX
-                                                justifyContent: 'space-between',
-                                                alignItems: 'stretch',
-                                                px: 2,
-                                                py: 3,
-                                                gap: { xs: 2, md: 0 },
-                                            }}
-                                        >
-                                            {/* Total Revenue */}
-                                            <Box sx={{ flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
-                                                <Typography sx={{ mb: 1, fontWeight: 400, fontSize: '14px', color: '#FFFFFF' }}>Total Revenue</Typography>
-                                                <Typography sx={{
-                                                    fontWeight: 500,
-                                                    fontSize: getResponsiveFontSize(formatCurrency(stats.totalRevenue)),
-                                                    color: '#FFFFFF',
-                                                    wordBreak: 'break-word',
-                                                }}>{isLoading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : formatCurrency(stats.totalRevenue)}</Typography>
-                                            </Box>
-
-                                            {/* Divider */}
-                                            <Divider orientation="vertical" flexItem sx={{ bgcolor: '#7F7F7F', mx: 1 }} />
-
-                                            {/* Total Profit */}
-                                            <Box sx={{ flex: 1, textAlign: 'right' }}>
-                                                <Typography sx={{ mb: 1, fontWeight: 400, fontSize: '14px', color: '#FFFFFF' }}>Total Profit</Typography>
-                                                <Typography sx={{
-                                                    fontWeight: 500,
-                                                    fontSize: getResponsiveFontSize(formatCurrency(stats.totalProfit)),
-                                                    color: '#FFFFFF',
-                                                    wordBreak: 'break-word',
-                                                }}>{isLoading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : formatCurrency(stats.totalProfit)}</Typography>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-
-                                {/* Bookings */}
-                                <Grid item xs={5}>
-                                    <Card
-                                        sx={{
-                                            bgcolor: '#063455',
-                                            color: 'white',
-                                            borderRadius: '16px',
-                                            height: '166px',
-                                        }}
-                                    >
-                                        <CardContent sx={{ px: 2 }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                                <Box
-                                                    sx={{
-                                                        bgcolor: 'transparent',
-                                                        width: 46,
-                                                        height: 46,
-                                                        borderRadius: '50%',
-                                                        p: 2,
-                                                        mr: 2,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                    }}
-                                                >
-                                                    <img
-                                                        src="/assets/calendar.png"
-                                                        alt=""
-                                                        style={{
-                                                            width: 20,
-                                                            height: 20,
-                                                        }}
-                                                    />
-                                                </Box>
-                                                <Box>
-                                                    <Typography sx={{ fontSize: '14px', fontWeight: 400, color: '#C6C6C6' }}>Total Booking</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '20px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : stats.totalBookings}</Typography>
-                                                </Box>
-                                            </Box>
-                                            <Divider orientation="horizontal" flexItem sx={{ bgcolor: '#7F7F7F', height: '2px' }} />
-                                            <Box sx={{ display: 'flex', mt: 2 }}>
-                                                <Box sx={{ flex: 1 }}>
-                                                    <Typography sx={{ fontWeight: 400, fontSize: '12px', color: '#C6C6C6' }}>Room Booking</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '18px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : stats.totalRoomBookings}</Typography>
-                                                </Box>
-                                                <Box sx={{ flex: 1 }}>
-                                                    <Typography sx={{ fontWeight: 400, fontSize: '12px', color: '#C6C6C6' }}>Event Booking</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '18px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : stats.totalEventBookings}</Typography>
-                                                </Box>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-
-                                {/* Middle row with 3 cards */}
-                                <Grid item xs={12} sm={7}>
-                                    <Card
-                                        sx={{
-                                            bgcolor: '#063455',
-                                            color: 'white',
-                                            borderRadius: '16px',
-                                            height: '166px',
-                                        }}
-                                    >
-                                        <CardContent sx={{ px: 2 }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                                <Box
-                                                    sx={{
-                                                        bgcolor: 'transparent',
-                                                        height: 46,
-                                                        width: 46,
-                                                        borderRadius: '50%',
-                                                        p: 1,
-                                                        mr: 2,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                    }}
-                                                >
-                                                    <PeopleIcon />
-                                                </Box>
-                                                <Box>
-                                                    <Typography sx={{ color: '#C6C6C6', fontSize: '14px', fontWeight: 400 }}>Total Members</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '20px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : stats.totalMembers}</Typography>
-                                                </Box>
-                                            </Box>
-                                            <Divider orientation="horizontal" flexItem sx={{ bgcolor: '#7F7F7F', height: '2px' }} />
-                                            <Box sx={{ display: 'flex', mt: 2 }}>
-                                                <Box sx={{ flex: 1 }}>
-                                                    <Typography sx={{ color: '#C6C6C6', fontSize: '12px', fontWeight: 400 }}>Total Customer</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '18px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : stats.totalCustomers}</Typography>
-                                                </Box>
-                                                <Box sx={{ flex: 1 }}>
-                                                    <Typography sx={{ color: '#C6C6C6', fontSize: '12px', fontWeight: 400 }}>Total Employee</Typography>
-                                                    <Typography sx={{ fontWeight: 500, fontSize: '18px', color: '#FFFFFF' }}>{isLoading ? <CircularProgress size={14} sx={{ color: 'white' }} /> : stats.totalEmployees}</Typography>
-                                                </Box>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-
-                                <Grid item xs={12} sm={2.5}>
-                                    <Card
-                                        sx={{
-                                            bgcolor: '#063455',
-                                            color: 'white',
-                                            borderRadius: '16px',
-                                            height: '166px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'flex-start',
-                                        }}
-                                    >
-                                        <CardContent sx={{ p: 2, textAlign: 'left' }}>
-                                            {/* Icon Circle */}
-                                            <Box
-                                                sx={{
-                                                    bgcolor: 'transparent',
-                                                    height: 46,
-                                                    width: 46,
-                                                    borderRadius: '50%',
-                                                    p: 1,
-                                                    mb: 2,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}
-                                            >
-                                                <img
-                                                    src="/assets/box.png"
-                                                    alt=""
-                                                    style={{
-                                                        height: 20,
-                                                        width: 20,
-                                                    }}
-                                                />
-                                            </Box>
-
-                                            {/* Text Content */}
-                                            <Typography sx={{ color: '#C6C6C6', fontWeight: 400, fontSize: '14px', mb: 1 }}>Total Product Order</Typography>
-                                            <Typography sx={{ fontWeight: 500, fontSize: '20px', color: '#FFFFFF', display: 'inline' }}>{isLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : stats.totalProductOrders}</Typography>
-                                            <Typography sx={{ color: '#C6C6C6', fontWeight: 400, fontSize: '14px', display: 'inline', ml: 1 }}>Items</Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-
-                                <Grid item xs={12} sm={2.5}>
-                                    <Card
-                                        sx={{
-                                            bgcolor: '#063455',
-                                            color: 'white',
-                                            borderRadius: '16px',
-                                            height: '166px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'flex-start',
-                                        }}
-                                    >
-                                        <CardContent sx={{ p: 2, textAlign: 'left' }}>
-                                            {/* Icon Circle */}
-                                            <Box
-                                                sx={{
-                                                    bgcolor: 'transparent',
-                                                    height: 46,
-                                                    width: 46,
-                                                    borderRadius: '50%',
-                                                    p: 1,
-                                                    mb: 2,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}
-                                            >
-                                                <CreditCardIcon />
-                                            </Box>
-
-                                            {/* Text Content */}
-                                            <Typography sx={{ color: '#C6C6C6', fontWeight: 400, fontSize: '14px', mb: 1 }}>Total Subscription Order</Typography>
-                                            <Typography sx={{ fontWeight: 500, fontSize: '20px', color: '#FFFFFF', display: 'inline' }}>{isLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : stats.totalSubscriptionOrders}</Typography>
-                                            <Typography sx={{ color: '#C6C6C6', fontWeight: 400, fontSize: '14px', display: 'inline', ml: 1 }}>Order</Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-
-                                {/* Chart */}
-                                <Grid item xs={12}>
-                                    <Card sx={{ borderRadius: '16px' }}>
-                                        <CardContent sx={{ p: 3 }}>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                                <Box>
-                                                    <Typography sx={{ fontWeight: 600, fontSize: '20px', color: '#1D1F2C' }}>Revenue</Typography>
-                                                    <Typography sx={{ color: '#777980', fontWeight: 500, fontSize: '14px' }}>Your Revenue 2026 Year</Typography>
-                                                </Box>
-                                                <Box sx={{ display: 'flex', gap: 2 }}>
-                                                    {/* <TextField select size="small" value={revenueType} onChange={(e) => setRevenueType(e.target.value)} sx={{ width: '160px' }}>
-                                                        <MenuItem value="Revenue">Revenue</MenuItem>
-                                                        <MenuItem value="Profit">Profit</MenuItem>
-                                                        <MenuItem value="Expenses">Expenses</MenuItem>
-                                                    </TextField> */}
-                                                    <TextField
-                                                        select
-                                                        size="small"
-                                                        value={revenueType}
-                                                        onChange={(e) => setRevenueType(e.target.value)}
-                                                        sx={{
-                                                            width: "160px",
-                                                            "& .MuiOutlinedInput-root": {
-                                                                borderRadius: "16px",
-                                                                "& fieldset": {
-                                                                    borderRadius: "16px",
-                                                                },
-                                                            },
-                                                        }}
-                                                        SelectProps={{
-                                                            MenuProps: {
-                                                                sx: {
-                                                                    "& .MuiPaper-root": {
-                                                                        borderRadius: "16px",
-                                                                    },
-                                                                    "& .MuiMenuItem-root": {
-                                                                        borderRadius: "16px",
-                                                                        mx: 1,
-                                                                        my: 0.3,
-                                                                        transition: "all 0.2s ease",
-                                                                        "&:hover": {
-                                                                            backgroundColor: "#063455 !important",
-                                                                            color: "#fff !important",
-                                                                        },
-                                                                        "&.Mui-selected": {
-                                                                            backgroundColor: "#063455 !important",
-                                                                            color: "#fff",
-                                                                        },
-                                                                    },
-                                                                },
-                                                            },
-                                                        }}
-                                                    >
-                                                        <MenuItem value="Revenue">Revenue</MenuItem>
-                                                        <MenuItem value="Profit">Profit</MenuItem>
-                                                        <MenuItem value="Expenses">Expenses</MenuItem>
-                                                    </TextField>
-
-                                                    {/* <TextField
-                                                        size="small"
-                                                        value={chartYear}
-                                                        onChange={(e) => setChartYear(e.target.value)}
-                                                        InputProps={{
-                                                            endAdornment: (
-                                                                <InputAdornment position="end">
-                                                                    <CalendarIcon fontSize="small" />
-                                                                </InputAdornment>
-                                                            ),
-                                                        }}
-                                                        sx={{ width: '160px' }}
-                                                    /> */}
-                                                </Box>
-                                            </Box>
-
-                                            <Box sx={{ display: 'flex', gap: 3, mb: 3 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                    <Box
-                                                        sx={{
-                                                            width: 12,
-                                                            height: 12,
-                                                            borderRadius: '50%',
-                                                            bgcolor: '#0d3c61',
-                                                            mr: 1,
-                                                        }}
-                                                    />
-                                                    <Typography sx={{ color: '#667085', fontWeight: 400, fontSize: '14px' }}>Income</Typography>
-                                                    <Typography sx={{ ml: 1, fontWeight: 500, fontSize: '16px', color: '#1D1F2C' }}>Rs.26,000</Typography>
-                                                </Box>
-                                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                    <Box
-                                                        sx={{
-                                                            width: 12,
-                                                            height: 12,
-                                                            borderRadius: '50%',
-                                                            bgcolor: '#e74c3c',
-                                                            mr: 1,
-                                                        }}
-                                                    />
-                                                    <Typography sx={{ color: '#667085', fontWeight: 400, fontSize: '14px' }}>Expenses</Typography>
-                                                    <Typography sx={{ ml: 1, fontWeight: 500, fontSize: '16px', color: '#1D1F2C' }}>Rs.18,000</Typography>
-                                                </Box>
-                                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                    <Box
-                                                        sx={{
-                                                            width: 12,
-                                                            height: 12,
-                                                            borderRadius: '50%',
-                                                            bgcolor: '#2ecc71',
-                                                            mr: 1,
-                                                        }}
-                                                    />
-                                                    <Typography sx={{ color: '#667085', fontWeight: 400, fontSize: '14px' }}>Profit</Typography>
-                                                    <Typography sx={{ ml: 1, fontWeight: 500, fontSize: '16px', color: '#1D1F2C' }}>Rs.8,000</Typography>
-                                                </Box>
-                                            </Box>
-
-                                            <Box sx={{ height: 300 }}>
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                        <XAxis dataKey="name" />
-                                                        <YAxis tickFormatter={(value) => `Rs ${value}`} ticks={[0, 200, 400, 600, 800, 1000, 1200, 1400]} />
-                                                        <Tooltip formatter={(value) => [`Rs ${value}`, '']} />
-                                                        <Bar dataKey="income" fill="#0d3c61" barSize={10} />
-                                                        <Bar dataKey="expenses" fill="#e74c3c" barSize={10} />
-                                                        <Bar dataKey="profit" fill="#2ecc71" barSize={10} />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
+        <AppPage
+            eyebrow="Overview"
+            title="Operations Dashboard"
+            subtitle="Revenue, bookings, members, and recent activity in the same visual language as the rest of Admin."
+            actions={[
+                <TextField
+                    key="month"
+                    select
+                    size="small"
+                    value={selectedMonth}
+                    onChange={(event) => setSelectedMonth(event.target.value)}
+                    sx={{ minWidth: 170 }}
+                    InputProps={{
+                        endAdornment: <CalendarIcon fontSize="small" />,
+                    }}
+                >
+                    {months.map((month) => (
+                        <MenuItem key={month} value={month}>
+                            {month}
+                        </MenuItem>
+                    ))}
+                </TextField>,
+                <Button key="print" variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>
+                    Print
+                </Button>,
+            ]}
+        >
+            {hasPermission('dashboard.stats.view') ? (
+                <>
+                    <Grid container spacing={2.25}>
+                        {summaryCards.map((card) => (
+                            <Grid item xs={12} sm={6} lg={card.accent ? 4 : 2.666} key={card.label}>
+                                <StatCard
+                                    label={card.label}
+                                    value={card.value}
+                                    caption={card.caption}
+                                    tone={card.tone || 'light'}
+                                    accent={Boolean(card.accent)}
+                                />
                             </Grid>
-                        </Grid>
-                    ) : null}
+                        ))}
+                    </Grid>
 
-                    {/* Right side - Recent Activity - 4/12 width */}
-                    <Grid item xs={12} md={hasPermission('dashboard.stats.view') ? 3 : 12}>
-                        <Card sx={{ borderRadius: '16px', height: '100%' }}>
-                            <CardContent sx={{ p: 0 }}>
-                                <Typography variant="h6" sx={{ p: 2, fontWeight: 'bold', borderBottom: '1px solid #eee' }}>
-                                    Recent Activity
-                                </Typography>
+                    <Grid container spacing={2.25}>
+                        <Grid item xs={12} lg={8}>
+                            <SurfaceCard
+                                title="Revenue Overview"
+                                subtitle="Income, expenses, and profit trend for the selected period."
+                                actions={
+                                    <TextField
+                                        select
+                                        size="small"
+                                        value={revenueType}
+                                        onChange={(event) => setRevenueType(event.target.value)}
+                                        sx={{ minWidth: 150 }}
+                                    >
+                                        <MenuItem value="Revenue">Revenue</MenuItem>
+                                        <MenuItem value="Profit">Profit</MenuItem>
+                                        <MenuItem value="Expenses">Expenses</MenuItem>
+                                    </TextField>
+                                }
+                            >
+                                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+                                    <Chip size="small" variant="outlined" label={`Income ${money(chartTotals.income)}`} />
+                                    <Chip size="small" variant="outlined" color="error" label={`Expenses ${money(chartTotals.expenses)}`} />
+                                    <Chip size="small" variant="outlined" color="success" label={`Profit ${money(chartTotals.profit)}`} />
+                                </Stack>
+
+                                <Box sx={{ height: 320 }}>
+                                    {isLoading ? (
+                                        <Box sx={{ height: '100%', display: 'grid', placeItems: 'center' }}>
+                                            <CircularProgress size={24} />
+                                        </Box>
+                                    ) : (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                <XAxis dataKey="name" />
+                                                <YAxis tickFormatter={(value) => `Rs ${value}`} />
+                                                <Tooltip formatter={(value) => [`Rs ${Number(value || 0).toLocaleString()}`, '']} />
+                                                <Bar dataKey="income" fill="#0d3c61" radius={[6, 6, 0, 0]} barSize={12} />
+                                                <Bar dataKey="expenses" fill="#e74c3c" radius={[6, 6, 0, 0]} barSize={12} />
+                                                <Bar dataKey="profit" fill="#2ecc71" radius={[6, 6, 0, 0]} barSize={12} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    )}
+                                </Box>
+                            </SurfaceCard>
+                        </Grid>
+
+                        <Grid item xs={12} lg={4}>
+                            <SurfaceCard title="Recent Activity" subtitle="Notifications and system actions from the latest workflows.">
                                 <Box
                                     sx={{
-                                        maxHeight: 750,          // ≈ 5 items height (adjust if needed)
+                                        maxHeight: { xs: 420, lg: 640 },
                                         overflowY: 'auto',
-                                        // bgcolor:'pink'
+                                        pr: 0.5,
                                     }}
                                 >
                                     <List sx={{ p: 0 }}>
-                                        {activities.map((activity, index) => (
-                                            <React.Fragment key={index}>
-                                                <ListItem
-                                                    disablePadding
-                                                    sx={{
-                                                        borderLeft: !activity.read_at ? '4px solid #063455' : 'none',
-                                                        bgcolor: !activity.read_at ? '#f0f7ff' : 'transparent',
-                                                    }}
-                                                >
-                                                    <ListItemButton
-                                                        alignItems="flex-start"
-                                                        onClick={() => {
-                                                            // Optimistic update
-                                                            setActivities((prev) => prev.map((a) => (a.id === activity.id ? { ...a, read_at: new Date().toISOString() } : a)));
-                                                            if (!activity.read_at && activity.id) {
-                                                                router.post(`/notifications/${activity.id}/read`, {}, { preserveScroll: true });
-                                                            }
-                                                        }}
-                                                    >
-                                                        {/* <ListItemAvatar>
-                                                        <Avatar sx={{ width: 40, height: 40, bgcolor: '#063455' }}>{activity.actor_name ? activity.actor_name.charAt(0).toUpperCase() : 'S'}</Avatar>
-                                                    </ListItemAvatar> */}
-                                                        <ListItemText
-                                                            primary={
-                                                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                                                    {activity.title}
-                                                                </Typography>
-                                                            }
-                                                            secondary={
-                                                                <React.Fragment>
-                                                                    <Typography component="span" variant="body2" color="text.primary" sx={{ display: 'block', mb: 0.5 }}>
-                                                                        {activity.text}
+                                        {activities.length === 0 ? (
+                                            <Typography color="text.secondary">No recent activity yet.</Typography>
+                                        ) : (
+                                            activities.map((activity, index) => (
+                                                <React.Fragment key={activity.id || index}>
+                                                    <ListItem disablePadding>
+                                                        <ListItemButton
+                                                            alignItems="flex-start"
+                                                            sx={{
+                                                                alignItems: 'flex-start',
+                                                                borderRadius: 2,
+                                                                bgcolor: !activity.read_at ? 'rgba(240,247,255,0.85)' : 'transparent',
+                                                                borderLeft: !activity.read_at ? '3px solid #063455' : '3px solid transparent',
+                                                                px: 1.25,
+                                                            }}
+                                                            onClick={() => {
+                                                                setActivities((previous) =>
+                                                                    previous.map((entry) => (
+                                                                        entry.id === activity.id ? { ...entry, read_at: new Date().toISOString() } : entry
+                                                                    ))
+                                                                );
+                                                                if (!activity.read_at && activity.id) {
+                                                                    router.post(`/notifications/${activity.id}/read`, {}, { preserveScroll: true });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Avatar sx={{ width: 34, height: 34, mr: 1.25, bgcolor: '#063455', fontSize: '0.95rem' }}>
+                                                                {(activity.actor_name || 'S').charAt(0).toUpperCase()}
+                                                            </Avatar>
+                                                            <ListItemText
+                                                                primary={
+                                                                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                                                        {activity.title}
                                                                     </Typography>
-                                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                        <Typography variant="caption" sx={{ color: '#666' }}>
-                                                                            by {activity.actor_name || 'System'}
+                                                                }
+                                                                secondary={
+                                                                    <Stack spacing={0.6} sx={{ mt: 0.45 }}>
+                                                                        <Typography variant="body2" color="text.primary">
+                                                                            {activity.text}
                                                                         </Typography>
-                                                                        <Typography variant="caption" sx={{ color: '#999' }}>
-                                                                            {activity.time}
-                                                                        </Typography>
-                                                                    </Box>
-                                                                </React.Fragment>
-                                                            }
-                                                        />
-                                                    </ListItemButton>
-                                                </ListItem>
-                                                {index < activities.length - 1 && <Divider component="li" />}
-                                            </React.Fragment>
-                                        ))}
+                                                                        <Stack direction="row" justifyContent="space-between" spacing={1}>
+                                                                            <Typography variant="caption" color="text.secondary">
+                                                                                by {activity.actor_name || 'System'}
+                                                                            </Typography>
+                                                                            <Typography variant="caption" color="text.secondary">
+                                                                                {activity.time}
+                                                                            </Typography>
+                                                                        </Stack>
+                                                                    </Stack>
+                                                                }
+                                                            />
+                                                        </ListItemButton>
+                                                    </ListItem>
+                                                    {index < activities.length - 1 ? <Divider component="li" sx={{ my: 0.6 }} /> : null}
+                                                </React.Fragment>
+                                            ))
+                                        )}
                                     </List>
                                 </Box>
-                            </CardContent>
-                        </Card>
+                            </SurfaceCard>
+                        </Grid>
                     </Grid>
-                </Grid>
-            </Box>
-            {/* </div> */}
-        </>
+                </>
+            ) : null}
+        </AppPage>
     );
-};
-
-export default Dashboard;
+}
