@@ -131,7 +131,7 @@ class IngredientController extends Controller
 
         $ingredient = Ingredient::create($validated);
 
-        return redirect()->route('ingredients.index')
+        return $this->redirectToIndex($request)
             ->with('success', 'Ingredient created successfully!');
     }
 
@@ -193,7 +193,7 @@ class IngredientController extends Controller
 
         $ingredient->update($validated);
 
-        return redirect()->route('ingredients.index')
+        return $this->redirectToIndex($request)
             ->with('success', 'Ingredient updated successfully!');
     }
 
@@ -209,7 +209,7 @@ class IngredientController extends Controller
 
         $ingredient->delete();
 
-        return redirect()->route('ingredients.index')
+        return $this->redirectToIndex(request())
             ->with('success', 'Ingredient deleted successfully!');
     }
 
@@ -348,5 +348,18 @@ class IngredientController extends Controller
             $ingredient->warehouse_managed = true;
             $ingredient->balance_source = 'warehouse';
         }
+    }
+
+    protected function redirectToIndex(Request $request)
+    {
+        if ($request->routeIs('inventory.ingredients.*')) {
+            return redirect()->route('inventory.ingredients.index');
+        }
+
+        if ($request->routeIs('pos.ingredients.*')) {
+            return redirect()->route('pos.ingredients.index');
+        }
+
+        return redirect()->route('ingredients.index');
     }
 }

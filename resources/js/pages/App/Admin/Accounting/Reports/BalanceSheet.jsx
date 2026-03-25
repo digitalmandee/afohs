@@ -1,16 +1,18 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Button, Grid, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { Button, Grid, TableCell, TableRow, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 import { AccountBalanceOutlined } from '@mui/icons-material';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
-function SectionTable({ title, rows }) {
+function SectionTable({ title, rows, loading = false }) {
     return (
         <SurfaceCard title={title} subtitle={`Ledger-ready ${title.toLowerCase()} balances with direct drilldown to underlying account activity.`}>
             <AdminDataTable
@@ -21,6 +23,7 @@ function SectionTable({ title, rows }) {
                     { key: 'action', label: 'Action', minWidth: 140, align: 'right' },
                 ]}
                 rows={rows}
+                loading={loading}
                 tableMinWidth={980}
                 emptyMessage={`No ${title.toLowerCase()} rows found.`}
                 renderRow={(row, index) => (
@@ -43,10 +46,37 @@ function SectionTable({ title, rows }) {
 }
 
 export default function BalanceSheet({ assets = [], liabilities = [], equity = [], summary, filters }) {
-    const activeFilters = sanitizeFilters({
+    const { loading, beginLoading } = useFilterLoadingState([
+        assets.length,
+        liabilities.length,
+        equity.length,
+        filters?.from,
+        filters?.to,
+    ]);
+    const [localFilters, setLocalFilters] = React.useState({
         from: filters?.from || '',
         to: filters?.to || '',
     });
+    const activeFilters = sanitizeFilters({
+        from: localFilters.from,
+        to: localFilters.to,
+    });
+
+    React.useEffect(() => {
+        setLocalFilters({
+            from: filters?.from || '',
+            to: filters?.to || '',
+        });
+    }, [filters?.from, filters?.to]);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        beginLoading();
+        router.get(route('accounting.reports.balance-sheet'), sanitizeFilters(nextFilters), {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading]);
 
     return (
         <AppPage
@@ -67,14 +97,24 @@ export default function BalanceSheet({ assets = [], liabilities = [], equity = [
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period while keeping the new accounting report layout consistent.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.balance-sheet'))}>
+                <FilterToolbar onReset={() => submitFilters({ from: '', to: '' })}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="From" type="date" defaultValue={filters?.from || ''} InputLabelProps={{ shrink: true }} onChange={(event) => router.get(route('accounting.reports.balance-sheet'), { from: event.target.value, to: filters?.to || '' }, { preserveState: true, preserveScroll: true, replace: true })} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="To" type="date" defaultValue={filters?.to || ''} InputLabelProps={{ shrink: true }} onChange={(event) => router.get(route('accounting.reports.balance-sheet'), { from: filters?.from || '', to: event.target.value }, { preserveState: true, preserveScroll: true, replace: true })} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => {
+                                const next = { ...localFilters, from: value };
+                                setLocalFilters(next);
+                                submitFilters(next);
+                            }}
+                            onEndChange={(value) => {
+                                const next = { ...localFilters, to: value };
+                                setLocalFilters(next);
+                                submitFilters(next);
+                            }}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                         <Grid item xs={12} md={6}>
                             <Typography sx={{ mt: 1.5, color: 'text.secondary' }}>
                                 Liabilities + Equity: {formatReportAmount(summary?.liabilities_equity_total)}
@@ -84,9 +124,9 @@ export default function BalanceSheet({ assets = [], liabilities = [], equity = [
                 </FilterToolbar>
             </SurfaceCard>
 
-            <SectionTable title="Assets" rows={assets} />
-            <SectionTable title="Liabilities" rows={liabilities} />
-            <SectionTable title="Equity" rows={equity} />
+            <SectionTable title="Assets" rows={assets} loading={loading} />
+            <SectionTable title="Liabilities" rows={liabilities} loading={loading} />
+            <SectionTable title="Equity" rows={equity} loading={loading} />
         </AppPage>
     );
 }

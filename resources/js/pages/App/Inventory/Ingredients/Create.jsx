@@ -4,7 +4,7 @@ import { Save as SaveIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-materia
 import { router } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
 import POSLayout from "@/components/POSLayout";
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 // const drawerWidthOpen = 240;
 // const drawerWidthClosed = 110;
@@ -214,5 +214,5 @@ const CreateIngredient = ({ rawMaterialProducts = [] }) => {
     );
 };
 
-CreateIngredient.layout = (page) => <POSLayout>{page}</POSLayout>;
+CreateIngredient.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 export default CreateIngredient;

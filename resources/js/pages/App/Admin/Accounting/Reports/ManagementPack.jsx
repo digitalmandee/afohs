@@ -3,15 +3,24 @@ import { router } from '@inertiajs/react';
 import { Button, Grid, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 
 function formatNumber(value, digits = 2) {
     return Number(value || 0).toFixed(digits);
 }
 
 export default function ManagementPack({ filters, cashFlow = {}, workingCapital = {}, arBySource = [], budgetSummary = {}, inventoryValuation = [], bankPositions = [] }) {
+    const { loading, beginLoading } = useFilterLoadingState([
+        filters?.from,
+        filters?.to,
+        arBySource.length,
+        inventoryValuation.length,
+        bankPositions.length,
+    ]);
     const [localFilters, setLocalFilters] = React.useState({
         from: filters?.from || '',
         to: filters?.to || '',
@@ -23,6 +32,15 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
             to: filters?.to || '',
         });
     }, [filters]);
+
+    const applyFilters = React.useCallback((nextFilters = localFilters) => {
+        beginLoading();
+        router.get(route('accounting.reports.management-pack'), nextFilters, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading, localFilters]);
 
     return (
         <AppPage
@@ -38,22 +56,20 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period while keeping all management views in the same premium shell.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.management-pack'))}>
+                <FilterToolbar onReset={() => applyFilters({ from: '', to: '' })}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="From" type="date" value={localFilters.from} onChange={(event) => setLocalFilters((current) => ({ ...current, from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="To" type="date" value={localFilters.to} onChange={(event) => setLocalFilters((current) => ({ ...current, to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => setLocalFilters((current) => ({ ...current, from: value }))}
+                            onEndChange={(value) => setLocalFilters((current) => ({ ...current, to: value }))}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                         <Grid item xs={12}>
                             <Button
                                 variant="contained"
-                                onClick={() => router.get(route('accounting.reports.management-pack'), localFilters, {
-                                    preserveState: true,
-                                    preserveScroll: true,
-                                    replace: true,
-                                })}
+                                onClick={() => applyFilters()}
                             >
                                 Apply
                             </Button>
@@ -76,6 +92,7 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
                         { key: 'outstanding', label: 'Outstanding', minWidth: 160, align: 'right' },
                     ]}
                     rows={arBySource}
+                    loading={loading}
                     tableMinWidth={760}
                     emptyMessage="No source-wise receivable data found."
                     renderRow={(row, index) => (
@@ -96,6 +113,7 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
                         { key: 'valuation', label: 'Valuation', minWidth: 160, align: 'right' },
                     ]}
                     rows={inventoryValuation}
+                    loading={loading}
                     tableMinWidth={760}
                     emptyMessage="No inventory valuation data found."
                     renderRow={(row, index) => (
@@ -118,6 +136,7 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
                         { key: 'closing', label: 'Closing', minWidth: 140, align: 'right' },
                     ]}
                     rows={bankPositions}
+                    loading={loading}
                     tableMinWidth={980}
                     emptyMessage="No bank account position data found."
                     renderRow={(row) => (

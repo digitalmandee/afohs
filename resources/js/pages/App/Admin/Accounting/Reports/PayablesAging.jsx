@@ -4,15 +4,26 @@ import debounce from 'lodash.debounce';
 import { Box, Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 import { downloadReportPdf, formatReportAmount, formatReportCount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 const buckets = ['current', '1-30', '31-60', '61-90', '90+'];
 
 export default function PayablesAging({ rows, summary, filters }) {
     const data = rows?.data || [];
+    const { loading, beginLoading } = useFilterLoadingState([
+        filters?.bucket,
+        filters?.from,
+        filters?.per_page,
+        filters?.search,
+        filters?.to,
+        rows?.per_page,
+        data.length,
+    ]);
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
         from: filters?.from || '',
@@ -24,6 +35,7 @@ export default function PayablesAging({ rows, summary, filters }) {
     const filtersRef = React.useRef(localFilters);
 
     const submitFilters = React.useCallback((nextFilters) => {
+        beginLoading();
         const payload = {};
 
         if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
@@ -38,7 +50,7 @@ export default function PayablesAging({ rows, summary, filters }) {
             preserveScroll: true,
             replace: true,
         });
-    }, []);
+    }, [beginLoading]);
 
     const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
 
@@ -160,26 +172,14 @@ export default function PayablesAging({ rows, summary, filters }) {
                                 {buckets.map((bucket) => <MenuItem key={bucket} value={bucket}>{bucket}</MenuItem>)}
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField
-                                label="From"
-                                type="date"
-                                value={localFilters.from}
-                                onChange={(event) => updateFilters({ from: event.target.value }, { immediate: true })}
-                                InputLabelProps={{ shrink: true }}
-                                fullWidth
-                            />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField
-                                label="To"
-                                type="date"
-                                value={localFilters.to}
-                                onChange={(event) => updateFilters({ to: event.target.value }, { immediate: true })}
-                                InputLabelProps={{ shrink: true }}
-                                fullWidth
-                            />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
+                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                     </Grid>
                 </FilterToolbar>
             </SurfaceCard>
@@ -188,6 +188,7 @@ export default function PayablesAging({ rows, summary, filters }) {
                 <AdminDataTable
                     columns={columns}
                     rows={data}
+                    loading={loading}
                     pagination={rows}
                     emptyMessage="No payables aging records found."
                     tableMinWidth={1080}

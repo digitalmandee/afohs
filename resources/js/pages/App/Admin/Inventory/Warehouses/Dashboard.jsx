@@ -26,13 +26,13 @@ export default function Dashboard({
                 <Button key="locations" variant="outlined" onClick={() => router.visit(route('inventory.locations.index'))}>
                     Locations
                 </Button>,
-                <Button key="items" variant="outlined" onClick={() => router.visit(route('pos.inventory.index'))}>
+                <Button key="items" variant="outlined" onClick={() => router.visit(route('inventory.items.index'))}>
                     Inventory Items
                 </Button>,
                 <Button key="ops" variant="outlined" onClick={() => router.visit(route('inventory.operations.index'))}>
                     Stock Movements
                 </Button>,
-                <Button key="create" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                <Button key="create" variant="contained" onClick={() => router.visit(route('inventory.items.create'))}>
                     Add Inventory Item
                 </Button>,
             ]}
@@ -62,10 +62,10 @@ export default function Dashboard({
                     Ingredients are recipe records. Inventory Items are the stock-managed raw materials that appear in warehouses, stock movements, and purchasing.
                 </Typography>
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
-                    <Button size="small" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                    <Button size="small" variant="contained" onClick={() => router.visit(route('inventory.items.create'))}>
                         Add Inventory Item
                     </Button>
-                    <Button size="small" variant="outlined" onClick={() => router.visit(route('pos.ingredients.index'))}>
+                    <Button size="small" variant="outlined" onClick={() => router.visit(route('inventory.ingredients.index'))}>
                         Review Ingredients
                     </Button>
                 </Stack>

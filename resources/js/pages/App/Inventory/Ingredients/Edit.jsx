@@ -4,12 +4,14 @@ import { Save as SaveIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-materia
 import { router } from '@inertiajs/react';
 import { useForm } from '@inertiajs/react';
 import SideNav from '@/components/App/SideBar/SideNav';
-import { routeNameForContext } from '@/lib/utils';
+import POSLayout from "@/components/POSLayout";
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
 
 const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
+    const posContext = isPosPath(typeof window !== 'undefined' ? window.location.pathname : '');
     const [open, setOpen] = useState(true);
     const { data, setData, put, processing, errors, reset } = useForm({
         name: ingredient.name || '',
@@ -44,12 +46,12 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
 
     return (
         <>
-            <SideNav open={open} setOpen={setOpen} />
+            {posContext ? <SideNav open={open} setOpen={setOpen} /> : null}
             <div
                 style={{
-                    marginLeft: open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`,
+                    marginLeft: posContext ? (open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`) : 0,
                     transition: 'margin-left 0.3s ease-in-out',
-                    marginTop: '5rem',
+                    marginTop: posContext ? '5rem' : 0,
                     backgroundColor: '#f5f5f5',
                 }}
             >
@@ -205,5 +207,5 @@ const EditIngredient = ({ ingredient, rawMaterialProducts = [] }) => {
     );
 };
 
-EditIngredient.layout = (page) => page;
+EditIngredient.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 export default EditIngredient;

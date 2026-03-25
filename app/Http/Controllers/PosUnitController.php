@@ -13,7 +13,7 @@ class PosUnitController extends Controller
     public function index(Request $request)
     {
         $units = PosUnit::query()
-            ->withCount('products')
+            ->withCount(['products', 'inventoryItems'])
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', "%{$search}%");
             })
@@ -89,6 +89,11 @@ class PosUnitController extends Controller
     public function destroy($id)
     {
         $unit = PosUnit::findOrFail($id);
+
+        if ($unit->products()->exists() || $unit->inventoryItems()->exists()) {
+            return back()->with('error', 'Cannot delete a unit that is already linked to products or inventory items.');
+        }
+
         $unit->update(['deleted_by' => Auth::id()]);
         $unit->delete();
 

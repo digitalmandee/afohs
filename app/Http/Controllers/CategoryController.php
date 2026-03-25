@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Helpers\FileHelper;
 use App\Models\Category;
+use App\Models\InventoryItem;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +23,7 @@ class CategoryController extends Controller
                 $query->where('name', 'like', "%{$search}%");
             })
             ->withCount('products')
+            ->withCount('inventoryItems')
             ->latest()
             ->paginate(10)  // Changed to pagination to match other modules
             ->withQueryString();
@@ -109,18 +111,21 @@ class CategoryController extends Controller
     public function destroy(Request $request, Category $category)
     {
         $newCategoryId = $request->input('new_category_id');
+        $targetCategoryId = null;
 
-        // Reassign products logic
         if ($newCategoryId) {
-            $productQuery = Product::where('category_id', $category->id);
+            $targetCategoryId = Category::query()
+                ->whereKey($newCategoryId)
+                ->whereNull('deleted_at')
+                ->value('id');
+        }
 
-            $productQuery
-                ->update(['category_id' => $newCategoryId]);
+        if ($targetCategoryId) {
+            Product::where('category_id', $category->id)->update(['category_id' => $targetCategoryId]);
+            InventoryItem::where('category_id', $category->id)->update(['category_id' => $targetCategoryId]);
         } else {
-            $productQuery = Product::where('category_id', $category->id);
-
-            $productQuery
-                ->update(['category_id' => null]);
+            Product::where('category_id', $category->id)->update(['category_id' => null]);
+            InventoryItem::where('category_id', $category->id)->update(['category_id' => null]);
         }
 
         $category->update(['deleted_by' => Auth::id()]);

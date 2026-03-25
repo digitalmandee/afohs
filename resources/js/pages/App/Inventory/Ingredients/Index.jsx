@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, TextField, MenuItem, Grid, InputAdornment, IconButton, Tooltip, Alert, Stack } from '@mui/material';
 import { Add as AddIcon, Search as SearchIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as ViewIcon, AddBox as AddStockIcon, Warning as WarningIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import POSLayout from "@/components/POSLayout";
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 // const drawerWidthOpen = 240;
 // const drawerWidthClosed = 110;
 
 const IngredientsIndex = ({ ingredients, stats, filters }) => {
+    const { flash = {} } = usePage().props;
     // const [open, setOpen] = useState(true);
     const [searchQuery, setSearchQuery] = useState(filters?.search || '');
     const [statusFilter, setStatusFilter] = useState(filters?.status || 'all');
@@ -117,6 +118,8 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
                         </Button>
                     </Stack>
                 </Box>
+
+                {flash.error ? <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }}>{flash.error}</Alert> : null}
 
                 <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
                     Create an <strong>Inventory Item</strong> first when you need warehouse stock, purchasing, and stock movements. Then link the ingredient to that inventory item for warehouse-backed recipe deduction.
@@ -520,5 +523,5 @@ const IngredientsIndex = ({ ingredients, stats, filters }) => {
     );
 };
 
-IngredientsIndex.layout = (page) => <POSLayout>{page}</POSLayout>;
+IngredientsIndex.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 export default IngredientsIndex;

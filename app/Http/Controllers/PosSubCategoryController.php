@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\PosSubCategory;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -13,6 +14,7 @@ class PosSubCategoryController extends Controller
     public function index(Request $request)
     {
         $subCategories = PosSubCategory::with('category')
+            ->withCount('products')
             ->when($request->search, function ($query, $search) {
                 $query
                     ->where('name', 'like', "%{$search}%")
@@ -71,6 +73,11 @@ class PosSubCategoryController extends Controller
     public function destroy(Request $request, $id)
     {
         $subCategory = PosSubCategory::findOrFail($id);
+
+        if (Product::query()->where('sub_category_id', $subCategory->id)->exists()) {
+            return back()->with('error', 'Cannot delete a sub category that is already linked to products.');
+        }
+
         $subCategory->update(['deleted_by' => Auth::id()]);
         $subCategory->delete();
 

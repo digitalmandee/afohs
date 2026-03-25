@@ -31,7 +31,7 @@ export default function WarehouseShow({
                 <Button key="back" variant="outlined" onClick={() => router.visit(route('inventory.warehouses.index'))}>
                     Back to Master
                 </Button>,
-                <Button key="items" variant="outlined" onClick={() => router.visit(route('pos.inventory.index'))}>
+                <Button key="items" variant="outlined" onClick={() => router.visit(route('inventory.items.index'))}>
                     Inventory Items
                 </Button>,
                 <Button key="ops" variant="contained" onClick={() => router.visit(route('inventory.operations.index'))}>
@@ -95,10 +95,10 @@ export default function WarehouseShow({
                                 Configured inventory items: {inventoryStatus.configured_products || 0}. Items stocked elsewhere: {inventoryStatus.stocked_elsewhere_count || 0}. Items with no posted movements anywhere: {inventoryStatus.configured_without_movements_count || 0}.
                             </Typography>
                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
-                                <Button size="small" variant="contained" onClick={() => router.visit(route('pos.inventory.create'))}>
+                                <Button size="small" variant="contained" onClick={() => router.visit(route('inventory.items.create'))}>
                                     Add Inventory Item
                                 </Button>
-                                <Button size="small" variant="outlined" onClick={() => router.visit(route('pos.ingredients.index'))}>
+                                <Button size="small" variant="outlined" onClick={() => router.visit(route('inventory.ingredients.index'))}>
                                     Review Ingredients
                                 </Button>
                             </Stack>

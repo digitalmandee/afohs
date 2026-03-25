@@ -16,4 +16,9 @@ class PosManufacturer extends Model
     {
         return $this->hasMany(Product::class, 'manufacturer_id');
     }
+
+    public function inventoryItems()
+    {
+        return $this->hasMany(InventoryItem::class, 'manufacturer_id');
+    }
 }

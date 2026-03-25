@@ -169,10 +169,10 @@ export default function Create({ vendors, warehouses, products, inventorySummary
                     Create an Inventory Item first, then mark it purchasable so it can appear in Purchase Orders.
                   </Typography>
                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
-                    <Button size="small" variant="contained" onClick={() => window.location.href = route('pos.inventory.create')}>
+                    <Button size="small" variant="contained" onClick={() => window.location.href = route('inventory.items.create')}>
                       Add Inventory Item
                     </Button>
-                    <Button size="small" variant="outlined" onClick={() => window.location.href = route('pos.ingredients.index')}>
+                    <Button size="small" variant="outlined" onClick={() => window.location.href = route('inventory.ingredients.index')}>
                       Review Ingredients
                     </Button>
                   </Stack>

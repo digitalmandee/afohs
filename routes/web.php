@@ -1663,6 +1663,56 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
 
 Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
     Route::get('dashboard', [WarehouseController::class, 'dashboard'])->name('inventory.dashboard');
+    Route::get('items', [InventoryItemController::class, 'index'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.index');
+    Route::get('items/create', [InventoryItemController::class, 'create'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.create');
+    Route::post('items', [InventoryItemController::class, 'store'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.store');
+    Route::get('items/{inventoryItem}', [InventoryItemController::class, 'show'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.show');
+    Route::put('items/{inventoryItem}', [InventoryItemController::class, 'update'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.update');
+    Route::delete('items/{inventoryItem}', [InventoryItemController::class, 'destroy'])->middleware('super.admin:pos.inventory.view')->name('inventory.items.destroy');
+
+    Route::get('item-categories', [\App\Http\Controllers\CategoryController::class, 'index'])->middleware('super.admin:pos.inventory.categories.view')->name('inventory.item-categories.index');
+    Route::get('item-categories/options', [\App\Http\Controllers\CategoryController::class, 'getCategories'])->middleware('super.admin:pos.inventory.categories.view')->name('inventory.item-categories.options');
+    Route::get('item-categories/trashed', [\App\Http\Controllers\CategoryController::class, 'trashed'])->middleware('super.admin:pos.inventory.categories.restore')->name('inventory.item-categories.trashed');
+    Route::post('item-categories', [\App\Http\Controllers\CategoryController::class, 'store'])->middleware('super.admin:pos.inventory.categories.create')->name('inventory.item-categories.store');
+    Route::put('item-categories/{category}', [\App\Http\Controllers\CategoryController::class, 'update'])->middleware('super.admin:pos.inventory.categories.edit')->name('inventory.item-categories.update');
+    Route::delete('item-categories/{category}', [\App\Http\Controllers\CategoryController::class, 'destroy'])->middleware('super.admin:pos.inventory.categories.delete')->name('inventory.item-categories.destroy');
+    Route::post('item-categories/{id}/restore', [\App\Http\Controllers\CategoryController::class, 'restore'])->middleware('super.admin:pos.inventory.categories.restore')->name('inventory.item-categories.restore');
+    Route::delete('item-categories/{id}/force-delete', [\App\Http\Controllers\CategoryController::class, 'forceDelete'])->middleware('super.admin:pos.inventory.categories.force-delete')->name('inventory.item-categories.force-delete');
+
+    Route::get('sub-categories', [\App\Http\Controllers\PosSubCategoryController::class, 'index'])->middleware('super.admin:pos.inventory.sub-categories.view')->name('inventory.sub-categories.index');
+    Route::get('sub-categories/trashed', [\App\Http\Controllers\PosSubCategoryController::class, 'trashed'])->middleware('super.admin:pos.inventory.sub-categories.restore')->name('inventory.sub-categories.trashed');
+    Route::post('sub-categories', [\App\Http\Controllers\PosSubCategoryController::class, 'store'])->middleware('super.admin:pos.inventory.sub-categories.create')->name('inventory.sub-categories.store');
+    Route::put('sub-categories/{id}', [\App\Http\Controllers\PosSubCategoryController::class, 'update'])->middleware('super.admin:pos.inventory.sub-categories.edit')->name('inventory.sub-categories.update');
+    Route::delete('sub-categories/{id}', [\App\Http\Controllers\PosSubCategoryController::class, 'destroy'])->middleware('super.admin:pos.inventory.sub-categories.delete')->name('inventory.sub-categories.destroy');
+    Route::post('sub-categories/{id}/restore', [\App\Http\Controllers\PosSubCategoryController::class, 'restore'])->middleware('super.admin:pos.inventory.sub-categories.restore')->name('inventory.sub-categories.restore');
+    Route::delete('sub-categories/{id}/force-delete', [\App\Http\Controllers\PosSubCategoryController::class, 'forceDelete'])->middleware('super.admin:pos.inventory.sub-categories.force-delete')->name('inventory.sub-categories.force-delete');
+
+    Route::get('manufacturers', [\App\Http\Controllers\PosManufacturerController::class, 'index'])->middleware('super.admin:pos.inventory.manufacturers.view')->name('inventory.manufacturers.index');
+    Route::get('manufacturers/trashed', [\App\Http\Controllers\PosManufacturerController::class, 'trashed'])->middleware('super.admin:pos.inventory.manufacturers.restore')->name('inventory.manufacturers.trashed');
+    Route::post('manufacturers', [\App\Http\Controllers\PosManufacturerController::class, 'store'])->middleware('super.admin:pos.inventory.manufacturers.create')->name('inventory.manufacturers.store');
+    Route::put('manufacturers/{id}', [\App\Http\Controllers\PosManufacturerController::class, 'update'])->middleware('super.admin:pos.inventory.manufacturers.edit')->name('inventory.manufacturers.update');
+    Route::delete('manufacturers/{id}', [\App\Http\Controllers\PosManufacturerController::class, 'destroy'])->middleware('super.admin:pos.inventory.manufacturers.delete')->name('inventory.manufacturers.destroy');
+    Route::post('manufacturers/{id}/restore', [\App\Http\Controllers\PosManufacturerController::class, 'restore'])->middleware('super.admin:pos.inventory.manufacturers.restore')->name('inventory.manufacturers.restore');
+    Route::delete('manufacturers/{id}/force-delete', [\App\Http\Controllers\PosManufacturerController::class, 'forceDelete'])->middleware('super.admin:pos.inventory.manufacturers.force-delete')->name('inventory.manufacturers.force-delete');
+
+    Route::get('units', [\App\Http\Controllers\PosUnitController::class, 'index'])->middleware('super.admin:pos.inventory.units.view')->name('inventory.units.index');
+    Route::get('units/trashed', [\App\Http\Controllers\PosUnitController::class, 'trashed'])->middleware('super.admin:pos.inventory.units.restore')->name('inventory.units.trashed');
+    Route::post('units', [\App\Http\Controllers\PosUnitController::class, 'store'])->middleware('super.admin:pos.inventory.units.create')->name('inventory.units.store');
+    Route::put('units/{id}', [\App\Http\Controllers\PosUnitController::class, 'update'])->middleware('super.admin:pos.inventory.units.edit')->name('inventory.units.update');
+    Route::delete('units/{id}', [\App\Http\Controllers\PosUnitController::class, 'destroy'])->middleware('super.admin:pos.inventory.units.delete')->name('inventory.units.destroy');
+    Route::post('units/{id}/restore', [\App\Http\Controllers\PosUnitController::class, 'restore'])->middleware('super.admin:pos.inventory.units.restore')->name('inventory.units.restore');
+    Route::delete('units/{id}/force-delete', [\App\Http\Controllers\PosUnitController::class, 'forceDelete'])->middleware('super.admin:pos.inventory.units.force-delete')->name('inventory.units.force-delete');
+
+    Route::get('ingredients', [\App\Http\Controllers\IngredientController::class, 'index'])->middleware('super.admin:pos.inventory.ingredients.view')->name('inventory.ingredients.index');
+    Route::get('ingredients/create', [\App\Http\Controllers\IngredientController::class, 'create'])->middleware('super.admin:pos.inventory.ingredients.create')->name('inventory.ingredients.create');
+    Route::post('ingredients', [\App\Http\Controllers\IngredientController::class, 'store'])->middleware('super.admin:pos.inventory.ingredients.create')->name('inventory.ingredients.store');
+    Route::get('ingredients/{ingredient}', [\App\Http\Controllers\IngredientController::class, 'show'])->middleware('super.admin:pos.inventory.ingredients.view')->name('inventory.ingredients.show');
+    Route::get('ingredients/{ingredient}/edit', [\App\Http\Controllers\IngredientController::class, 'edit'])->middleware('super.admin:pos.inventory.ingredients.edit')->name('inventory.ingredients.edit');
+    Route::put('ingredients/{ingredient}', [\App\Http\Controllers\IngredientController::class, 'update'])->middleware('super.admin:pos.inventory.ingredients.edit')->name('inventory.ingredients.update');
+    Route::delete('ingredients/{ingredient}', [\App\Http\Controllers\IngredientController::class, 'destroy'])->middleware('super.admin:pos.inventory.ingredients.delete')->name('inventory.ingredients.destroy');
+    Route::get('ingredients/{ingredient}/add-stock', [\App\Http\Controllers\IngredientController::class, 'showAddStock'])->middleware('super.admin:pos.inventory.ingredients.add-stock')->name('inventory.ingredients.add-stock.form');
+    Route::post('ingredients/{ingredient}/add-stock', [\App\Http\Controllers\IngredientController::class, 'addStock'])->middleware('super.admin:pos.inventory.ingredients.add-stock')->name('inventory.ingredients.add-stock');
+
     Route::get('warehouses', [WarehouseController::class, 'index'])->name('inventory.warehouses.index');
     Route::post('warehouses', [WarehouseController::class, 'store'])->name('inventory.warehouses.store');
     Route::put('warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('inventory.warehouses.update');

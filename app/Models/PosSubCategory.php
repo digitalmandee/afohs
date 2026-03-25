@@ -15,4 +15,9 @@ class PosSubCategory extends BaseModel
     {
         return $this->belongsTo(Category::class);
     }
+
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'sub_category_id');
+    }
 }

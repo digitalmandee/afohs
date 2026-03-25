@@ -1,11 +1,14 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
+import debounce from 'lodash.debounce';
 import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 import { downloadReportCsv, downloadReportPdf, formatReportAmount, formatReportCount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 const formatNumber = formatReportAmount;
@@ -13,31 +16,96 @@ const formatNumber = formatReportAmount;
 export default function ReceivablesBySource({ rows, summary = {}, sourceOptions = [], filters = {} }) {
     const list = rows?.data || [];
     const sourceTotals = summary?.source_totals || {};
+    const { loading, beginLoading } = useFilterLoadingState([
+        filters?.bucket,
+        filters?.from,
+        filters?.search,
+        filters?.source,
+        filters?.to,
+        list.length,
+        rows?.per_page,
+    ]);
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
         source: filters?.source || '',
         bucket: filters?.bucket || '',
         from: filters?.from || '',
         to: filters?.to || '',
+        per_page: filters?.per_page || rows?.per_page || 25,
+        page: 1,
     });
+    const filtersRef = React.useRef(localFilters);
 
     React.useEffect(() => {
-        setLocalFilters({
+        const next = {
             search: filters?.search || '',
             source: filters?.source || '',
             bucket: filters?.bucket || '',
             from: filters?.from || '',
             to: filters?.to || '',
-        });
-    }, [filters]);
+            per_page: filters?.per_page || rows?.per_page || 25,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters, rows?.per_page]);
 
-    const applyFilters = (nextFilters = localFilters) => {
-        router.get(route('accounting.reports.receivables-by-source'), nextFilters, {
+    const submitFilters = React.useCallback((nextFilters) => {
+        beginLoading();
+        const payload = {};
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        if (nextFilters.source) payload.source = nextFilters.source;
+        if (nextFilters.bucket) payload.bucket = nextFilters.bucket;
+        if (nextFilters.from) payload.from = nextFilters.from;
+        if (nextFilters.to) payload.to = nextFilters.to;
+        payload.per_page = nextFilters.per_page || rows?.per_page || 25;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
+
+        router.get(route('accounting.reports.receivables-by-source'), payload, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
         });
-    };
+    }, [beginLoading, rows?.per_page]);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    const updateFilters = React.useCallback((partial, { immediate = false } = {}) => {
+        const next = { ...filtersRef.current, ...partial };
+
+        if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+            next.page = 1;
+        }
+
+        filtersRef.current = next;
+        setLocalFilters(next);
+
+        if (immediate) {
+            debouncedSubmit.cancel();
+            submitFilters(next);
+            return;
+        }
+
+        debouncedSubmit(next);
+    }, [debouncedSubmit, submitFilters]);
+
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            search: '',
+            source: '',
+            bucket: '',
+            from: '',
+            to: '',
+            per_page: filtersRef.current.per_page || rows?.per_page || 25,
+            page: 1,
+        };
+        debouncedSubmit.cancel();
+        filtersRef.current = cleared;
+        setLocalFilters(cleared);
+        submitFilters(cleared);
+    }, [debouncedSubmit, rows?.per_page, submitFilters]);
 
     return (
         <AppPage
@@ -58,13 +126,13 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter by source, bucket, period, or party without using the older manual report form.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.receivables-by-source'))}>
+                <FilterToolbar onReset={resetFilters}>
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
-                            <TextField label="Search invoice or party" value={localFilters.search} onChange={(event) => setLocalFilters((current) => ({ ...current, search: event.target.value }))} fullWidth />
+                            <TextField label="Search invoice or party" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />
                         </Grid>
                         <Grid item xs={12} md={2}>
-                            <TextField select label="Source" value={localFilters.source} onChange={(event) => setLocalFilters((current) => ({ ...current, source: event.target.value }))} fullWidth>
+                            <TextField select label="Source" value={localFilters.source} onChange={(event) => updateFilters({ source: event.target.value }, { immediate: true })} fullWidth>
                                 <MenuItem value="">All Sources</MenuItem>
                                 {sourceOptions.map((source) => (
                                     <MenuItem key={source} value={source}>{source}</MenuItem>
@@ -72,7 +140,7 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={2}>
-                            <TextField select label="Bucket" value={localFilters.bucket} onChange={(event) => setLocalFilters((current) => ({ ...current, bucket: event.target.value }))} fullWidth>
+                            <TextField select label="Bucket" value={localFilters.bucket} onChange={(event) => updateFilters({ bucket: event.target.value }, { immediate: true })} fullWidth>
                                 <MenuItem value="">All Buckets</MenuItem>
                                 <MenuItem value="current">Current</MenuItem>
                                 <MenuItem value="1-30">1-30</MenuItem>
@@ -81,17 +149,14 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
                                 <MenuItem value="90+">90+</MenuItem>
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="From" type="date" value={localFilters.from} onChange={(event) => setLocalFilters((current) => ({ ...current, from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="To" type="date" value={localFilters.to} onChange={(event) => setLocalFilters((current) => ({ ...current, to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={1}>
-                            <Button variant="contained" fullWidth onClick={() => applyFilters()}>
-                                Apply
-                            </Button>
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
+                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
+                            startGrid={{ xs: 12, md: 2 }}
+                            endGrid={{ xs: 12, md: 2 }}
+                        />
                     </Grid>
                 </FilterToolbar>
 
@@ -126,6 +191,7 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
                         { key: 'action', label: 'Action', minWidth: 150, align: 'right' },
                     ]}
                     rows={list}
+                    loading={loading}
                     pagination={rows}
                     tableMinWidth={1240}
                     emptyMessage="No receivables found."

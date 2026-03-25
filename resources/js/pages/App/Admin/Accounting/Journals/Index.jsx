@@ -18,12 +18,23 @@ import {
 import debounce from 'lodash.debounce';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 
 export default function Index({ entries, filters, summary, templatesEnabled, templates = [], recurringProfiles = [], approvalPolicy }) {
   const data = entries?.data || [];
+  const { loading, beginLoading } = useFilterLoadingState([
+    entries?.per_page,
+    filters?.from,
+    filters?.per_page,
+    filters?.search,
+    filters?.status,
+    filters?.to,
+    data.length,
+  ]);
   const columns = [
     { key: 'entry_no', label: 'Entry No' },
     { key: 'entry_date', label: 'Date' },
@@ -46,6 +57,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
   const filtersRef = React.useRef(localFilters);
 
   const submitFilters = React.useCallback((nextFilters) => {
+    beginLoading();
     const payload = {};
 
     if (nextFilters.search?.trim()) {
@@ -70,7 +82,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
       preserveScroll: true,
       replace: true,
     });
-  }, []);
+  }, [beginLoading]);
 
   const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
 
@@ -268,28 +280,14 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                   <MenuItem value="reversed">Reversed</MenuItem>
                 </TextField>
               </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  size="small"
-                  label="From"
-                  type="date"
-                  value={localFilters.from}
-                  onChange={(e) => updateFilter('from', e.target.value, { immediate: true })}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  size="small"
-                  label="To"
-                  type="date"
-                  value={localFilters.to}
-                  onChange={(e) => updateFilter('to', e.target.value, { immediate: true })}
-                  InputLabelProps={{ shrink: true }}
-                  fullWidth
-                />
-              </Grid>
+              <DateRangeFilterFields
+                startValue={localFilters.from}
+                endValue={localFilters.to}
+                onStartChange={(value) => updateFilter('from', value, { immediate: true })}
+                onEndChange={(value) => updateFilter('to', value, { immediate: true })}
+                startGrid={{ xs: 12, md: 2 }}
+                endGrid={{ xs: 12, md: 2 }}
+              />
             </Grid>
           </FilterToolbar>
       </SurfaceCard>
@@ -298,6 +296,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
           <AdminDataTable
             columns={columns}
             rows={data}
+            loading={loading}
             pagination={entries}
             emptyMessage="No entries found."
             tableMinWidth={1040}

@@ -23,10 +23,12 @@ import debounce from 'lodash.debounce';
 import { enqueueSnackbar } from 'notistack';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import PaymentDialog from '@/components/App/Transactions/PaymentDialog';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 
 const statusColor = {
     paid: 'success',
@@ -69,12 +71,29 @@ export default function Transaction({ transactions, filters, users = [], transac
     const rows = transactions?.data || [];
     const [localFilters, setLocalFilters] = React.useState(() => defaultFilters(filters, transactions));
     const filtersRef = React.useRef(localFilters);
+    const { loading, beginLoading } = useFilterLoadingState([
+        error,
+        filters?.created_by,
+        filters?.customer_type,
+        filters?.end_date,
+        filters?.invoice_no,
+        filters?.member_name,
+        filters?.membership_no,
+        filters?.per_page,
+        filters?.search,
+        filters?.start_date,
+        filters?.status,
+        filters?.type,
+        rows.length,
+        transactions?.per_page,
+    ]);
     const [selectedIds, setSelectedIds] = React.useState([]);
     const [paymentDialog, setPaymentDialog] = React.useState({ open: false, transaction: null });
     const [submittingPayment, setSubmittingPayment] = React.useState(false);
     const [bulkDialog, setBulkDialog] = React.useState({ open: false, type: 'discount', amount: '', is_percent: false });
 
     const submitFilters = React.useCallback((nextFilters) => {
+        beginLoading();
         const payload = {};
         Object.entries(nextFilters).forEach(([key, value]) => {
             if (['all', '', null, undefined].includes(value)) return;
@@ -88,7 +107,7 @@ export default function Transaction({ transactions, filters, users = [], transac
             preserveScroll: true,
             replace: true,
         });
-    }, []);
+    }, [beginLoading]);
 
     const debouncedSubmit = React.useMemo(() => debounce((next) => submitFilters(next), 350), [submitFilters]);
     React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
@@ -309,12 +328,14 @@ export default function Transaction({ transactions, filters, users = [], transac
                                     ))}
                                 </TextField>
                             </Grid>
-                            <Grid item xs={12} md={2}>
-                                <TextField size="small" label="From" type="date" value={localFilters.start_date} onChange={(event) => updateFilters({ start_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
-                            </Grid>
-                            <Grid item xs={12} md={2}>
-                                <TextField size="small" label="To" type="date" value={localFilters.end_date} onChange={(event) => updateFilters({ end_date: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
-                            </Grid>
+                            <DateRangeFilterFields
+                                startValue={localFilters.start_date}
+                                endValue={localFilters.end_date}
+                                onStartChange={(value) => updateFilters({ start_date: value }, { immediate: true })}
+                                onEndChange={(value) => updateFilters({ end_date: value }, { immediate: true })}
+                                startGrid={{ xs: 12, md: 2 }}
+                                endGrid={{ xs: 12, md: 2 }}
+                            />
                         </Grid>
                     </FilterToolbar>
                 </SurfaceCard>
@@ -328,6 +349,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                     <AdminDataTable
                         columns={columns}
                         rows={rows}
+                        loading={loading}
                         pagination={transactions}
                         tableMinWidth={1620}
                         emptyMessage="No finance transactions found."

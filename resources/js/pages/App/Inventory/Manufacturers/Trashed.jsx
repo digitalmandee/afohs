@@ -5,7 +5,7 @@ import { Box, Button, Paper, Table, TableBody, TableCell, TableContainer, TableH
 import { RestoreFromTrash as RestoreIcon, DeleteForever as DeleteForeverIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { enqueueSnackbar } from 'notistack';
 import dayjs from 'dayjs';
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 // const drawerWidthOpen = 240;
 // const drawerWidthClosed = 110;
@@ -189,6 +189,6 @@ const ManufacturersTrashed = ({ trashedManufacturers, filters }) => {
     );
 };
 
-ManufacturersTrashed.layout = (page) => <POSLayout>{page}</POSLayout>;
+ManufacturersTrashed.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 
 export default ManufacturersTrashed;

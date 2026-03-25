@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import POSLayout from "@/components/POSLayout";
 import { Box, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Chip, IconButton, Pagination, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem, Backdrop, CircularProgress, DialogContentText } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, DeleteSweep as DeleteSweepIcon } from '@mui/icons-material';
 import { enqueueSnackbar } from 'notistack';
 import dayjs from 'dayjs';
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 // const drawerWidthOpen = 240;
 // const drawerWidthClosed = 110;
 
 const ManufacturersIndex = ({ manufacturers, filters }) => {
+    const { flash = {} } = usePage().props;
     // const [open, setOpen] = useState(true);
     const [search, setSearch] = useState(filters.search || '');
     const [processing, setProcessing] = useState(false);
@@ -26,6 +27,12 @@ const ManufacturersIndex = ({ manufacturers, filters }) => {
     // Delete Modal State
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [manufacturerToDelete, setManufacturerToDelete] = useState(null);
+
+    React.useEffect(() => {
+        if (flash?.error) {
+            enqueueSnackbar(flash.error, { variant: 'error' });
+        }
+    }, [flash]);
 
     const handleSearch = (e) => {
         setSearch(e.target.value);
@@ -268,6 +275,6 @@ const ManufacturersIndex = ({ manufacturers, filters }) => {
     );
 };
 
-ManufacturersIndex.layout = (page) => <POSLayout>{page}</POSLayout>;
+ManufacturersIndex.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 
 export default ManufacturersIndex;

@@ -2,7 +2,7 @@ import React from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { Box, Button, Card, CardContent, Grid, MenuItem, TextField, Typography } from '@mui/material';
 import POSLayout from '@/components/POSLayout';
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 export default function InventoryItemForm({ inventoryItem, categories = [], manufacturers = [], units = [] }) {
     const isEdit = Boolean(inventoryItem?.id);
@@ -100,4 +100,4 @@ export default function InventoryItemForm({ inventoryItem, categories = [], manu
     );
 }
 
-InventoryItemForm.layout = (page) => <POSLayout>{page}</POSLayout>;
+InventoryItemForm.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);

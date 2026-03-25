@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
+use App\Models\GoodsReceiptItem;
 use App\Models\InventoryItem;
+use App\Models\InventoryTransaction;
 use App\Models\PosManufacturer;
 use App\Models\PosUnit;
+use App\Models\PurchaseOrderItem;
+use App\Models\VendorBillItem;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -57,7 +61,7 @@ class InventoryItemController extends Controller
         $data = $this->validateItem($request);
         InventoryItem::create($data + ['created_by' => $request->user()?->id]);
 
-        return redirect()->route('pos.inventory.index')->with('success', 'Inventory item created.');
+        return $this->redirectToIndex($request)->with('success', 'Inventory item created.');
     }
 
     public function update(Request $request, InventoryItem $inventoryItem)
@@ -65,11 +69,24 @@ class InventoryItemController extends Controller
         $data = $this->validateItem($request, $inventoryItem->id);
         $inventoryItem->update($data + ['updated_by' => $request->user()?->id]);
 
-        return redirect()->route('pos.inventory.index')->with('success', 'Inventory item updated.');
+        return $this->redirectToIndex($request)->with('success', 'Inventory item updated.');
     }
 
     public function destroy(InventoryItem $inventoryItem)
     {
+        if ($inventoryItem->ingredients()->exists()) {
+            return back()->with('error', 'Cannot delete an inventory item that is linked to ingredients.');
+        }
+
+        if (
+            InventoryTransaction::query()->where('inventory_item_id', $inventoryItem->id)->exists() ||
+            PurchaseOrderItem::query()->where('inventory_item_id', $inventoryItem->id)->exists() ||
+            GoodsReceiptItem::query()->where('inventory_item_id', $inventoryItem->id)->exists() ||
+            VendorBillItem::query()->where('inventory_item_id', $inventoryItem->id)->exists()
+        ) {
+            return back()->with('error', 'Cannot delete an inventory item that is already used in warehouse or procurement transactions.');
+        }
+
         $inventoryItem->delete();
 
         return redirect()->back()->with('success', 'Inventory item deleted.');
@@ -100,5 +117,18 @@ class InventoryItemController extends Controller
             'manage_stock' => 'nullable|boolean',
             'status' => 'required|in:active,inactive',
         ]);
+    }
+
+    protected function redirectToIndex(Request $request)
+    {
+        if ($request->routeIs('inventory.items.*')) {
+            return redirect()->route('inventory.items.index');
+        }
+
+        if ($request->routeIs('pos.inventory.*')) {
+            return redirect()->route('pos.inventory.index');
+        }
+
+        return redirect()->route('inventory.index');
     }
 }

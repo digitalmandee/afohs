@@ -3,12 +3,14 @@ import { Box, Typography, Button, Card, CardContent, Grid, Chip, Table, TableBod
 import { ArrowBack as ArrowBackIcon, Edit as EditIcon, Add as AddIcon } from '@mui/icons-material';
 import { router } from '@inertiajs/react';
 import SideNav from '@/components/App/SideBar/SideNav';
-import { routeNameForContext } from '@/lib/utils';
+import POSLayout from "@/components/POSLayout";
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
 
 const ShowIngredient = ({ ingredient }) => {
+    const posContext = isPosPath(typeof window !== 'undefined' ? window.location.pathname : '');
     const [open, setOpen] = useState(true);
 
     // Get status color
@@ -47,12 +49,12 @@ const ShowIngredient = ({ ingredient }) => {
 
     return (
         <>
-            <SideNav open={open} setOpen={setOpen} />
+            {posContext ? <SideNav open={open} setOpen={setOpen} /> : null}
             <div
                 style={{
-                    marginLeft: open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`,
+                    marginLeft: posContext ? (open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`) : 0,
                     transition: 'margin-left 0.3s ease-in-out',
-                    marginTop: '5rem',
+                    marginTop: posContext ? '5rem' : 0,
                     backgroundColor: '#f5f5f5',
                 }}
             >
@@ -219,5 +221,5 @@ const ShowIngredient = ({ ingredient }) => {
     );
 };
 
-ShowIngredient.layout = (page) => page;
+ShowIngredient.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
 export default ShowIngredient;

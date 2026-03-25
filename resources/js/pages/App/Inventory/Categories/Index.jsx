@@ -6,7 +6,7 @@ import { Alert, Box, Button, Card, CardContent, Dialog, DialogActions, DialogCon
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { enqueueSnackbar } from 'notistack';
 import { useCallback, useEffect, useState } from 'react';
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 export default function CategoryIndex({ categories, filters }) {
     // Note: Converted categoriesList to categories (paginated object) from controller
@@ -463,4 +463,4 @@ export default function CategoryIndex({ categories, filters }) {
         </>
     );
 }
-CategoryIndex.layout = (page) => <POSLayout>{page}</POSLayout>;
+CategoryIndex.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);

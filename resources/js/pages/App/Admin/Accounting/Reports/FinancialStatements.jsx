@@ -1,11 +1,13 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Button, Chip, Grid, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { Button, Chip, Grid, Stack, TableCell, TableRow, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 const metricRows = [
@@ -27,6 +29,13 @@ const healthRows = [
 const formatNumber = formatReportAmount;
 
 export default function FinancialStatements({ filters, comparison = {}, currentHealth = {}, previousHealth = {}, healthComparison = {} }) {
+    const { loading, beginLoading } = useFilterLoadingState([
+        filters?.compare_from,
+        filters?.compare_to,
+        filters?.from,
+        filters?.to,
+        Object.keys(comparison).length,
+    ]);
     const [localFilters, setLocalFilters] = React.useState({
         from: filters?.from || '',
         to: filters?.to || '',
@@ -43,13 +52,14 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
         });
     }, [filters]);
 
-    const applyFilters = (nextFilters = localFilters) => {
+    const applyFilters = React.useCallback((nextFilters = localFilters) => {
+        beginLoading();
         router.get(route('accounting.reports.financial-statements'), nextFilters, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
         });
-    };
+    }, [beginLoading, localFilters]);
 
     return (
         <AppPage
@@ -72,18 +82,26 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
             <SurfaceCard title="Comparison Filters" subtitle="Review current and prior periods in one place without dropping back to the older report layout.">
                 <FilterToolbar onReset={() => router.get(route('accounting.reports.financial-statements'))}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="Current From" type="date" value={localFilters.from} onChange={(event) => setLocalFilters((current) => ({ ...current, from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="Current To" type="date" value={localFilters.to} onChange={(event) => setLocalFilters((current) => ({ ...current, to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="Compare From" type="date" value={localFilters.compare_from} onChange={(event) => setLocalFilters((current) => ({ ...current, compare_from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="Compare To" type="date" value={localFilters.compare_to} onChange={(event) => setLocalFilters((current) => ({ ...current, compare_to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startLabel="Current From"
+                            endLabel="Current To"
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => setLocalFilters((current) => ({ ...current, from: value }))}
+                            onEndChange={(value) => setLocalFilters((current) => ({ ...current, to: value }))}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
+                        <DateRangeFilterFields
+                            startLabel="Compare From"
+                            endLabel="Compare To"
+                            startValue={localFilters.compare_from}
+                            endValue={localFilters.compare_to}
+                            onStartChange={(value) => setLocalFilters((current) => ({ ...current, compare_from: value }))}
+                            onEndChange={(value) => setLocalFilters((current) => ({ ...current, compare_to: value }))}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                         <Grid item xs={12}>
                             <Stack direction="row" spacing={1}>
                                 <Button variant="contained" onClick={() => applyFilters()}>Apply</Button>
@@ -117,6 +135,7 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
                         { key: 'change', label: 'Change %', minWidth: 140, align: 'right' },
                     ]}
                     rows={metricRows}
+                    loading={loading}
                     tableMinWidth={980}
                     emptyMessage="No financial statement comparison data found."
                     renderRow={(row) => {

@@ -13,7 +13,7 @@ class PosManufacturerController extends Controller
     public function index(Request $request)
     {
         $manufacturers = PosManufacturer::query()
-            ->withCount('products')
+            ->withCount(['products', 'inventoryItems'])
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', "%{$search}%");
             })
@@ -78,6 +78,11 @@ class PosManufacturerController extends Controller
     public function destroy($id)
     {
         $manufacturer = PosManufacturer::findOrFail($id);
+
+        if ($manufacturer->products()->exists() || $manufacturer->inventoryItems()->exists()) {
+            return back()->with('error', 'Cannot delete a manufacturer that is already linked to products or inventory items.');
+        }
+
         $manufacturer->update(['deleted_by' => Auth::id()]);
         $manufacturer->delete();
 

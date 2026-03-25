@@ -3,16 +3,44 @@ import { router } from '@inertiajs/react';
 import { Alert, Box, Button, Chip, Grid, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
 import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 export default function TrialBalance({ rows = [], summary, filters, error = null }) {
-    const activeFilters = sanitizeFilters({
+    const { loading, beginLoading } = useFilterLoadingState([
+        error,
+        filters?.from,
+        filters?.to,
+        rows.length,
+    ]);
+    const [localFilters, setLocalFilters] = React.useState({
         from: filters?.from || '',
         to: filters?.to || '',
     });
+    const activeFilters = sanitizeFilters({
+        from: localFilters.from,
+        to: localFilters.to,
+    });
+
+    React.useEffect(() => {
+        setLocalFilters({
+            from: filters?.from || '',
+            to: filters?.to || '',
+        });
+    }, [filters?.from, filters?.to]);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        beginLoading();
+        router.get(route('accounting.reports.trial-balance'), sanitizeFilters(nextFilters), {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading]);
 
     return (
         <AppPage
@@ -34,14 +62,24 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the statement period and refresh the report without leaving the standardized reporting shell.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.trial-balance'))}>
+                <FilterToolbar onReset={() => submitFilters({ from: '', to: '' })}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="From" type="date" defaultValue={filters?.from || ''} InputLabelProps={{ shrink: true }} onChange={(event) => router.get(route('accounting.reports.trial-balance'), { from: event.target.value, to: filters?.to || '' }, { preserveState: true, preserveScroll: true, replace: true })} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="To" type="date" defaultValue={filters?.to || ''} InputLabelProps={{ shrink: true }} onChange={(event) => router.get(route('accounting.reports.trial-balance'), { from: filters?.from || '', to: event.target.value }, { preserveState: true, preserveScroll: true, replace: true })} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => {
+                                const next = { ...localFilters, from: value };
+                                setLocalFilters(next);
+                                submitFilters(next);
+                            }}
+                            onEndChange={(value) => {
+                                const next = { ...localFilters, to: value };
+                                setLocalFilters(next);
+                                submitFilters(next);
+                            }}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                     </Grid>
                 </FilterToolbar>
                 <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
@@ -62,6 +100,7 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
                         { key: 'action', label: 'Action', minWidth: 140, align: 'right' },
                     ]}
                     rows={rows}
+                    loading={loading}
                     tableMinWidth={1120}
                     emptyMessage="No trial balance data found."
                     renderRow={(row) => (

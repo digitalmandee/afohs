@@ -1,11 +1,12 @@
 import React from 'react';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { Box, Button, Card, CardContent, Chip, Grid, IconButton, InputAdornment, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Search as SearchIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import POSLayout from '@/components/POSLayout';
-import { routeNameForContext } from '@/lib/utils';
+import { isPosPath, routeNameForContext } from '@/lib/utils';
 
 export default function InventoryItemsIndex({ items, filters = {}, summary = {} }) {
+    const { flash = {} } = usePage().props;
     const [search, setSearch] = React.useState(filters.search || '');
     const [status, setStatus] = React.useState(filters.status || '');
 
@@ -71,6 +72,13 @@ export default function InventoryItemsIndex({ items, filters = {}, summary = {} 
             </Card>
 
             <TableContainer component={Card} sx={{ borderRadius: 3 }}>
+                {flash.error ? (
+                    <Box sx={{ px: 2, pt: 2 }}>
+                        <Typography variant="body2" color="error.main">
+                            {flash.error}
+                        </Typography>
+                    </Box>
+                ) : null}
                 <Table>
                     <TableHead>
                         <TableRow>
@@ -115,4 +123,4 @@ export default function InventoryItemsIndex({ items, filters = {}, summary = {} 
     );
 }
 
-InventoryItemsIndex.layout = (page) => <POSLayout>{page}</POSLayout>;
+InventoryItemsIndex.layout = (page) => (isPosPath(typeof window !== 'undefined' ? window.location.pathname : '') ? <POSLayout>{page}</POSLayout> : page);
