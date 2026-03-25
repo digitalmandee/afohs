@@ -27,7 +27,6 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import EventSeatRoundedIcon from '@mui/icons-material/EventSeatRounded';
 import TableRestaurantRoundedIcon from '@mui/icons-material/TableRestaurantRounded';
 import RestaurantMenuRoundedIcon from '@mui/icons-material/RestaurantMenuRounded';
-import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
 import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded';
 import ScaleRoundedIcon from '@mui/icons-material/ScaleRounded';
 import CakeRoundedIcon from '@mui/icons-material/CakeRounded';
@@ -40,6 +39,10 @@ import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import MenuOpenRoundedIcon from '@mui/icons-material/MenuOpenRounded';
+import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
+import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
+import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
+import PrecisionManufacturingRoundedIcon from '@mui/icons-material/PrecisionManufacturingRounded';
 import LoginActivityScreen from './Activity';
 import ShiftActivityScreen from './ShiftActivity';
 import LogoutScreen from './Logout';
@@ -50,6 +53,32 @@ import { isPosPath, safeRouteForContext } from '@/lib/utils';
 export const POS_DRAWER_WIDTH_OPEN = 248;
 export const POS_DRAWER_WIDTH_CLOSED = 76;
 export const POS_TOPBAR_HEIGHT = 88;
+
+function PosSidebarIcon({ children, active }) {
+    return (
+        <Box
+            sx={{
+                width: 34,
+                height: 34,
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: '11px',
+                color: active ? '#ffffff' : '#64748b',
+                bgcolor: active ? 'rgba(255,255,255,0.14)' : 'rgba(6,52,85,0.05)',
+                flexShrink: 0,
+                '& svg': {
+                    fontSize: '1.12rem !important',
+                    width: '1.12rem',
+                    height: '1.12rem',
+                    display: 'block',
+                    fill: 'currentColor',
+                },
+            }}
+        >
+            {children}
+        </Box>
+    );
+}
 
 const openedMixin = (theme) => ({
     width: POS_DRAWER_WIDTH_OPEN,
@@ -169,7 +198,7 @@ const createMenuGroups = (url) => ([
         items: [
             {
                 text: 'Inventory Items',
-                icon: <RestaurantMenuRoundedIcon />,
+                icon: <InventoryRoundedIcon />,
                 path: safeRouteForContext('inventory.index', url),
             },
             {
@@ -184,7 +213,7 @@ const createMenuGroups = (url) => ([
             },
             {
                 text: 'Sub Categories',
-                icon: <CategoryRoundedIcon />,
+                icon: <AccountTreeRoundedIcon />,
                 path: safeRouteForContext('sub-categories.index', url),
             },
             {
@@ -199,7 +228,7 @@ const createMenuGroups = (url) => ([
             },
             {
                 text: 'Manufacturers',
-                icon: <Inventory2RoundedIcon />,
+                icon: <PrecisionManufacturingRoundedIcon />,
                 path: safeRouteForContext('manufacturers.index', url),
             },
         ],
@@ -317,19 +346,13 @@ export default function SideNav({ open, setOpen }) {
                         <ListItemIcon
                             sx={{
                                 minWidth: 0,
-                                width: 38,
-                                height: 38,
+                                width: 34,
+                                height: 34,
                                 mr: open ? 1.25 : 0,
-                                borderRadius: '12px',
                                 justifyContent: 'center',
-                                color: active ? '#fff' : '#5f7182',
-                                bgcolor: active ? 'rgba(255,255,255,0.14)' : 'rgba(6,52,85,0.05)',
-                                '& svg': {
-                                    fontSize: '1.22rem',
-                                },
                             }}
                         >
-                            {item.icon}
+                            <PosSidebarIcon active={active}>{item.icon}</PosSidebarIcon>
                         </ListItemIcon>
                         {open ? (
                             <ListItemText
