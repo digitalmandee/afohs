@@ -4,6 +4,8 @@ import { Alert, Button, IconButton, Snackbar, Typography } from '@mui/material';
 import { Box } from '@mui/system';
 import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import axios from 'axios';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
 
 const CreateCategory = () => {
     // const [open, setOpen] = useState(true);
@@ -60,32 +62,25 @@ const CreateCategory = () => {
 
     return (
         <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    backgroundColor: '#f5f5f5',
-                }}
+            <EmployeeHrPageShell
+                title="New Leave Category"
+                subtitle="Create a new leave type with its own color, abbreviation, and description."
+                actions={(
+                    <IconButton sx={{ color: '#063455' }} onClick={() => window.history.back()}>
+                        <ArrowBackIcon />
+                    </IconButton>
+                )}
             >
-                <Box sx={{ px: 2, py: 2 }}>
-                    <div style={{ paddingTop: '0.5rem' }}>
-                        {/* Header */}
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
-                            <IconButton sx={{ color: '#063455' }} onClick={() => window.history.back()}>
-                                <ArrowBackIcon />
-                            </IconButton>
-                            <Typography style={{ fontWeight: '600', color: '#063455', fontSize:'30px' }}>
-                                New Leave Category
-                            </Typography>
-                        </div>
-                        <form
+                <SurfaceCard title="Category Details" subtitle="These values are used across leave application and attendance workflows.">
+                    <form
                             onSubmit={handleSubmit}
                             style={{
                                 maxWidth: '600px',
-                                margin: '20px auto',
-                                padding: '24px',
-                                backgroundColor: 'white',
+                                margin: '0 auto',
+                                padding: '0',
+                                backgroundColor: 'transparent',
                                 borderRadius: '8px',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                boxShadow: 'none',
                             }}
                         >
                             {/* Name */}
@@ -199,9 +194,8 @@ const CreateCategory = () => {
                                 </Button>
                             </div>
                         </form>
-                    </div>
-                </Box>
-            </div>
+                </SurfaceCard>
+            </EmployeeHrPageShell>
             <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar}>
                 <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">
                     {snackbar.message}

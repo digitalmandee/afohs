@@ -59,8 +59,17 @@ createInertiaApp({
       `./pages/${name}.jsx`,
       import.meta.glob('./pages/**/*.jsx')
     ).then((module) => {
-      // If the page exports a custom layout, use it; otherwise, use the default Layout
       const Page = module.default;
+      const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      const isAdminInventoryPath = pathname === '/admin/inventory' || pathname.startsWith('/admin/inventory/');
+
+      // Shared inventory pages are reused in POS and Admin. Force the Admin shell on
+      // admin inventory routes so those pages cannot bypass the sidebar/topbar.
+      if (isAdminInventoryPath) {
+        Page.layout = (page) => <Layout>{page}</Layout>;
+        return Page;
+      }
+
       Page.layout = Page.layout || ((page) => <Layout>{page}</Layout>);
       return Page;
     });

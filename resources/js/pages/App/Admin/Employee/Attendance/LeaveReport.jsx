@@ -5,6 +5,9 @@ import { Search, ArrowBack } from '@mui/icons-material';
 import { Table, TableBody, TableCell, TableContainer, TableHead, Button, TableRow, Paper, Pagination, TextField, Box, Typography } from '@mui/material';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
 
 const LeaveReport = () => {
     // const [open, setOpen] = useState(true);
@@ -85,18 +88,11 @@ const LeaveReport = () => {
     });
 
     return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                }}
-            >
-                <div style={{ padding: '2rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography style={{ fontWeight: '700', fontSize: '30px', color: '#063455' }}>Leave Report</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <EmployeeHrPageShell
+            title="Leave Report"
+            subtitle="View detailed reports of employee leave history."
+            actions={(
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                             <FormControl
                                 size="small"
                                 sx={{
@@ -175,11 +171,11 @@ const LeaveReport = () => {
                                 Export Excel
                             </Button>
                         </Box>
-                    </div>
-                    <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>View detailed reports of employee leave history</Typography>
-                    <Box sx={{ mb: 3, mt: '2rem' }}>
+            )}
+        >
+                    <FilterToolbar onReset={handleClearSearch}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                                 <TextField
                                     variant="outlined"
                                     placeholder="Search by name or employee ID..."
@@ -220,8 +216,9 @@ const LeaveReport = () => {
 
                             </Box>
                         </Box>
-                    </Box>
-                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflowX: 'auto' }}>
+                    </FilterToolbar>
+                    <SurfaceCard title="Leave Summary" subtitle="Monthly totals refresh without leaving the report.">
+                    <TableContainer component={Paper} sx={{ borderRadius: '16px', overflowX: 'auto', boxShadow: 'none' }}>
                         <Table>
                             <TableHead>
                                 <TableRow style={{ backgroundColor: '#063455' }}>
@@ -271,9 +268,8 @@ const LeaveReport = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'end', mt: 3 }}>
                         <Pagination count={totalPages} page={currentPage} onChange={(e, page) => setCurrentPage(page)} />
                     </Box>
-                </div>
-            </div>
-        </>
+                    </SurfaceCard>
+        </EmployeeHrPageShell>
     );
 };
 

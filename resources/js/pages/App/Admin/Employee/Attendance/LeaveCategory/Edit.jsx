@@ -3,6 +3,8 @@ import { usePage, router } from '@inertiajs/react';
 import { Alert, Button, Snackbar, Typography } from "@mui/material";
 import { Box } from '@mui/system';
 import axios from 'axios';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
 
 const EditCategory = () => {
 	const { props } = usePage();
@@ -68,32 +70,20 @@ const EditCategory = () => {
 
 	return (
 		<>
-			{/* <SideNav open={open} setOpen={setOpen} />
-			<div
-				style={{
-					marginLeft: open ? `${drawerWidthOpen}px` : `${drawerWidthClosed}px`,
-					transition: 'margin-left 0.3s ease-in-out',
-					marginTop: '5rem',
-					backgroundColor: '#F6F6F6',
-				}}
-			> */}
-				<Box sx={{ px: 2, py: 2 }}>
-					<div style={{ paddingTop: '1rem' }}>
-						{/* Header */}
-						<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-							<Typography variant="h5" style={{ fontWeight: 'bold' }}>
-								Edit Leave Category
-							</Typography>
-						</div>
+			<EmployeeHrPageShell
+				title="Edit Leave Category"
+				subtitle="Update the leave category details and publishing status."
+			>
+				<SurfaceCard title="Category Details" subtitle="Changes here are reflected in leave application and attendance workflows.">
 					<form
 						onSubmit={handleSubmit}
 						style={{
 							maxWidth: "600px",
-							margin: "20px auto",
-							padding: "24px",
-							backgroundColor: "white",
+							margin: "0 auto",
+							padding: "0",
+							backgroundColor: "transparent",
 							borderRadius: "8px",
-							boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+							boxShadow: "none",
 						}}>
 						{/* Name */}
 						<div style={{ marginBottom: "12px" }}>
@@ -225,9 +215,8 @@ const EditCategory = () => {
 							</Button>
 						</div>
 					</form>
-					</div>
-				</Box>
-			{/* </div> */}
+				</SurfaceCard>
+			</EmployeeHrPageShell>
 			<Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar}>
 				<Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">
 					{snackbar.message}

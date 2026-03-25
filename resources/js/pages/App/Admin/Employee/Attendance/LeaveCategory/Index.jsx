@@ -5,6 +5,8 @@ import { MoreVert } from '@mui/icons-material';
 import { Box } from '@mui/system';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
 
 const Management = () => {
     const { props } = usePage();
@@ -115,47 +117,35 @@ const Management = () => {
 
     return (
         <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#F6F6F6',
-                }}
+            <EmployeeHrPageShell
+                title="Leave Categories"
+                subtitle="Includes casual, sick, annual, and special leave types."
+                actions={(
+                    <Button
+                        startIcon={<span style={{ fontSize: '1.5rem', marginBottom: 3 }}>+</span>}
+                        onClick={() => router.visit(route('employees.leaves.category.create'))}
+                        variant="contained"
+                        sx={{
+                            backgroundColor: '#063455',
+                            color: 'white',
+                            textTransform: 'none',
+                            minHeight: 44,
+                            borderRadius: '16px',
+                            px: 2.5,
+                        }}
+                    >
+                        Add Leave
+                    </Button>
+                )}
             >
-                <div style={{ padding: '2rem' }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography style={{ fontWeight: '700', fontSize: '30px', color: '#063455' }}>
-                            Leave Categories
-                        </Typography>
-                        <div>
-                            <Button startIcon={<span style={{
-                                fontSize: '1.5rem', marginBottom: 3
-                            }}>+</span>}
-                                onClick={() => router.visit(route('employees.leaves.category.create'))}
-                                variant="contained"
-                                fullWidth
-                                style={{
-                                    backgroundColor: '#063455',
-                                    color: 'white',
-                                    textTransform: 'none',
-                                    // padding: '12px',
-                                    // fontSize: '16px',
-                                    height: 35,
-                                    borderRadius: '16px'
-                                }}
-                            >
-                                Add Leave
-                            </Button>
-                        </div>
-                    </div>
-                    <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>
-                        Includes casual, sick, annual, and special leave types
-                    </Typography>
-                    {/* Cards Section */}
-                    <div style={{ display: 'flex', width: '90%', flexWrap: 'wrap', gap: '16px', justifyContent: 'flex-start', marginTop:'2rem' }}>{categories.length > 0 && categories.map((category, index) => <LeaveCard key={index} data={category} />)}</div>
-                </div>
-            </div>
+                <SurfaceCard title="Category Register" subtitle="Manage the leave types available to employees.">
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                        {categories.length > 0 ? categories.map((category, index) => <LeaveCard key={index} data={category} />) : (
+                            <Typography color="text.secondary">No leave categories found.</Typography>
+                        )}
+                    </Box>
+                </SurfaceCard>
+            </EmployeeHrPageShell>
             <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar}>
                 <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">
                     {snackbar.message}

@@ -47,9 +47,9 @@ import NotificationsPanel from './Notification';
 import EmployeeProfileScreen from './Profile';
 import { isPosPath, safeRouteForContext } from '@/lib/utils';
 
-export const POS_DRAWER_WIDTH_OPEN = 224;
-export const POS_DRAWER_WIDTH_CLOSED = 78;
-export const POS_TOPBAR_HEIGHT = 76;
+export const POS_DRAWER_WIDTH_OPEN = 248;
+export const POS_DRAWER_WIDTH_CLOSED = 76;
+export const POS_TOPBAR_HEIGHT = 88;
 
 const openedMixin = (theme) => ({
     width: POS_DRAWER_WIDTH_OPEN,
@@ -78,9 +78,9 @@ const Drawer = styled(MuiDrawer, {
     boxSizing: 'border-box',
     '& .MuiDrawer-paper': {
         width: open ? POS_DRAWER_WIDTH_OPEN : POS_DRAWER_WIDTH_CLOSED,
-        borderRight: '1px solid rgba(226, 232, 240, 0.85)',
-        background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
-        boxShadow: '0 22px 48px rgba(6, 52, 85, 0.08)',
+        borderRight: '1px solid rgba(207, 216, 227, 0.72)',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249,251,253,0.98) 100%)',
+        boxShadow: 'none',
         ...(open ? openedMixin(theme) : closedMixin(theme)),
     },
 }));
@@ -89,9 +89,10 @@ const AppBar = styled(MuiAppBar, {
     shouldForwardProp: (prop) => prop !== 'open',
 })(({ theme, open }) => ({
     zIndex: theme.zIndex.drawer + 1,
-    background: 'rgba(255,255,255,0.88)',
-    backdropFilter: 'blur(14px)',
-    borderBottom: '1px solid rgba(226, 232, 240, 0.92)',
+    background: 'rgba(255,255,255,0.82)',
+    backdropFilter: 'blur(18px)',
+    WebkitBackdropFilter: 'blur(18px)',
+    borderBottom: '1px solid rgba(207,216,227,0.56)',
     boxShadow: 'none',
     height: POS_TOPBAR_HEIGHT,
     justifyContent: 'center',
@@ -295,17 +296,18 @@ export default function SideNav({ open, setOpen }) {
                         href={disabled ? undefined : item.path}
                         disabled={disabled}
                         sx={{
-                            minHeight: 46,
-                            mx: open ? 1.5 : 1,
-                            mb: 0.5,
-                            px: open ? 1.5 : 0,
+                            minHeight: 48,
+                            mx: open ? 0.75 : 0.5,
+                            mb: 0.2,
+                            px: open ? 1.1 : 0,
                             justifyContent: open ? 'flex-start' : 'center',
                             borderRadius: '14px',
-                            color: active ? '#fff' : '#496173',
+                            color: active ? '#fff' : '#52606d',
                             background: active ? 'linear-gradient(135deg, #063455 0%, #0c67a7 100%)' : 'transparent',
-                            boxShadow: active ? '0 16px 28px rgba(6, 52, 85, 0.18)' : 'none',
+                            border: active ? '1px solid rgba(6, 52, 85, 0.18)' : '1px solid transparent',
+                            boxShadow: active ? '0 16px 30px rgba(6, 52, 85, 0.18)' : 'none',
                             '&:hover': {
-                                background: active ? 'linear-gradient(135deg, #063455 0%, #0c67a7 100%)' : 'rgba(12, 103, 167, 0.08)',
+                                background: active ? 'linear-gradient(135deg, #063455 0%, #0c67a7 100%)' : 'rgba(6, 52, 85, 0.06)',
                             },
                             '&.Mui-disabled': {
                                 opacity: 0.5,
@@ -315,13 +317,16 @@ export default function SideNav({ open, setOpen }) {
                         <ListItemIcon
                             sx={{
                                 minWidth: 0,
-                                width: 36,
-                                height: 36,
+                                width: 38,
+                                height: 38,
                                 mr: open ? 1.25 : 0,
                                 borderRadius: '12px',
                                 justifyContent: 'center',
                                 color: active ? '#fff' : '#5f7182',
-                                bgcolor: active ? 'rgba(255,255,255,0.14)' : 'rgba(6,52,85,0.04)',
+                                bgcolor: active ? 'rgba(255,255,255,0.14)' : 'rgba(6,52,85,0.05)',
+                                '& svg': {
+                                    fontSize: '1.22rem',
+                                },
                             }}
                         >
                             {item.icon}
@@ -330,8 +335,9 @@ export default function SideNav({ open, setOpen }) {
                             <ListItemText
                                 primary={item.text}
                                 primaryTypographyProps={{
-                                    fontSize: '0.95rem',
+                                    fontSize: '0.91rem',
                                     fontWeight: active ? 700 : 600,
+                                    lineHeight: 1.2,
                                     whiteSpace: 'nowrap',
                                 }}
                             />
@@ -352,20 +358,21 @@ export default function SideNav({ open, setOpen }) {
                             color="primary"
                             onClick={() => setOpen((prev) => !prev)}
                             sx={{
-                                width: 42,
-                                height: 42,
+                                width: 44,
+                                height: 44,
+                                borderRadius: '16px',
                                 bgcolor: 'rgba(6,52,85,0.06)',
-                                border: '1px solid rgba(12, 103, 167, 0.12)',
+                                border: '1px solid rgba(207,216,227,0.88)',
                                 '&:hover': { bgcolor: 'rgba(6,52,85,0.1)' },
                             }}
                         >
                             {open ? <MenuOpenRoundedIcon /> : <MenuRoundedIcon />}
                         </IconButton>
                         <Box>
-                            <Typography variant="h6" sx={{ color: '#0f2940', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                            <Typography sx={{ color: '#102a43', fontWeight: 800, fontSize: '1.08rem', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
                                 {workspaceTitle}
                             </Typography>
-                            <Typography variant="body2" sx={{ color: '#6b7a89' }}>
+                            <Typography sx={{ fontSize: '0.8rem', color: '#7b8794', lineHeight: 1.25 }}>
                                 {workspaceSubtitle}
                             </Typography>
                         </Box>
@@ -377,8 +384,9 @@ export default function SideNav({ open, setOpen }) {
                             sx={{
                                 width: 44,
                                 height: 44,
+                                borderRadius: '16px',
                                 bgcolor: 'rgba(6,52,85,0.06)',
-                                border: '1px solid rgba(12, 103, 167, 0.12)',
+                                border: '1px solid rgba(207,216,227,0.88)',
                             }}
                         >
                             <NotificationsRoundedIcon sx={{ color: '#063455' }} />
@@ -390,8 +398,9 @@ export default function SideNav({ open, setOpen }) {
                                 px: 1,
                                 py: 0.75,
                                 borderRadius: '18px',
-                                border: '1px solid rgba(226,232,240,0.95)',
-                                color: '#0f2940',
+                                border: '1px solid rgba(207,216,227,0.56)',
+                                bgcolor: 'rgba(255,255,255,0.75)',
+                                color: '#102a43',
                                 textTransform: 'none',
                                 gap: 1,
                             }}
@@ -400,10 +409,10 @@ export default function SideNav({ open, setOpen }) {
                                 {(auth.user?.name || 'U').slice(0, 1).toUpperCase()}
                             </Avatar>
                             <Box sx={{ textAlign: 'left', display: { xs: 'none', md: 'block' } }}>
-                                <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, lineHeight: 1.2 }}>
+                                <Typography sx={{ fontSize: '0.88rem', fontWeight: 700, lineHeight: 1.15 }}>
                                     {auth.user?.name || 'User'}
                                 </Typography>
-                                <Typography sx={{ fontSize: '0.77rem', color: '#6b7a89', lineHeight: 1.2 }}>
+                                <Typography sx={{ fontSize: '0.68rem', color: '#7b8794', lineHeight: 1.2 }}>
                                     {auth.role || 'staff'}
                                 </Typography>
                             </Box>
@@ -427,8 +436,8 @@ export default function SideNav({ open, setOpen }) {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: open ? 'flex-start' : 'center',
-                            px: open ? 2.25 : 1,
-                            borderBottom: '1px solid rgba(226,232,240,0.82)',
+                            px: open ? 1.4 : 0.75,
+                            borderBottom: '1px solid rgba(207,216,227,0.72)',
                         }}
                     >
                         {open ? (
@@ -440,11 +449,11 @@ export default function SideNav({ open, setOpen }) {
                                     sx={{ width: 44, height: 44, objectFit: 'contain' }}
                                 />
                                 <Box sx={{ minWidth: 0 }}>
-                                    <Typography sx={{ color: '#0f2940', fontWeight: 800, fontSize: '1rem', lineHeight: 1.2 }}>
+                                    <Typography sx={{ color: '#102a43', fontWeight: 800, fontSize: '0.88rem', lineHeight: 1.1 }}>
                                         AFOHS Club
                                     </Typography>
-                                    <Typography sx={{ color: '#6b7a89', fontSize: '0.76rem' }}>
-                                        Restaurant & POS
+                                    <Typography sx={{ color: '#7b8794', fontSize: '0.68rem', lineHeight: 1.2 }}>
+                                        Operations
                                     </Typography>
                                 </Box>
                             </Box>
@@ -464,7 +473,7 @@ export default function SideNav({ open, setOpen }) {
                             flexGrow: 1,
                             overflowY: 'auto',
                             overflowX: 'hidden',
-                            px: open ? 1 : 0.5,
+                            px: open ? 1 : 0.75,
                             py: 1.5,
                             scrollbarWidth: 'none',
                             '&::-webkit-scrollbar': { display: 'none' },
@@ -503,11 +512,12 @@ export default function SideNav({ open, setOpen }) {
                                         variant="caption"
                                         sx={{
                                             display: 'block',
-                                            px: 1.75,
+                                            px: 1.15,
                                             pb: 0.75,
-                                            color: '#8a99a8',
-                                            fontWeight: 700,
-                                            letterSpacing: '0.12em',
+                                            color: '#98a3b3',
+                                            fontWeight: 800,
+                                            fontSize: '0.63rem',
+                                            letterSpacing: '0.14em',
                                             textTransform: 'uppercase',
                                         }}
                                     >

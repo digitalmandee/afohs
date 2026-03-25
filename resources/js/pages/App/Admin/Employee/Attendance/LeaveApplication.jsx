@@ -10,6 +10,9 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { styled } from '@mui/material/styles';
 import { FaEdit } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
 
 const LeaveApplication = () => {
     // const [open, setOpen] = useState(true);
@@ -136,36 +139,29 @@ const LeaveApplication = () => {
     });
 
     return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                }}
-            >
-                <div style={{ padding: '2rem' }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography style={{ fontWeight: '700', fontSize: '30px', color: '#063455' }}>Leave Applications</Typography>
-                        <Button
-                            variant="contained"
-                            startIcon={<Add />}
-                            onClick={() => router.visit(route('employees.leaves.application.create'))}
-                            style={{
-                                backgroundColor: '#063455',
-                                color: 'white',
-                                textTransform: 'none',
-                                borderRadius: '16px',
-                            }}
-                        >
-                            New Application
-                        </Button>
-                    </div>
-                    <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Approve, reject, or hold applications with proper tracking</Typography>
-                    <Box sx={{ mb: 2, mt: '2rem' }}>
+        <EmployeeHrPageShell
+            title="Leave Applications"
+            subtitle="Approve, reject, or hold applications with proper tracking."
+            actions={(
+                <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={() => router.visit(route('employees.leaves.application.create'))}
+                    sx={{
+                        backgroundColor: '#063455',
+                        color: 'white',
+                        textTransform: 'none',
+                        borderRadius: '16px',
+                    }}
+                >
+                    New Application
+                </Button>
+            )}
+        >
+                    <Box sx={{ mb: 2 }}>
                         <Grid container spacing={2}>
                             <Grid item xs={12} lg={8}>
+                                <FilterToolbar onReset={handleClearAllFilters}>
                                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <TextField
                                     variant="outlined"
@@ -231,9 +227,10 @@ const LeaveApplication = () => {
                                     Reset
                                 </Button>
                                 </Box>
+                                </FilterToolbar>
                             </Grid>
                             <Grid item xs={12} lg={4}>
-                                <Paper sx={{ p: 1.5, borderRadius: '16px' }}>
+                                <SurfaceCard title="Leave Calendar" subtitle="Approved and pending dates are highlighted for quick review." cardSx={{ height: '100%' }}>
                                     <LocalizationProvider dateAdapter={AdapterDayjs}>
                                         <DateCalendar
                                             value={date ? dayjs(date) : dayjs()}
@@ -257,12 +254,12 @@ const LeaveApplication = () => {
                                         <Chip size="small" label="Approved" sx={{ bgcolor: 'rgba(34,197,94,0.18)' }} />
                                         <Chip size="small" label="Pending" sx={{ bgcolor: 'rgba(245,158,11,0.18)' }} />
                                     </Box>
-                                </Paper>
+                                </SurfaceCard>
                             </Grid>
                         </Grid>
                     </Box>
-
-                    <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto' }}>
+                    <SurfaceCard title="Application Register" subtitle="Requests stay visible while search, date, and status filters update in place.">
+                    <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto', boxShadow: 'none' }}>
                         <Table>
                             <TableHead>
                                 <TableRow style={{ backgroundColor: '#063455', height: 30 }}>
@@ -344,9 +341,8 @@ const LeaveApplication = () => {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
                         <Pagination count={totalPages} page={currentPage} onChange={(e, page) => setCurrentPage(page)} shape="rounded" />
                     </div>
-                </div>
-            </div>
-        </>
+                    </SurfaceCard>
+        </EmployeeHrPageShell>
     );
 };
 
