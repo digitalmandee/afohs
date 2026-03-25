@@ -1,45 +1,32 @@
-import React, { useState } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import { IconButton, Button, Grid, Typography, Box, TextField, MenuItem, Chip } from '@mui/material';
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
-import { router, usePage, useForm } from '@inertiajs/react';
+import React from 'react';
+import { router, useForm } from '@inertiajs/react';
+import { Button, Grid, MenuItem, TextField, Typography } from '@mui/material';
 import AsyncSearchTextField from '@/components/AsyncSearchTextField';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
 
 const genderOptions = ['male', 'female', 'other'];
 
-// Helper function to render member with status
+const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+        borderRadius: '16px',
+    },
+};
+
 const renderMemberWithStatus = (option) => (
-    <Box sx={{ width: '100%' }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
+    <div style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="body2" fontWeight="bold">
                 {option.membership_no || option.customer_no || option.employee_id}
             </Typography>
-            {option.status && (
-                <Chip
-                    label={option.status}
-                    size="small"
-                    sx={{
-                        height: '20px',
-                        fontSize: '10px',
-                        backgroundColor: option.status === 'active' ? '#e8f5e9' : option.status === 'suspended' ? '#fff3e0' : '#ffebee',
-                        color: option.status === 'active' ? '#2e7d32' : option.status === 'suspended' ? '#ef6c00' : '#c62828',
-                        textTransform: 'capitalize',
-                        ml: 1,
-                    }}
-                />
-            )}
-        </Box>
+        </div>
         <Typography variant="caption" color="text.secondary">
             {option.name}
         </Typography>
-    </Box>
+    </div>
 );
 
-// const drawerWidthOpen = 240;
-// const drawerWidthClosed = 110;
-
-const CustomerForm = ({ customer = {}, customerNo, guestTypes = [], isEdit = false }) => {
-    // const [open, setOpen] = useState(true);
+export default function CustomerForm({ customer = {}, customerNo, guestTypes = [], isEdit = false }) {
     const { data, setData, post, put, processing, errors } = useForm({
         customer_no: customer.customer_no || customerNo || '',
         name: customer.name || '',
@@ -51,560 +38,117 @@ const CustomerForm = ({ customer = {}, customerNo, guestTypes = [], isEdit = fal
         guest_type_id: customer.guest_type_id || '',
         member_name: customer.member_name || '',
         member_no: customer.member_no || '',
-        guest: customer.member_name ? { name: customer.member_name, label: customer.member_name, membership_no: customer.member_no } : null,
+        guest: customer.member_name
+            ? { name: customer.member_name, label: customer.member_name, membership_no: customer.member_no }
+            : null,
     });
 
-    const handleChange = (e) => {
-        const newData = e.target.value;
-        setData('member_name', newData?.name);
-        setData('member_no', newData?.membership_no);
-    };
+    const handleMemberChange = React.useCallback(
+        (event) => {
+            const selected = event?.target?.value || null;
+            setData('guest', selected);
+            setData('member_name', selected?.name || '');
+            setData('member_no', selected?.membership_no || '');
+        },
+        [setData],
+    );
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        isEdit ? put(route('guests.update', customer.id)) : post(route('guests.store'));
-    };
+    const handleSubmit = React.useCallback(
+        (event) => {
+            event.preventDefault();
+            if (isEdit) {
+                put(route('guests.update', customer.id));
+                return;
+            }
+
+            post(route('guests.store'));
+        },
+        [customer.id, isEdit, post, put],
+    );
 
     return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <Box
-                sx={{
-                    minHeight: '100vh',
-                    p: 2,
-                    bgcolor: '#f5f5f5',
-                }}
-            >
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <IconButton>
-                        <ArrowBackIcon sx={{ color: '#063455' }} onClick={() => router.visit(route('guests.index'))} />
-                    </IconButton>
-                    <Typography sx={{ fontWeight: 600, color: '#063455', fontSize: '30px' }}>{isEdit ? 'Edit Customer' : 'Add Customer'}</Typography>
-                </Box>
-
-                <Box component="form" onSubmit={handleSubmit} sx={{ maxWidth: 600, mx: 'auto', mt: 3, bgcolor: '#fff', p: 3 }}>
+        <AppPage
+            eyebrow="Guest Management"
+            title={isEdit ? 'Edit Guest' : 'Add Guest'}
+            subtitle="Manage live guest records with guest type, contact details, and sponsor linkage in the current premium workflow."
+            actions={[
+                <Button key="back" variant="outlined" onClick={() => router.visit(route('guests.index'))}>
+                    Back to Guests
+                </Button>,
+            ]}
+        >
+            <SurfaceCard title="Guest Profile" subtitle="Capture the operational guest master that Room and Event bookings search against.">
+                <form onSubmit={handleSubmit}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="Customer No"
-                                margin="normal"
-                                value={data.customer_no}
-                                disabled
-                                error={!!errors.customer_no}
-                                helperText={errors.customer_no}
-                                sx={{
-                                    width: '100%',
-                                    '& .MuiInputBase-root': {
-                                        height: 35,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                    },
-                                    '& .MuiSelect-select': {
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        padding: '0 14px !important', // override MUI default
-                                        height: '100%',
-                                        boxSizing: 'border-box',
-                                    },
-                                    // '& legend': {
-                                    //     display: 'none', // hides outline label gap
-                                    // },
-                                    // '& label': {
-                                    //     top: '-10px', // tweak this to move label vertically
-                                    // },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth label="Guest #" value={data.customer_no} disabled error={!!errors.customer_no} helperText={errors.customer_no} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="Name*"
-                                margin="normal"
-                                value={data.name}
-                                onChange={(e) => setData('name', e.target.value)}
-                                error={!!errors.name}
-                                helperText={errors.name}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-5px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth required label="Guest Name" value={data.name} onChange={(event) => setData('name', event.target.value)} error={!!errors.name} helperText={errors.name} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="Contact*"
-                                margin="normal"
-                                placeholder="03XXXXXXXX"
-                                value={data.contact}
-                                onChange={(e) => setData('contact', e.target.value.replace(/[^0-9+\-]/g, ''))}
-                                error={!!errors.contact}
-                                helperText={errors.contact}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth required label="Contact" placeholder="03XXXXXXXXX" value={data.contact} onChange={(event) => setData('contact', event.target.value.replace(/[^0-9+\-]/g, ''))} error={!!errors.contact} helperText={errors.contact} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                select
-                                label="Gender*"
-                                margin="normal"
-                                value={data.gender}
-                                onChange={(e) => setData('gender', e.target.value)}
-                                error={!!errors.gender}
-                                helperText={errors.gender}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            >
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth select label="Gender" value={data.gender} onChange={(event) => setData('gender', event.target.value)} error={!!errors.gender} helperText={errors.gender} sx={fieldSx}>
                                 {genderOptions.map((option) => (
-                                    <MenuItem key={option} value={option}
-                                        sx={{
-                                            borderRadius: "16px",
-                                            mx: 1,
-                                            my: 0.5,
-
-                                            "&:hover": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-
-                                            "&.Mui-selected": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-
-                                            "&.Mui-selected:hover": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-                                        }}
-                                    >
+                                    <MenuItem key={option} value={option}>
                                         {option}
                                     </MenuItem>
                                 ))}
                             </TextField>
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="Address"
-                                margin="normal"
-                                value={data.address}
-                                onChange={(e) => setData('address', e.target.value)}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth label="Address" value={data.address} onChange={(event) => setData('address', event.target.value)} error={!!errors.address} helperText={errors.address} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="CNIC"
-                                margin="normal"
-                                placeholder="XXXXX-XXXXXXX-X"
-                                value={data.cnic}
-                                onChange={(e) => {
-                                    let value = e.target.value.replace(/\D/g, '');
-                                    if (value.length > 5 && value[5] !== '-') value = value.slice(0, 5) + '-' + value.slice(5);
-                                    if (value.length > 13 && value[13] !== '-') value = value.slice(0, 13) + '-' + value.slice(13);
-                                    if (value.length > 15) value = value.slice(0, 15);
-                                    setData('cnic', value);
-                                }}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth label="CNIC" placeholder="XXXXX-XXXXXXX-X" value={data.cnic} onChange={(event) => setData('cnic', event.target.value)} error={!!errors.cnic} helperText={errors.cnic} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                label="Email"
-                                margin="normal"
-                                value={data.email}
-                                onChange={(e) => setData('email', e.target.value)}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            />
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth label="Email" value={data.email} onChange={(event) => setData('email', event.target.value)} error={!!errors.email} helperText={errors.email} sx={fieldSx} />
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                fullWidth
-                                select
-                                label="Guest Type*"
-                                margin="normal"
-                                value={data.guest_type_id}
-                                onChange={(e) => setData('guest_type_id', e.target.value)}
-                                error={!!errors.guest_type_id}
-                                helperText={errors.guest_type_id}
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
-                            >
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth select required label="Guest Type" value={data.guest_type_id} onChange={(event) => setData('guest_type_id', event.target.value)} error={!!errors.guest_type_id} helperText={errors.guest_type_id} sx={fieldSx}>
                                 {guestTypes.map((type) => (
-                                    <MenuItem key={type.id} value={type.id}
-                                        sx={{
-                                            borderRadius: "16px",
-                                            mx: 1,
-                                            my: 0.5,
-
-                                            "&:hover": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-
-                                            "&.Mui-selected": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-
-                                            "&.Mui-selected:hover": {
-                                                backgroundColor: "#063455",
-                                                color: "#fff",
-                                            },
-                                        }}>
+                                    <MenuItem key={type.id} value={type.id}>
                                         {type.name}
                                     </MenuItem>
-
                                 ))}
                             </TextField>
                         </Grid>
-
-                        <Grid item xs={12} sm={6}>
-                            <Box
-                                sx={{
-                                    width: '100%',
-                                    '& .MuiInputBase-root': { height: 40, alignItems: 'center' },
-                                    '& .MuiInputBase-input': { padding: '0 14px' },
-                                    '& label': {
-                                        top: '-10px', // tweak this to move label vertically
-                                    },
-                                }}
-                            >
-                                <AsyncSearchTextField
-                                    label="Member Name"
-                                    name="guest"
-                                    value={data.guest}
-                                    onChange={handleChange}
-                                    endpoint="admin.api.search-users"
-                                    params={{ type: '0' }}
-                                    placeholder="Search members..."
-                                    fullWidth
-                                    renderItem={renderMemberWithStatus}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            height: 35,
-                                            '& input': {
-                                                padding: '8px 14px',
-                                            },
-                                        },
-                                        '& .MuiInputLabel-root': {
-                                            transform: 'translate(14px, 9px) scale(1)',
-                                        },
-                                        '& .MuiInputLabel-shrink': {
-                                            transform: 'translate(14px, -6px) scale(0.75)',
-                                        },
-                                    }}
-                                />
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={6} sx={{ mt: -1.4 }}>
-                            <TextField
+                        <Grid item xs={12} md={6}>
+                            <AsyncSearchTextField
+                                label="Authorized Member"
+                                name="guest"
+                                value={data.guest}
+                                onChange={handleMemberChange}
+                                endpoint="admin.api.search-users"
+                                params={{ type: '0' }}
+                                placeholder="Search members..."
                                 fullWidth
-                                label="Member No"
-                                margin="normal"
-                                value={data.member_no}
-                                onChange={(e) => setData('member_no', e.target.value)}
-                                disabled
-                                // sx={{
-                                //     width: '100%',
-                                //     '& .MuiInputBase-root': {
-                                //         height: 35,
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //     },
-                                //     '& .MuiSelect-select': {
-                                //         display: 'flex',
-                                //         alignItems: 'center',
-                                //         padding: '0 14px !important', // override MUI default
-                                //         height: '100%',
-                                //         boxSizing: 'border-box',
-                                //     },
-                                //     '& legend': {
-                                //         display: 'none', // hides outline label gap
-                                //     },
-                                //     '& label': {
-                                //         top: '-10px', // tweak this to move label vertically
-                                //     },
-                                // }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        height: 35,
-                                        '& input': {
-                                            padding: '8px 14px',
-                                        },
-                                    },
-                                    '& .MuiInputLabel-root': {
-                                        transform: 'translate(14px, 9px) scale(1)',
-                                    },
-                                    '& .MuiInputLabel-shrink': {
-                                        transform: 'translate(14px, -6px) scale(0.75)',
-                                    },
-                                }}
+                                renderItem={renderMemberWithStatus}
+                                sx={fieldSx}
                             />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                            <TextField fullWidth label="Member No" value={data.member_no} onChange={(event) => setData('member_no', event.target.value)} error={!!errors.member_no} helperText={errors.member_no} sx={fieldSx} disabled />
                         </Grid>
                     </Grid>
 
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button
-                            type="submit"
-                            variant="contained"
-                            disabled={processing}
-                            sx={{textTransform:'none'}}
-                        >
-                            
-                            {isEdit ? 'Update' : 'Save'}
-                        </Button>
-                    </Box>
-                </Box>
-            </Box>
-        </>
+                    <Grid container spacing={1.25} justifyContent="flex-end" sx={{ mt: 2 }}>
+                        <Grid item>
+                            <Button variant="outlined" onClick={() => router.visit(route('guests.index'))}>
+                                Cancel
+                            </Button>
+                        </Grid>
+                        <Grid item>
+                            <Button type="submit" variant="contained" disabled={processing}>
+                                {isEdit ? 'Update Guest' : 'Save Guest'}
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </form>
+            </SurfaceCard>
+        </AppPage>
     );
-};
-
-export default CustomerForm;
+}

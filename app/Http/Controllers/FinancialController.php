@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Constants\AppConstants;
 use App\Models\AccountingEventQueue;
+use App\Models\FinancialChargeType;
 use App\Models\FinancialInvoice;
 use App\Models\FinancialInvoiceItem;
 use App\Models\FinancialReceipt;
 use App\Models\JournalEntry;
 use App\Models\Member;
 use App\Models\MemberCategory;
+use App\Models\SubscriptionCategory;
 use App\Models\Tenant;
 use App\Models\Transaction;
 use App\Models\TransactionRelation;
@@ -20,6 +22,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 use Inertia\Inertia;
 
 class FinancialController extends Controller
@@ -33,161 +37,175 @@ class FinancialController extends Controller
     public function index(Request $request)
     {
         $perPage = $this->resolvePerPage($request, 10);
-        // Member Statistics
-        $totalMembers = Member::whereNull('parent_id')->count();
-        $activeMembers = Member::whereNull('parent_id')->where('status', 'active')->count();
-        $expiredMembers = Member::whereNull('parent_id')->where('status', 'expired')->count();
-        $canceledMembers = Member::whereNull('parent_id')->whereIn('status', ['cancelled', 'suspended', 'terminated'])->count();
 
-        // Transaction Statistics
-        $totalTransactions = FinancialInvoice::count();
+        try {
+            if (!Schema::hasTable('financial_invoices')) {
+                return $this->renderDashboardFallback($request, $perPage, 'Finance invoices are not available yet. Please verify the financial tables and migrations.');
+            }
 
-        // Revenue Breakdown using Item-Level Transactions (Credits)
-        // Group by TransactionType->type field matching AppConstants
-        $revenueByType = DB::table('transactions')
-            ->join('financial_invoice_items', 'transactions.reference_id', '=', 'financial_invoice_items.id')
-            ->join('transaction_types', 'financial_invoice_items.fee_type', '=', 'transaction_types.id')
-            ->where('transactions.reference_type', 'App\Models\FinancialInvoiceItem')
-            ->where('transactions.type', 'credit')
-            ->select('transaction_types.type', DB::raw('sum(transactions.amount) as total'))
-            ->groupBy('transaction_types.type')
-            ->pluck('total', 'type');
+            $hasTransactionsTable = Schema::hasTable('transactions');
+            $hasInvoiceItemsTable = Schema::hasTable('financial_invoice_items');
+            $hasTransactionTypesTable = Schema::hasTable('transaction_types');
+            $hasAccountingQueue = Schema::hasTable('accounting_event_queues');
+            $hasJournalEntries = Schema::hasTable('journal_entries');
 
-        $membershipFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_MEMBERSHIP] ?? 0;
-        $maintenanceFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_MAINTENANCE] ?? 0;
-        $subscriptionFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_SUBSCRIPTION] ?? 0;
+            $totalMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->count() : 0;
+            $activeMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->where('status', 'active')->count() : 0;
+            $expiredMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->where('status', 'expired')->count() : 0;
+            $canceledMembers = Schema::hasTable('members')
+                ? Member::whereNull('parent_id')->whereIn('status', ['cancelled', 'suspended', 'terminated'])->count()
+                : 0;
 
-        // Reinstating Fee - specific lookup by name if needed, assuming it falls under Type 6 (Financial Charge) or similar
-        // For now, we will try to find it by name for legacy support compatibility
-        $reinstatingTypeId = \App\Models\TransactionType::where('name', 'Reinstating Fee')->value('id');
-        $reinstatingFeeRevenue = 0;
-        if ($reinstatingTypeId) {
-            $reinstatingFeeRevenue = DB::table('transactions')
-                ->join('financial_invoice_items', 'transactions.reference_id', '=', 'financial_invoice_items.id')
-                ->where('transactions.reference_type', 'App\Models\FinancialInvoiceItem')
-                ->where('transactions.type', 'credit')
-                ->where('financial_invoice_items.fee_type', $reinstatingTypeId)
-                ->sum('transactions.amount');
-        }
+            $totalTransactions = FinancialInvoice::count();
 
-        $totalMembershipRevenue = $membershipFeeRevenue + $maintenanceFeeRevenue + $subscriptionFeeRevenue + $reinstatingFeeRevenue;
+            $revenueByType = collect();
+            if ($hasTransactionsTable && $hasInvoiceItemsTable && $hasTransactionTypesTable) {
+                $revenueByType = DB::table('transactions')
+                    ->join('financial_invoice_items', 'transactions.reference_id', '=', 'financial_invoice_items.id')
+                    ->join('transaction_types', 'financial_invoice_items.fee_type', '=', 'transaction_types.id')
+                    ->where('transactions.reference_type', FinancialInvoiceItem::class)
+                    ->where('transactions.type', 'credit')
+                    ->select('transaction_types.type', DB::raw('sum(transactions.amount) as total'))
+                    ->groupBy('transaction_types.type')
+                    ->pluck('total', 'type');
+            }
 
-        // Booking Revenue - Still relying on Invoice Type for now as migration continues
-        $roomRevenue = FinancialInvoice::where('status', 'paid')  // approximate
-            ->where('invoice_type', 'room_booking')
-            ->sum('total_price');
+            $membershipFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_MEMBERSHIP] ?? 0;
+            $maintenanceFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_MAINTENANCE] ?? 0;
+            $subscriptionFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_SUBSCRIPTION] ?? 0;
 
-        $eventRevenue = FinancialInvoice::where('status', 'paid')  // approximate
-            ->where('invoice_type', 'event_booking')
-            ->sum('total_price');
+            $reinstatingTypeId = $hasTransactionTypesTable
+                ? TransactionType::where('name', 'Reinstating Fee')->value('id')
+                : null;
 
-        $totalBookingRevenue = $roomRevenue + $eventRevenue;
+            $reinstatingFeeRevenue = 0;
+            if ($reinstatingTypeId && $hasTransactionsTable && $hasInvoiceItemsTable) {
+                $reinstatingFeeRevenue = DB::table('transactions')
+                    ->join('financial_invoice_items', 'transactions.reference_id', '=', 'financial_invoice_items.id')
+                    ->where('transactions.reference_type', FinancialInvoiceItem::class)
+                    ->where('transactions.type', 'credit')
+                    ->where('financial_invoice_items.fee_type', $reinstatingTypeId)
+                    ->sum('transactions.amount');
+            }
 
-        // Food Revenue
-        $foodRevenue = FinancialInvoice::where('status', 'paid')
-            ->where('invoice_type', 'food_order')
-            ->sum('total_price');
+            $totalMembershipRevenue = $membershipFeeRevenue + $maintenanceFeeRevenue + $subscriptionFeeRevenue + $reinstatingFeeRevenue;
 
-        // Total Collected Revenue
-        $totalRevenue = DB::table('transactions')
-            ->where('type', 'credit')
-            ->sum('amount');
+            $roomRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'room_booking')->sum('total_price');
+            $eventRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'event_booking')->sum('total_price');
+            $totalBookingRevenue = $roomRevenue + $eventRevenue;
+            $foodRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'food_order')->sum('total_price');
+            $totalRevenue = $hasTransactionsTable ? DB::table('transactions')->where('type', 'credit')->sum('amount') : 0;
 
-        // Recent transactions
-        $recentTransactions = FinancialInvoice::with([
-            'member:id,full_name,membership_no,mobile_number_a',
-            'corporateMember:id,full_name,membership_no',
-            'customer:id,name,email',
-            'createdBy:id,name',
-            'items.transactions'  // Load item transactions
-        ])
-            ->latest()
-            ->paginate($perPage)
-            ->withQueryString();
+            $recentTransactions = FinancialInvoice::with([
+                'member:id,full_name,membership_no,mobile_number_a',
+                'corporateMember:id,full_name,membership_no',
+                'customer:id,name,email',
+                'createdBy:id,name',
+                'items.transactions',
+            ])
+                ->latest()
+                ->paginate($perPage)
+                ->withQueryString();
 
-        $recentTransactions->setCollection($this->decorateInvoices($recentTransactions->getCollection()));
+            $recentTransactions->setCollection($this->decorateInvoices($recentTransactions->getCollection()));
 
-        $byStatus = FinancialInvoice::query()
-            ->select('status', DB::raw('COUNT(*) as total'))
-            ->groupBy('status')
-            ->pluck('total', 'status');
+            $byStatus = FinancialInvoice::query()
+                ->select('status', DB::raw('COUNT(*) as total'))
+                ->groupBy('status')
+                ->pluck('total', 'status');
 
-        $journalLinkedIds = JournalEntry::query()
-            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
-            ->pluck('module_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
+            $journalLinkedIds = $hasJournalEntries
+                ? JournalEntry::query()
+                    ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                    ->pluck('module_id')
+                    ->filter()
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                : collect();
 
-        $postedEventIds = AccountingEventQueue::query()
-            ->where('source_type', FinancialInvoice::class)
-            ->where('status', 'posted')
-            ->pluck('source_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
+            $postedEventIds = $hasAccountingQueue
+                ? AccountingEventQueue::query()
+                    ->where('source_type', FinancialInvoice::class)
+                    ->where('status', 'posted')
+                    ->pluck('source_id')
+                    ->filter()
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                : collect();
 
-        $failedEventIds = AccountingEventQueue::query()
-            ->where('source_type', FinancialInvoice::class)
-            ->where('status', 'failed')
-            ->pluck('source_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        $pendingEventIds = AccountingEventQueue::query()
-            ->where('source_type', FinancialInvoice::class)
-            ->where('status', 'pending')
-            ->pluck('source_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        $linkedInvoiceIds = $journalLinkedIds->merge($postedEventIds)->unique()->values();
-        $inFlightInvoiceIds = $failedEventIds->merge($pendingEventIds)->unique()->values();
-        $unlinkedCount = max(0, $totalTransactions - $linkedInvoiceIds->count() - $inFlightInvoiceIds->count());
-        $coveragePercent = $totalTransactions > 0
-            ? round(($linkedInvoiceIds->count() / $totalTransactions) * 100, 1)
-            : 0;
-
-        return Inertia::render('App/Admin/Finance/Dashboard', [
-            'statistics' => [
-                'total_members' => $totalMembers,
-                'active_members' => $activeMembers,
-                'expired_members' => $expiredMembers,
-                'canceled_members' => $canceledMembers,
-                'total_revenue' => $totalRevenue,
-                'total_transactions' => $totalTransactions,
-                'membership_fee_revenue' => $membershipFeeRevenue,
-                'maintenance_fee_revenue' => $maintenanceFeeRevenue,
-                'subscription_fee_revenue' => $subscriptionFeeRevenue,
-                'reinstating_fee_revenue' => $reinstatingFeeRevenue,
-                'total_membership_revenue' => $totalMembershipRevenue,
-                'room_revenue' => $roomRevenue,
-                'event_revenue' => $eventRevenue,
-                'total_booking_revenue' => $totalBookingRevenue,
-                'food_revenue' => $foodRevenue,
-                'paid_invoices' => (int) ($byStatus['paid'] ?? 0),
-                'open_invoices' => (int) (($byStatus['unpaid'] ?? 0) + ($byStatus['partial'] ?? 0) + ($byStatus['overdue'] ?? 0)),
-                'failed_postings' => AccountingEventQueue::query()
+            $failedEventIds = $hasAccountingQueue
+                ? AccountingEventQueue::query()
                     ->where('source_type', FinancialInvoice::class)
                     ->where('status', 'failed')
-                    ->count(),
-                'pending_postings' => AccountingEventQueue::query()
+                    ->pluck('source_id')
+                    ->filter()
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                : collect();
+
+            $pendingEventIds = $hasAccountingQueue
+                ? AccountingEventQueue::query()
                     ->where('source_type', FinancialInvoice::class)
                     ->where('status', 'pending')
-                    ->count(),
-                'linked_invoices' => $linkedInvoiceIds->count(),
-                'unlinked_invoices' => $unlinkedCount,
-                'integration_coverage_percent' => $coveragePercent,
-            ],
-            'recent_transactions' => $recentTransactions,
-            'transaction_filters' => $request->only(['per_page']),
-        ]);
+                    ->pluck('source_id')
+                    ->filter()
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                : collect();
+
+            $linkedInvoiceIds = $journalLinkedIds->merge($postedEventIds)->unique()->values();
+            $inFlightInvoiceIds = $failedEventIds->merge($pendingEventIds)->unique()->values();
+            $unlinkedCount = max(0, $totalTransactions - $linkedInvoiceIds->count() - $inFlightInvoiceIds->count());
+            $coveragePercent = $totalTransactions > 0
+                ? round(($linkedInvoiceIds->count() / $totalTransactions) * 100, 1)
+                : 0;
+
+            return Inertia::render('App/Admin/Finance/Dashboard', [
+                'statistics' => [
+                    'total_members' => $totalMembers,
+                    'active_members' => $activeMembers,
+                    'expired_members' => $expiredMembers,
+                    'canceled_members' => $canceledMembers,
+                    'total_revenue' => $totalRevenue,
+                    'total_transactions' => $totalTransactions,
+                    'membership_fee_revenue' => $membershipFeeRevenue,
+                    'maintenance_fee_revenue' => $maintenanceFeeRevenue,
+                    'subscription_fee_revenue' => $subscriptionFeeRevenue,
+                    'reinstating_fee_revenue' => $reinstatingFeeRevenue,
+                    'total_membership_revenue' => $totalMembershipRevenue,
+                    'room_revenue' => $roomRevenue,
+                    'event_revenue' => $eventRevenue,
+                    'total_booking_revenue' => $totalBookingRevenue,
+                    'food_revenue' => $foodRevenue,
+                    'paid_invoices' => (int) ($byStatus['paid'] ?? 0),
+                    'open_invoices' => (int) (($byStatus['unpaid'] ?? 0) + ($byStatus['partial'] ?? 0) + ($byStatus['overdue'] ?? 0)),
+                    'failed_postings' => $hasAccountingQueue
+                        ? AccountingEventQueue::query()->where('source_type', FinancialInvoice::class)->where('status', 'failed')->count()
+                        : 0,
+                    'pending_postings' => $hasAccountingQueue
+                        ? AccountingEventQueue::query()->where('source_type', FinancialInvoice::class)->where('status', 'pending')->count()
+                        : 0,
+                    'linked_invoices' => $linkedInvoiceIds->count(),
+                    'unlinked_invoices' => $unlinkedCount,
+                    'integration_coverage_percent' => $coveragePercent,
+                ],
+                'recent_transactions' => $recentTransactions,
+                'transaction_filters' => $request->only(['per_page']),
+                'error' => null,
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $this->renderDashboardFallback(
+                $request,
+                $perPage,
+                'Finance dashboard data is temporarily unavailable. The page is still usable, but some finance sources need attention.'
+            );
+        }
     }
 
     public function fetchRevenue()
@@ -205,17 +223,21 @@ class FinancialController extends Controller
         $perPage = $this->resolvePerPage($request, 25);
         $search = $request->input('search', '');
 
-        // Capture new filters for passing back to view
-        $filters = $request->only(['status', 'type', 'start_date', 'end_date', 'created_by', 'customer_type', 'membership_no', 'member_name', 'invoice_no']);
+        try {
+            if (!Schema::hasTable('financial_invoices')) {
+                return $this->renderTransactionsFallback($request, $perPage, 'Finance transactions are not available yet. Please verify the finance tables and migrations.');
+            }
 
-        $query = FinancialInvoice::with([
-            'member:id,full_name,membership_no,mobile_number_a',
-            'corporateMember:id,full_name,membership_no',
-            'customer:id,name,email',
-            'createdBy:id,name',
-            'invoiceable',
-            'items.transactions'  // Eager load items and their transactions
-        ]);
+            $filters = $request->only(['status', 'type', 'start_date', 'end_date', 'created_by', 'customer_type', 'membership_no', 'member_name', 'invoice_no']);
+
+            $query = FinancialInvoice::with([
+                'member:id,full_name,membership_no,mobile_number_a',
+                'corporateMember:id,full_name,membership_no',
+                'customer:id,name,email',
+                'createdBy:id,name',
+                'invoiceable',
+                'items.transactions'
+            ]);
 
         // Apply Status Filter (supports comma-separated)
         if ($request->filled('status') && $request->status !== 'all') {
@@ -381,58 +403,74 @@ class FinancialController extends Controller
             });
         }
 
-        $transactions = $query->latest()->paginate($perPage)->withQueryString();
+            $transactions = $query->latest()->paginate($perPage)->withQueryString();
 
         // Get limited transaction types (IDs 1-7)
-        $mainTypeIds = [
-            AppConstants::TRANSACTION_TYPE_ID_ROOM_BOOKING,
-            AppConstants::TRANSACTION_TYPE_ID_EVENT_BOOKING,
-            AppConstants::TRANSACTION_TYPE_ID_MEMBERSHIP,
-            AppConstants::TRANSACTION_TYPE_ID_MAINTENANCE,
-            AppConstants::TRANSACTION_TYPE_ID_SUBSCRIPTION,
-            AppConstants::TRANSACTION_TYPE_ID_FINANCIAL_CHARGE,
-            AppConstants::TRANSACTION_TYPE_ID_FOOD_ORDER
-        ];
-        $transactionTypes = \App\Models\TransactionType::whereIn('id', $mainTypeIds)->pluck('name', 'id')->toArray();
+            $mainTypeIds = [
+                AppConstants::TRANSACTION_TYPE_ID_ROOM_BOOKING,
+                AppConstants::TRANSACTION_TYPE_ID_EVENT_BOOKING,
+                AppConstants::TRANSACTION_TYPE_ID_MEMBERSHIP,
+                AppConstants::TRANSACTION_TYPE_ID_MAINTENANCE,
+                AppConstants::TRANSACTION_TYPE_ID_SUBSCRIPTION,
+                AppConstants::TRANSACTION_TYPE_ID_FINANCIAL_CHARGE,
+                AppConstants::TRANSACTION_TYPE_ID_FOOD_ORDER
+            ];
+            $transactionTypes = Schema::hasTable('transaction_types')
+                ? TransactionType::whereIn('id', $mainTypeIds)->pluck('name', 'id')->toArray()
+                : [];
 
         // Fetch Subtables for Filters
-        $subscriptionCategories = \App\Models\SubscriptionCategory::where('status', 'active')->select('id', 'name')->get();
-        $financialChargeTypes = \App\Models\FinancialChargeType::where('status', 'active')->select('id', 'name')->get();
+            $subscriptionCategories = Schema::hasTable('subscription_categories')
+                ? SubscriptionCategory::where('status', 'active')->select('id', 'name')->get()
+                : collect();
+            $financialChargeTypes = Schema::hasTable('financial_charge_types')
+                ? FinancialChargeType::where('status', 'active')->select('id', 'name')->get()
+                : collect();
 
         // Transform transactions
-        $transactions->setCollection($this->decorateInvoices($transactions->getCollection(), $transactionTypes));
+            $transactions->setCollection($this->decorateInvoices($transactions->getCollection(), $transactionTypes));
 
-        $summaryQuery = clone $query;
-        $summaryRows = $summaryQuery->get();
-        $summaryRows = $this->decorateInvoices($summaryRows, $transactionTypes);
-        $summary = [
-            'count' => $summaryRows->count(),
-            'total_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->total_price ?? 0)),
-            'paid_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->paid_amount ?? 0)),
-            'balance' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->balance ?? 0)),
-            'failed_postings' => (int) $summaryRows->where('posting_status', 'failed')->count(),
-            'pending_postings' => (int) $summaryRows->where('posting_status', 'pending')->count(),
-        ];
+            $summaryQuery = clone $query;
+            $summaryRows = $summaryQuery->get();
+            $summaryRows = $this->decorateInvoices($summaryRows, $transactionTypes);
+            $summary = [
+                'count' => $summaryRows->count(),
+                'total_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->total_price ?? 0)),
+                'paid_amount' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->paid_amount ?? 0)),
+                'balance' => (float) $summaryRows->sum(fn ($invoice) => (float) ($invoice->balance ?? 0)),
+                'failed_postings' => (int) $summaryRows->where('posting_status', 'failed')->count(),
+                'pending_postings' => (int) $summaryRows->where('posting_status', 'pending')->count(),
+            ];
 
-        return Inertia::render('App/Admin/Finance/Transaction', [
-            'transactions' => $transactions,
-            'filters' => array_merge([
-                'search' => $search,
-                'per_page' => $perPage,
-                'status' => $request->input('status', 'all'),
-                'type' => $request->input('type', 'all'),
-                'subscription_category_id' => $request->input('subscription_category_id'),
-                'financial_charge_type_id' => $request->input('financial_charge_type_id'),
-                'start_date' => $request->input('start_date'),
-                'end_date' => $request->input('end_date'),
-            ], $filters),
-            'summary' => $summary,
-            'users' => \App\Models\User::select('id', 'name')->orderBy('name')->get(),
-            'transactionTypes' => $transactionTypes,
-            'subscriptionCategories' => $subscriptionCategories,
-            'financialChargeTypes' => $financialChargeTypes,
-            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
-        ]);
+            return Inertia::render('App/Admin/Finance/Transaction', [
+                'transactions' => $transactions,
+                'filters' => array_merge([
+                    'search' => $search,
+                    'per_page' => $perPage,
+                    'status' => $request->input('status', 'all'),
+                    'type' => $request->input('type', 'all'),
+                    'subscription_category_id' => $request->input('subscription_category_id'),
+                    'financial_charge_type_id' => $request->input('financial_charge_type_id'),
+                    'start_date' => $request->input('start_date'),
+                    'end_date' => $request->input('end_date'),
+                ], $filters),
+                'summary' => $summary,
+                'users' => Schema::hasTable('users') ? User::select('id', 'name')->orderBy('name')->get() : collect(),
+                'transactionTypes' => $transactionTypes,
+                'subscriptionCategories' => $subscriptionCategories,
+                'financialChargeTypes' => $financialChargeTypes,
+                'tenants' => Schema::hasTable('tenants') ? Tenant::query()->orderBy('name')->get(['id', 'name']) : collect(),
+                'error' => null,
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $this->renderTransactionsFallback(
+                $request,
+                $perPage,
+                'Finance transactions are temporarily unavailable. Filters and table shell remain available while the backend issue is addressed.'
+            );
+        }
     }
 
     private function decorateInvoices($invoices, array $transactionTypes = [])
@@ -449,19 +487,23 @@ class FinancialController extends Controller
         }
 
         $invoiceIds = $collection->pluck('id')->all();
-        $events = AccountingEventQueue::query()
-            ->with('restaurant:id,name')
-            ->where('source_type', FinancialInvoice::class)
-            ->whereIn('source_id', $invoiceIds)
-            ->latest('updated_at')
-            ->get()
-            ->groupBy('source_id');
+        $events = Schema::hasTable('accounting_event_queues')
+            ? AccountingEventQueue::query()
+                ->with('restaurant:id,name')
+                ->where('source_type', FinancialInvoice::class)
+                ->whereIn('source_id', $invoiceIds)
+                ->latest('updated_at')
+                ->get()
+                ->groupBy('source_id')
+            : collect();
 
-        $journals = JournalEntry::query()
-            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
-            ->whereIn('module_id', $invoiceIds)
-            ->get()
-            ->groupBy('module_id');
+        $journals = Schema::hasTable('journal_entries')
+            ? JournalEntry::query()
+                ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                ->whereIn('module_id', $invoiceIds)
+                ->get()
+                ->groupBy('module_id')
+            : collect();
 
         return $collection->map(function ($invoice) use ($events, $journals, $transactionTypes) {
             $resolveType = function ($type) use ($transactionTypes) {
@@ -519,6 +561,76 @@ class FinancialController extends Controller
         $perPage = (int) $request->input('per_page', $default);
 
         return in_array($perPage, [10, 25, 50, 100], true) ? $perPage : $default;
+    }
+
+    private function renderDashboardFallback(Request $request, int $perPage, string $error)
+    {
+        return Inertia::render('App/Admin/Finance/Dashboard', [
+            'statistics' => [
+                'total_members' => 0,
+                'active_members' => 0,
+                'expired_members' => 0,
+                'canceled_members' => 0,
+                'total_revenue' => 0,
+                'total_transactions' => 0,
+                'membership_fee_revenue' => 0,
+                'maintenance_fee_revenue' => 0,
+                'subscription_fee_revenue' => 0,
+                'reinstating_fee_revenue' => 0,
+                'total_membership_revenue' => 0,
+                'room_revenue' => 0,
+                'event_revenue' => 0,
+                'total_booking_revenue' => 0,
+                'food_revenue' => 0,
+                'paid_invoices' => 0,
+                'open_invoices' => 0,
+                'failed_postings' => 0,
+                'pending_postings' => 0,
+                'linked_invoices' => 0,
+                'unlinked_invoices' => 0,
+                'integration_coverage_percent' => 0,
+            ],
+            'recent_transactions' => new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]),
+            'transaction_filters' => $request->only(['per_page']),
+            'error' => $error,
+        ]);
+    }
+
+    private function renderTransactionsFallback(Request $request, int $perPage, string $error)
+    {
+        return Inertia::render('App/Admin/Finance/Transaction', [
+            'transactions' => new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]),
+            'filters' => array_merge([
+                'search' => $request->input('search', ''),
+                'per_page' => $perPage,
+                'status' => $request->input('status', 'all'),
+                'type' => $request->input('type', 'all'),
+                'subscription_category_id' => $request->input('subscription_category_id'),
+                'financial_charge_type_id' => $request->input('financial_charge_type_id'),
+                'start_date' => $request->input('start_date'),
+                'end_date' => $request->input('end_date'),
+            ], $request->only(['created_by', 'customer_type', 'membership_no', 'member_name', 'invoice_no'])),
+            'summary' => [
+                'count' => 0,
+                'total_amount' => 0,
+                'paid_amount' => 0,
+                'balance' => 0,
+                'failed_postings' => 0,
+                'pending_postings' => 0,
+            ],
+            'users' => collect(),
+            'transactionTypes' => [],
+            'subscriptionCategories' => collect(),
+            'financialChargeTypes' => collect(),
+            'tenants' => collect(),
+            'error' => $error,
+        ]);
     }
 
     // Get Member Invoices - Accepts either member_id or invoice_id

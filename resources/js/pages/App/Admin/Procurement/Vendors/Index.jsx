@@ -21,6 +21,8 @@ import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
+import { DeleteOutline } from '@mui/icons-material';
 
 export default function Index({ vendors, filters, summary = {}, tenants = [], coaAccounts = [], paymentAccounts = [] }) {
     const [openModal, setOpenModal] = React.useState(false);
@@ -288,13 +290,11 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
                                 />
                             </TableCell>
                             <TableCell align="right">
-                                <Button
-                                    size="small"
-                                    color="error"
-                                    onClick={() => router.delete(route('procurement.vendors.destroy', vendor.id))}
-                                >
-                                    Delete
-                                </Button>
+                                <AdminRowActionGroup justify="flex-end">
+                                    <AdminIconAction title="Delete Vendor" color="error" onClick={() => router.delete(route('procurement.vendors.destroy', vendor.id))}>
+                                        <DeleteOutline fontSize="small" />
+                                    </AdminIconAction>
+                                </AdminRowActionGroup>
                             </TableCell>
                         </TableRow>
                     )}

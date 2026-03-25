@@ -34,8 +34,8 @@ class InventoryOperationController extends Controller
             $search = trim((string) $request->search);
             $query->where(function ($builder) use ($search) {
                 $builder
-                    ->whereHas('product', function ($product) use ($search) {
-                        $product->where('name', 'like', "%{$search}%")
+                    ->whereHas('inventoryItem', function ($inventoryItem) use ($search) {
+                        $inventoryItem->where('name', 'like', "%{$search}%")
                             ->orWhere('sku', 'like', "%{$search}%");
                     })
                     ->orWhere('reason', 'like', "%{$search}%")
@@ -55,8 +55,8 @@ class InventoryOperationController extends Controller
             $query->where('warehouse_location_id', $request->warehouse_location_id);
         }
 
-        if ($request->filled('product_id')) {
-            $query->where('inventory_item_id', $request->product_id);
+        if ($request->filled('inventory_item_id')) {
+            $query->where('inventory_item_id', $request->inventory_item_id);
         }
 
         if ($request->filled('type')) {
@@ -111,11 +111,11 @@ class InventoryOperationController extends Controller
             'documents' => $documents,
             'valuationByWarehouse' => $valuationByWarehouse,
             'summary' => $summary,
-            'filters' => $request->only(['search', 'tenant_id', 'warehouse_id', 'warehouse_location_id', 'product_id', 'type', 'from', 'to', 'per_page']),
+            'filters' => $request->only(['search', 'tenant_id', 'warehouse_id', 'warehouse_location_id', 'inventory_item_id', 'type', 'from', 'to', 'per_page']),
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
             'warehouses' => Warehouse::query()->with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id']),
             'warehouseLocations' => WarehouseLocation::query()->orderBy('name')->get(['id', 'warehouse_id', 'tenant_id', 'name', 'code', 'status']),
-            'products' => InventoryItem::query()
+            'inventoryItems' => InventoryItem::query()
                 ->warehouseOperationalEligible()
                 ->orderBy('name')
                 ->limit(300)

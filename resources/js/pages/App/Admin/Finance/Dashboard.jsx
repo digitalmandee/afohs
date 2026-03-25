@@ -1,6 +1,6 @@
 import React from 'react';
 import { router } from '@inertiajs/react';
-import { Button, Chip, Grid, Stack, TableCell, TableRow, Typography } from '@mui/material';
+import { Alert, Button, Chip, Grid, Stack, TableCell, TableRow, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -28,7 +28,7 @@ const countFormatter = new Intl.NumberFormat(undefined);
 const formatAmount = (value) => amountFormatter.format(Number(value || 0));
 const formatCount = (value) => countFormatter.format(Number(value || 0));
 
-export default function Dashboard({ statistics, recent_transactions, transaction_filters = {} }) {
+export default function Dashboard({ statistics, recent_transactions, transaction_filters = {}, error = null }) {
     const rows = recent_transactions?.data || [];
 
     const columns = [
@@ -58,6 +58,8 @@ export default function Dashboard({ statistics, recent_transactions, transaction
                 </Button>,
             ]}
         >
+            {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
+
             <Grid container spacing={1.5}>
                 <Grid item xs={12} sm={6} md={3}>
                     <StatCard label="Invoices" value={formatCount(statistics?.total_transactions)} accent compact />

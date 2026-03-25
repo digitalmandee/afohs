@@ -1,20 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Alert, CircularProgress, InputAdornment, Snackbar, Button } from '@mui/material';
+import { Alert, CircularProgress, InputAdornment, Snackbar, Button, Chip, FormControl, Grid, InputLabel, MenuItem, Paper, Select } from '@mui/material';
 import { Search, Add } from '@mui/icons-material';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Pagination, IconButton, TextField, Box, Typography, Tooltip } from '@mui/material';
-import { Edit as EditIcon } from '@mui/icons-material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Pagination, IconButton, TextField, Box, Typography, Tooltip } from '@mui/material';
 import axios from 'axios';
 import dayjs from 'dayjs';
-import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { DateCalendar, LocalizationProvider, PickersDay } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { styled } from '@mui/material/styles';
 import { FaEdit } from 'react-icons/fa';
+import debounce from 'lodash.debounce';
 
 const LeaveApplication = () => {
     // const [open, setOpen] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [date, setDate] = useState(null);
+    const [status, setStatus] = useState('');
     const [applications, setApplications] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -26,7 +27,7 @@ const LeaveApplication = () => {
         fetchApplications(1);
     }, []);
 
-    const fetchApplications = async (page = 1, customSearch = null, customDate = null) => {
+    const fetchApplications = async (page = 1, customSearch = null, customDate = null, customStatus = null) => {
         setIsLoading(true);
         try {
             const params = {
@@ -36,6 +37,7 @@ const LeaveApplication = () => {
             // Use custom values if provided, otherwise use state
             const searchValue = customSearch !== null ? customSearch : searchTerm;
             const dateValue = customDate !== null ? customDate : date;
+            const statusValue = customStatus !== null ? customStatus : status;
 
             // Only add search if it's not empty
             if (searchValue && searchValue.trim() !== '') {
@@ -44,7 +46,11 @@ const LeaveApplication = () => {
 
             // Only add date if it's not null
             if (dateValue) {
-                params.date = dateValue.format('YYYY-MM-DD');
+                params.date = dayjs(dateValue).format('YYYY-MM-DD');
+            }
+
+            if (statusValue) {
+                params.status = statusValue;
             }
 
             const res = await axios.get('/api/employees/leaves/applications', { params });
@@ -61,30 +67,29 @@ const LeaveApplication = () => {
         }
     };
 
-    const handleSearch = () => {
-        setCurrentPage(1);
-        fetchApplications(1);
-    };
+    const debouncedFetch = useMemo(
+        () =>
+            debounce((nextSearch, nextDate, nextStatus) => {
+                setCurrentPage(1);
+                fetchApplications(1, nextSearch, nextDate, nextStatus);
+            }, 300),
+        []
+    );
 
     const handleClearSearch = () => {
         setSearchTerm('');
+        setStatus('');
+        setDate(null);
         setCurrentPage(1);
-        // Pass empty search explicitly
-        fetchApplications(1, '', date);
+        fetchApplications(1, '', null, '');
     };
 
     const handleClearAllFilters = () => {
         setSearchTerm('');
         setDate(null);
+        setStatus('');
         setCurrentPage(1);
-        // Pass cleared values explicitly to avoid state delay
-        fetchApplications(1, '', null);
-    };
-
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter') {
-            handleSearch();
-        }
+        fetchApplications(1, '', null, '');
     };
 
     useEffect(() => {
@@ -93,14 +98,36 @@ const LeaveApplication = () => {
         }
     }, [currentPage]);
 
-    // Fetch when date changes (but not on initial mount or when clearing all filters)
     useEffect(() => {
-        // Only fetch if date is set (not null) and we have already loaded data
-        if (date !== null && applications.length >= 0) {
-            fetchApplications(1);
-            setCurrentPage(1);
-        }
-    }, [date]);
+        debouncedFetch(searchTerm, date, status);
+        return () => debouncedFetch.cancel();
+    }, [searchTerm, date, status, debouncedFetch]);
+
+    const highlightedDays = useMemo(() => {
+        const map = new Map();
+
+        applications.forEach((application) => {
+            const start = dayjs(application.start_date, ['DD/MM/YYYY', 'YYYY-MM-DD'], true);
+            const end = dayjs(application.end_date, ['DD/MM/YYYY', 'YYYY-MM-DD'], true);
+
+            if (!start.isValid() || !end.isValid()) {
+                return;
+            }
+
+            let cursor = start.startOf('day');
+            const finish = end.startOf('day');
+
+            while (cursor.isBefore(finish) || cursor.isSame(finish, 'day')) {
+                const key = cursor.format('YYYY-MM-DD');
+                if (!map.has(key) || map.get(key) === 'pending') {
+                    map.set(key, application.status);
+                }
+                cursor = cursor.add(1, 'day');
+            }
+        });
+
+        return map;
+    }, [applications]);
 
     const RoundedTextField = styled(TextField)({
         '& .MuiOutlinedInput-root': {
@@ -137,16 +164,15 @@ const LeaveApplication = () => {
                     </div>
                     <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Approve, reject, or hold applications with proper tracking</Typography>
                     <Box sx={{ mb: 2, mt: '2rem' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} lg={8}>
+                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <TextField
                                     variant="outlined"
                                     placeholder="Search by employee name or ID..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    onKeyPress={handleKeyPress}
                                     size="small"
-                                    // sx={{ width: 350 }}
                                     InputProps={{
                                         startAdornment: (
                                             <InputAdornment position="start">
@@ -160,31 +186,12 @@ const LeaveApplication = () => {
                                         },
                                     }}
                                 />
-                                {/* <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                    <DatePicker
-                                        label="Select Date"
-                                        value={date}
-                                        onChange={(newValue) => setDate(newValue)}
-                                        renderInput={(params) => <TextField {...params} size="small"
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    borderRadius: '16px',
-                                                },
-                                                '& .MuiOutlinedInput-notchedOutline': {
-                                                    borderRadius: '16px',
-                                                },
-                                            }} />}
-                                        slotProps={{
-                                            field: { clearable: true },
-                                        }}
-                                    />
-                                </LocalizationProvider> */}
                                 <TextField
                                     label="Select Date"
                                     type="date"
                                     size="small"
-                                    value={date}
-                                    onChange={(e) => setDate(e.target.value)}
+                                    value={date ? dayjs(date).format('YYYY-MM-DD') : ''}
+                                    onChange={(e) => setDate(e.target.value || null)}
                                     InputLabelProps={{
                                         shrink: true,
                                     }}
@@ -197,23 +204,15 @@ const LeaveApplication = () => {
                                         },
                                     }}
                                 />
-                                <Button
-                                    variant="contained"
-                                    startIcon={<Search />}
-                                    onClick={handleSearch}
-                                    sx={{
-                                        backgroundColor: '#063455',
-                                        color: 'white',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        '&:hover': {
-                                            backgroundColor: '#052d45',
-                                        },
-                                    }}
-                                >
-                                    Search
-                                </Button>
-                                {/* {searchTerm && ( */}
+                                <FormControl size="small" sx={{ minWidth: 180 }}>
+                                    <InputLabel>Status</InputLabel>
+                                    <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value)} sx={{ borderRadius: '16px' }}>
+                                        <MenuItem value="">All Statuses</MenuItem>
+                                        <MenuItem value="approved">Approved</MenuItem>
+                                        <MenuItem value="pending">Pending</MenuItem>
+                                        <MenuItem value="rejected">Rejected</MenuItem>
+                                    </Select>
+                                </FormControl>
                                 <Button
                                     variant="outlined"
                                     onClick={handleClearSearch}
@@ -231,29 +230,36 @@ const LeaveApplication = () => {
                                 >
                                     Reset
                                 </Button>
-                                {/* )} */}
-                            </Box>
-
-                            {/* <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                                {(searchTerm || date) && (
-                                    <Button
-                                        variant="outlined"
-                                        onClick={handleClearAllFilters}
-                                        sx={{
-                                            color: '#d32f2f',
-                                            borderColor: '#d32f2f',
-                                            textTransform: 'none',
-                                            '&:hover': {
-                                                borderColor: '#b71c1c',
-                                                backgroundColor: 'rgba(211, 47, 47, 0.04)',
-                                            },
-                                        }}
-                                    >
-                                        Clear All Filters
-                                    </Button>
-                                )}
-                            </Box> */}
-                        </Box>
+                                </Box>
+                            </Grid>
+                            <Grid item xs={12} lg={4}>
+                                <Paper sx={{ p: 1.5, borderRadius: '16px' }}>
+                                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                        <DateCalendar
+                                            value={date ? dayjs(date) : dayjs()}
+                                            onChange={(newValue) => setDate(newValue ? newValue.format('YYYY-MM-DD') : null)}
+                                            slots={{
+                                                day: (dayProps) => {
+                                                    const key = dayProps.day.format('YYYY-MM-DD');
+                                                    const tone = highlightedDays.get(key);
+                                                    const toneSx =
+                                                        tone === 'approved'
+                                                            ? { bgcolor: 'rgba(34,197,94,0.18)', '&:hover, &.Mui-selected': { bgcolor: 'rgba(34,197,94,0.32)' } }
+                                                            : tone === 'pending'
+                                                              ? { bgcolor: 'rgba(245,158,11,0.18)', '&:hover, &.Mui-selected': { bgcolor: 'rgba(245,158,11,0.32)' } }
+                                                              : {};
+                                                    return <PickersDay {...dayProps} sx={{ borderRadius: '12px', ...toneSx }} />;
+                                                },
+                                            }}
+                                        />
+                                    </LocalizationProvider>
+                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                        <Chip size="small" label="Approved" sx={{ bgcolor: 'rgba(34,197,94,0.18)' }} />
+                                        <Chip size="small" label="Pending" sx={{ bgcolor: 'rgba(245,158,11,0.18)' }} />
+                                    </Box>
+                                </Paper>
+                            </Grid>
+                        </Grid>
                     </Box>
 
                     <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto' }}>

@@ -7,6 +7,7 @@ use App\Models\KitchenDetail;
 use App\Models\MemberType;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\PrinterProfile;
 use App\Models\User;
 use App\Models\UserDetail;
 use Carbon\Carbon;
@@ -154,34 +155,36 @@ class KitchenController extends Controller
         $userNo = $this->getUserNo();
         return Inertia::render('App/Kitchen/AddCustomer', [
             'userNo' => $userNo,
+            'printerProfiles' => $this->printerProfiles(),
         ]);
     }
 
     public function store(Request $request)
     {
-        // Validate request data
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'phone' => 'required|string|max:20',
-            'profile_pic' => 'nullable|image|max:4096',
-            'printer_ip' => 'required|string|max:255',
-            'printer_port' => 'required|string|max:255',
-        ]);
-
         try {
             $kitchenRole = KitchenRoleSupport::find();
             if (!$kitchenRole) {
                 KitchenRoleSupport::logMissing('kitchen.store', [
                     'request_id' => $request->attributes->get('request_id'),
                     'user_id' => $request->user()?->id,
-                    'email' => $validated['email'] ?? null,
+                    'email' => $request->input('email'),
                 ]);
 
                 return redirect()->back()->withErrors([
                     'error' => KitchenRoleSupport::message(),
                 ]);
             }
+
+            // Validate request data after role readiness so setup errors stay actionable.
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|max:255|unique:users,email',
+                'phone' => 'required|string|max:20',
+                'profile_pic' => 'nullable|image|max:4096',
+                'printer_profile_id' => 'required|integer|exists:printer_profiles,id',
+            ]);
+
+            $profile = $this->printerProfile((int) $validated['printer_profile_id']);
 
             DB::beginTransaction();
 
@@ -201,8 +204,12 @@ class KitchenController extends Controller
 
             KitchenDetail::create([
                 'kitchen_id' => $customer->id,
-                'printer_ip' => $validated['printer_ip'],
-                'printer_port' => $validated['printer_port'],
+                'printer_profile_id' => $profile->id,
+                'printer_ip' => $profile->printer_ip,
+                'printer_port' => $profile->printer_port,
+                'printer_source' => 'network_scan',
+                'printer_name' => null,
+                'printer_connector' => null,
             ]);
 
             DB::commit();
@@ -221,6 +228,7 @@ class KitchenController extends Controller
         $customer = User::with(['kitchenDetail'])->findOrFail($id);
         return Inertia::render('App/Kitchen/AddCustomer', [
             'customer' => $customer,
+            'printerProfiles' => $this->printerProfiles(),
         ]);
     }
 
@@ -233,11 +241,12 @@ class KitchenController extends Controller
             'email' => 'required|email|max:255|unique:users,email,' . $id,
             'phone' => 'required|string|max:20',
             'profile_pic' => 'nullable|image|max:4096',
-            'printer_ip' => 'required|string|max:255',
-            'printer_port' => 'required|string|max:255',
+            'printer_profile_id' => 'required|integer|exists:printer_profiles,id',
         ]);
 
         try {
+            $profile = $this->printerProfile((int) $validated['printer_profile_id']);
+
             DB::beginTransaction();
 
             $customer = User::findOrFail($id);
@@ -260,14 +269,22 @@ class KitchenController extends Controller
             $kitchenDetail = KitchenDetail::where('kitchen_id', $customer->id)->first();
             if ($kitchenDetail) {
                 $kitchenDetail->update([
-                    'printer_ip' => $validated['printer_ip'],
-                    'printer_port' => $validated['printer_port'],
+                    'printer_profile_id' => $profile->id,
+                    'printer_ip' => $profile->printer_ip,
+                    'printer_port' => $profile->printer_port,
+                    'printer_source' => 'network_scan',
+                    'printer_name' => null,
+                    'printer_connector' => null,
                 ]);
             } else {
                 KitchenDetail::create([
                     'kitchen_id' => $customer->id,
-                    'printer_ip' => $validated['printer_ip'],
-                    'printer_port' => $validated['printer_port'],
+                    'printer_profile_id' => $profile->id,
+                    'printer_ip' => $profile->printer_ip,
+                    'printer_port' => $profile->printer_port,
+                    'printer_source' => 'network_scan',
+                    'printer_name' => null,
+                    'printer_connector' => null,
                 ]);
             }
 
@@ -280,6 +297,19 @@ class KitchenController extends Controller
             Log::info($e->getMessage());
             return redirect()->back()->withErrors(['error' => 'Failed to update kitchen: ' . $e->getMessage()]);
         }
+    }
+
+    protected function printerProfiles()
+    {
+        return PrinterProfile::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'printer_ip', 'printer_port']);
+    }
+
+    protected function printerProfile(int $id): PrinterProfile
+    {
+        return PrinterProfile::query()->findOrFail($id);
     }
 
     // Get next user number

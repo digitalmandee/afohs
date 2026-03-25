@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\RestaurantWarehouseAssignment;
@@ -50,22 +51,18 @@ class InventoryWarehouseIntegrationTest extends TestCase
         $this->assertSame($location->id, $resolved->warehouse_location_id);
     }
 
-    public function test_inventory_movement_service_tracks_transfer_and_availability_by_location(): void
+    public function test_inventory_movement_service_tracks_transfer_and_availability_by_location_with_inventory_items(): void
     {
         $category = Category::create(['name' => 'Raw Materials']);
-        $product = Product::create([
+        $inventoryItem = InventoryItem::create([
             'name' => 'Flour',
             'category_id' => $category->id,
-            'base_price' => 100,
-            'cost_of_goods_sold' => 80,
+            'default_unit_cost' => 12,
             'current_stock' => 0,
-            'minimal_stock' => 0,
-            'available_order_types' => ['dineIn'],
-            'is_salable' => false,
-            'is_purchasable' => true,
-            'item_type' => 'raw_material',
-            'status' => 'active',
+            'minimum_stock' => 0,
             'manage_stock' => true,
+            'is_purchasable' => true,
+            'status' => 'active',
         ]);
 
         $sourceWarehouse = Warehouse::create([
@@ -98,7 +95,7 @@ class InventoryWarehouseIntegrationTest extends TestCase
         $service->createOpeningBalance([
             'warehouse_id' => $sourceWarehouse->id,
             'warehouse_location_id' => $sourceLocation->id,
-            'product_id' => $product->id,
+            'inventory_item_id' => $inventoryItem->id,
             'transaction_date' => now()->toDateString(),
             'quantity' => 10,
             'unit_cost' => 12,
@@ -109,16 +106,19 @@ class InventoryWarehouseIntegrationTest extends TestCase
             'source_warehouse_location_id' => $sourceLocation->id,
             'destination_warehouse_id' => $destinationWarehouse->id,
             'destination_warehouse_location_id' => $destinationLocation->id,
-            'product_id' => $product->id,
+            'inventory_item_id' => $inventoryItem->id,
             'transaction_date' => now()->toDateString(),
             'quantity' => 4,
             'unit_cost' => 12,
         ]);
 
-        $this->assertSame(6.0, $service->availableQuantity($product->id, $sourceWarehouse->id, $sourceLocation->id));
-        $this->assertSame(4.0, $service->availableQuantity($product->id, $destinationWarehouse->id, $destinationLocation->id));
-        $this->assertSame(10.0, (float) Product::query()->findOrFail($product->id)->current_stock);
-        $this->assertSame(3, InventoryTransaction::query()->where('product_id', $product->id)->count());
+        $inventoryItem->refresh();
+
+        $this->assertSame(6.0, $service->availableQuantity($inventoryItem->id, $sourceWarehouse->id, $sourceLocation->id));
+        $this->assertSame(4.0, $service->availableQuantity($inventoryItem->id, $destinationWarehouse->id, $destinationLocation->id));
+        $this->assertSame(10.0, (float) $inventoryItem->current_stock);
+        $this->assertNotNull($inventoryItem->legacy_product_id);
+        $this->assertSame(3, InventoryTransaction::query()->where('inventory_item_id', $inventoryItem->id)->count());
     }
 
     private function createRestaurantTenant(int $id, string $name): void

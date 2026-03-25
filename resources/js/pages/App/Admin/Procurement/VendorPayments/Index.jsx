@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
@@ -254,26 +255,14 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                                 ))}
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={1}>
-                            <TextField
-                                label="From"
-                                type="date"
-                                value={localFilters.from}
-                                onChange={(e) => updateFilters({ from: e.target.value }, { immediate: true })}
-                                InputLabelProps={{ shrink: true }}
-                                fullWidth
-                            />
-                        </Grid>
-                        <Grid item xs={12} md={1}>
-                            <TextField
-                                label="To"
-                                type="date"
-                                value={localFilters.to}
-                                onChange={(e) => updateFilters({ to: e.target.value }, { immediate: true })}
-                                InputLabelProps={{ shrink: true }}
-                                fullWidth
-                            />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
+                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
+                            startGrid={{ xs: 12, md: 1 }}
+                            endGrid={{ xs: 12, md: 1 }}
+                        />
                     </Grid>
                 </FilterToolbar>
             </SurfaceCard>

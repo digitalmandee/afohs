@@ -14,6 +14,7 @@ class OrderPrintLog extends Model
         'order_id',
         'restaurant_id',
         'kitchen_id',
+        'printer_profile_id',
         'document_type',
         'status',
         'queue_name',
@@ -22,12 +23,14 @@ class OrderPrintLog extends Model
         'attempt',
         'error',
         'printed_at',
+        'last_attempt_at',
         'meta',
         'created_by',
     ];
 
     protected $casts = [
         'printed_at' => 'datetime',
+        'last_attempt_at' => 'datetime',
         'meta' => 'array',
     ];
 
@@ -36,4 +39,3 @@ class OrderPrintLog extends Model
         return $this->belongsTo(Order::class);
     }
 }
-

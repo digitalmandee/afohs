@@ -12,9 +12,10 @@ class ProcurementPurchaseOrderProjectionTest extends TestCase
         $contents = file_get_contents($controllerPath);
 
         $this->assertNotFalse($contents, 'Unable to read PurchaseOrderController.php');
+        $this->assertStringContainsString('InventoryItem::query()', $contents);
         $this->assertStringContainsString('->procurementEligible()', $contents);
-        $this->assertStringContainsString("['id', 'name', 'menu_code', 'base_price', 'unit_id']", $contents);
-        $this->assertStringNotContainsString("['id', 'name', 'price']", $contents);
+        $this->assertStringContainsString("'base_price' => (float) (\$product->default_unit_cost ?? 0)", $contents);
+        $this->assertStringContainsString("'unit_name' => \$product->unit?->name", $contents);
     }
 
     public function test_purchase_order_store_has_procurement_eligibility_guard_message(): void
@@ -24,6 +25,6 @@ class ProcurementPurchaseOrderProjectionTest extends TestCase
 
         $this->assertNotFalse($contents, 'Unable to read PurchaseOrderController.php');
         $this->assertStringContainsString('procurement.purchase_order.store.ineligible_items', $contents);
-        $this->assertStringContainsString('Only active purchasable raw-material items can be ordered in PO.', $contents);
+        $this->assertStringContainsString('Only active purchasable inventory items can be ordered in PO.', $contents);
     }
 }

@@ -24,8 +24,8 @@ class InventoryWarehouseProductBackedVisibilityTest extends TestCase
         $contents = file_get_contents($controllerPath);
 
         $this->assertNotFalse($contents, 'Unable to read WarehouseController.php');
-        $this->assertStringContainsString("'configured_products' => Product::query()->warehouseOperationalEligible()->count()", $contents);
-        $this->assertStringContainsString("'legacy_only_ingredients' => Ingredient::query()->whereNull('inventory_product_id')->count()", $contents);
+        $this->assertStringContainsString("'configured_products' => InventoryItem::query()->warehouseOperationalEligible()->count()", $contents);
+        $this->assertStringContainsString("'legacy_only_ingredients' => Ingredient::query()->whereNull('inventory_item_id')->count()", $contents);
         $this->assertStringContainsString("'stocked_elsewhere_count' => \$stockedElsewhereIds->diff(\$stockedHereIds)->count()", $contents);
         $this->assertStringContainsString("'linked_ingredients_here' => \$linkedIngredientsHere", $contents);
     }
@@ -36,7 +36,7 @@ class InventoryWarehouseProductBackedVisibilityTest extends TestCase
         $contents = file_get_contents($pagePath);
 
         $this->assertNotFalse($contents, 'Unable to read Ingredients/Index.jsx');
-        $this->assertStringContainsString("label={ingredient.balance_source === 'warehouse' ? 'Warehouse-backed' : 'Legacy-only'}", $contents);
+        $this->assertStringContainsString("label={ingredient.balance_source === 'warehouse' ? 'Linked to inventory' : 'Not linked to inventory'}", $contents);
         $this->assertStringContainsString('{stats.legacy_only || 0}', $contents);
     }
 }

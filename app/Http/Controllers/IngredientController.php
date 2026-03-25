@@ -125,10 +125,6 @@ class IngredientController extends Controller
             'status' => 'required|in:active,inactive'
         ]);
 
-        if (!array_key_exists('inventory_item_id', $validated)) {
-            $validated['inventory_item_id'] = $request->input('inventory_item_id') ?? $request->input('inventory_product_id');
-        }
-
         // Calculate remaining quantity (initially same as total)
         $validated['remaining_quantity'] = $validated['total_quantity'];
         $validated['used_quantity'] = 0;
@@ -188,10 +184,6 @@ class IngredientController extends Controller
             'expiry_date' => 'nullable|date',
             'status' => 'required|in:active,inactive,expired'
         ]);
-
-        if (!array_key_exists('inventory_item_id', $validated)) {
-            $validated['inventory_item_id'] = $request->input('inventory_item_id') ?? $request->input('inventory_product_id');
-        }
 
         // Recalculate remaining quantity if total quantity changed
         if ($validated['total_quantity'] != $ingredient->total_quantity) {

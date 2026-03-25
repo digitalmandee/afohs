@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import AdminLayout from '@/layouts/AdminLayout';
@@ -9,6 +9,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import debounce from 'lodash.debounce';
 
 const formatCurrency = (amount) => `Rs ${parseFloat(amount || 0).toLocaleString()}`;
 
@@ -18,23 +19,33 @@ const getStatusColor = (status) => {
 };
 
 const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
+    const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [selectedEmployee, setSelectedEmployee] = useState(filters.employee_id || '');
     const [selectedStatus, setSelectedStatus] = useState(filters.status || '');
     const [dateFrom, setDateFrom] = useState(filters.date_from || '');
     const [dateTo, setDateTo] = useState(filters.date_to || '');
 
-    const handleFilter = () => {
+    const handleFilter = (override = {}) => {
         router.get(
             route('employees.loans.index'),
             {
-                employee_id: selectedEmployee || undefined,
-                status: selectedStatus || undefined,
-                date_from: dateFrom || undefined,
-                date_to: dateTo || undefined,
+                search: (override.search ?? searchTerm) || undefined,
+                employee_id: (override.employee_id ?? selectedEmployee) || undefined,
+                status: (override.status ?? selectedStatus) || undefined,
+                date_from: (override.date_from ?? dateFrom) || undefined,
+                date_to: (override.date_to ?? dateTo) || undefined,
             },
-            { preserveState: true },
+            { preserveState: true, preserveScroll: true, replace: true },
         );
     };
+
+    const debouncedFilter = useMemo(() => debounce((payload = {}) => handleFilter(payload), 300), [searchTerm, selectedEmployee, selectedStatus, dateFrom, dateTo]);
+
+    useEffect(() => () => debouncedFilter.cancel(), [debouncedFilter]);
+
+    useEffect(() => {
+        debouncedFilter();
+    }, [searchTerm, selectedEmployee, selectedStatus, dateFrom, dateTo, debouncedFilter]);
 
     const handleApprove = (id) => {
         if (confirm('Approve this loan application?')) {
@@ -143,8 +154,22 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                     <Card sx={{ mb: 3, pt: 5, borderRadius: '12px', bgcolor: 'transparent', boxShadow: 'none' }}>
                         {/* <CardContent> */}
                         <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} sm={2.5}>
-                                <Autocomplete
+                        <Grid item xs={12} sm={2.5}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Search employee"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                sx={{
+                                    '& .MuiOutlinedInput-root': {
+                                        borderRadius: '16px',
+                                    },
+                                }}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={2.5}>
+                            <Autocomplete
                                     options={employees}
                                     getOptionLabel={(option) => `${option.name} (${option.employee_id || option.id})`}
                                     value={employees.find((e) => e.id === selectedEmployee) || null}
@@ -283,7 +308,7 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                 />
                             </Grid>
                             <Grid item xs={12} sm={2.5} sx={{ display: 'flex', gap: 1 }}>
-                                <Button variant="contained" startIcon={<Search />} onClick={handleFilter} sx={{ backgroundColor: '#063455', borderRadius: '16px', px: 4, textTransform: 'none' }}>
+                                <Button variant="contained" startIcon={<Search />} onClick={() => handleFilter()} sx={{ backgroundColor: '#063455', borderRadius: '16px', px: 4, textTransform: 'none' }}>
                                     Search
                                 </Button>
                                 <Button variant="outlined" onClick={() => router.visit(route('employees.loans.index'))} sx={{ border: '1px solid #063455', color: '#063455', borderRadius: '16px', px: 4, textTransform: 'none' }}>

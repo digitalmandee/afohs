@@ -268,6 +268,12 @@ Route::prefix('pos')->middleware('web')->group(function () {
         Route::get('settings/printers', [\App\Http\Controllers\PrinterTestController::class, 'index'])->name('pos.printers.index');
         Route::get('settings/printers/discover', [\App\Http\Controllers\PrinterTestController::class, 'discover'])->name('pos.printers.discover');
         Route::put('settings/printers', [\App\Http\Controllers\PrinterTestController::class, 'updateMappings'])->name('pos.printers.update');
+        Route::post('settings/printers/profiles', [\App\Http\Controllers\PrinterTestController::class, 'storeProfile'])->name('pos.printers.profiles.store');
+        Route::put('settings/printers/profiles/{printerProfile}', [\App\Http\Controllers\PrinterTestController::class, 'updateProfile'])->name('pos.printers.profiles.update');
+        Route::delete('settings/printers/profiles/{printerProfile}', [\App\Http\Controllers\PrinterTestController::class, 'destroyProfile'])->name('pos.printers.profiles.destroy');
+        Route::post('settings/printers/scan-ranges', [\App\Http\Controllers\PrinterTestController::class, 'storeScanRange'])->name('pos.printers.scan-ranges.store');
+        Route::put('settings/printers/scan-ranges/{printerScanRange}', [\App\Http\Controllers\PrinterTestController::class, 'updateScanRange'])->name('pos.printers.scan-ranges.update');
+        Route::delete('settings/printers/scan-ranges/{printerScanRange}', [\App\Http\Controllers\PrinterTestController::class, 'destroyScanRange'])->name('pos.printers.scan-ranges.destroy');
         Route::post('settings/printers/test-kitchen', [\App\Http\Controllers\PrinterTestController::class, 'testKitchenPrinter'])->name('pos.printers.test-kitchen');
         Route::post('settings/printers/test-receipt', [\App\Http\Controllers\PrinterTestController::class, 'testReceiptPrinter'])->name('pos.printers.test-receipt');
         Route::get('settings/printer-test', [\App\Http\Controllers\PrinterTestController::class, 'index'])->name('pos.printer.index');
@@ -623,6 +629,7 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
             'update' => 'permission:guests.edit',
             'destroy' => 'permission:guests.delete',
         ]);
+        Route::get('guests/{id}', [CustomerController::class, 'show'])->whereNumber('id')->name('guests.show')->middleware('permission:guests.view');
 
         Route::group(['prefix' => 'rooms'], function () {
             Route::get('/', [RoomController::class, 'allRooms'])->name('rooms.all')->middleware('super.admin:rooms.view');
@@ -1316,15 +1323,19 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
 
     // Membership Booking Routes
     Route::get('/admin/membership/guest/history', function () {
-        return Inertia::render('App/Admin/Membership/Guest');
+        return redirect()->route('guests.index');
     })->name('membership.guest');
 
     Route::get('/admin/membership/add/guest', function () {
-        return Inertia::render('App/Admin/Membership/AddGuest');
+        return redirect()->route('guests.create');
     })->name('membership.addguest');
 
-    Route::get('/admin/guest/visit/detail', function () {
-        return Inertia::render('App/Admin/Membership/Checkout');
+    Route::get('/admin/guest/visit/detail', function (\Illuminate\Http\Request $request) {
+        if ($request->filled('id')) {
+            return redirect()->route('guests.show', $request->id);
+        }
+
+        return redirect()->route('guests.index');
     })->name('membership.checkout');
 
     Route::get('/admin/membership/visit/detail', function () {
@@ -1440,6 +1451,8 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
         Route::get('pos/daily-sales-list-cashier-wise/print', [AdminPosReportController::class, 'dailySalesListCashierWisePrint'])->name('admin.reports.pos.daily-sales-list-cashier-wise.print')->middleware('super.admin:reports.pos.cashier-sales');
         Route::get('pos/daily-dump-items-report', [AdminPosReportController::class, 'dailyDumpItemsReport'])->name('admin.reports.pos.daily-dump-items-report')->middleware('super.admin:reports.pos.dump-report');
         Route::get('pos/daily-dump-items-report/print', [AdminPosReportController::class, 'dailyDumpItemsReportPrint'])->name('admin.reports.pos.daily-dump-items-report.print')->middleware('super.admin:reports.pos.dump-report');
+        Route::get('pos/single/{tenantId}', [AdminPosReportController::class, 'singleRestaurant'])->name('admin.reports.pos.single')->middleware('super.admin:reports.pos.restaurant-wise');
+        Route::get('pos/single/{tenantId}/print', [AdminPosReportController::class, 'printSingle'])->name('admin.reports.pos.single.print')->middleware('super.admin:reports.pos.restaurant-wise');
         Route::get('pos/dish-breakdown-price', [AdminPosReportController::class, 'dishBreakdownPrice'])->name('admin.reports.pos.dish-breakdown-price');
         Route::get('pos/dish-breakdown-quantity', [AdminPosReportController::class, 'dishBreakdownQuantity'])->name('admin.reports.pos.dish-breakdown-quantity');
         Route::get('pos/closing-sales', [AdminPosReportController::class, 'closingSales'])->name('admin.reports.pos.closing-sales');

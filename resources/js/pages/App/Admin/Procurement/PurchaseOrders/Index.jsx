@@ -5,6 +5,7 @@ import debounce from 'lodash.debounce';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
@@ -240,28 +241,14 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                     ))}
                                 </TextField>
                             </Grid>
-                            <Grid item xs={12} md={1.5}>
-                                <TextField
-                                    size="small"
-                                    label="From"
-                                    type="date"
-                                    value={localFilters.from}
-                                    onChange={(e) => updateFilter('from', e.target.value, { immediate: true })}
-                                    InputLabelProps={{ shrink: true }}
-                                    fullWidth
-                                />
-                            </Grid>
-                            <Grid item xs={12} md={1.5}>
-                                <TextField
-                                    size="small"
-                                    label="To"
-                                    type="date"
-                                    value={localFilters.to}
-                                    onChange={(e) => updateFilter('to', e.target.value, { immediate: true })}
-                                    InputLabelProps={{ shrink: true }}
-                                    fullWidth
-                                />
-                            </Grid>
+                            <DateRangeFilterFields
+                                startValue={localFilters.from}
+                                endValue={localFilters.to}
+                                onStartChange={(value) => updateFilter('from', value, { immediate: true })}
+                                onEndChange={(value) => updateFilter('to', value, { immediate: true })}
+                                startGrid={{ xs: 12, md: 1.5 }}
+                                endGrid={{ xs: 12, md: 1.5 }}
+                            />
                         </Grid>
                     </Box>
                 </FilterToolbar>

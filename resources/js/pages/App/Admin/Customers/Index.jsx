@@ -1,184 +1,275 @@
-import React, { useState, useEffect } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import { Button, Typography, IconButton, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Pagination } from '@mui/material';
-import { ArrowBack as ArrowBackIcon, Edit as EditIcon, Delete as DeleteIcon, Add } from '@mui/icons-material';
-import { router, usePage } from '@inertiajs/react';
-import axios from 'axios';
-import { enqueueSnackbar } from 'notistack';
-import { FaEdit } from 'react-icons/fa';
-import Tooltip from '@mui/material/Tooltip';
+import React from 'react';
+import { router } from '@inertiajs/react';
+import {
+    Button,
+    Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
+    Grid,
+    MenuItem,
+    TableCell,
+    TableRow,
+    TextField,
+    Typography,
+} from '@mui/material';
+import { DeleteOutline, EditOutlined, VisibilityOutlined } from '@mui/icons-material';
+import debounce from 'lodash.debounce';
+import { useSnackbar } from 'notistack';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 
-const ManageCustomer = ({ customerData }) => {
-    const [editingCustomer, setEditingCustomer] = useState(null);
-    const [customers, setCustomers] = useState(customerData.data || []);
-    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [customerToDelete, setCustomerToDelete] = useState(null);
-    const { props } = usePage();
-    const csrfToken = props._token;
+export default function GuestIndex({ customerData, filters = {}, guestTypes = [] }) {
+    const { enqueueSnackbar } = useSnackbar();
+    const rows = customerData?.data || [];
+    const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+    const [guestToDelete, setGuestToDelete] = React.useState(null);
+    const [localFilters, setLocalFilters] = React.useState({
+        search: filters?.search || '',
+        guest_type_id: filters?.guest_type_id || '',
+        page: 1,
+    });
+    const filtersRef = React.useRef(localFilters);
 
-    useEffect(() => {
-        setCustomers(customerData.data || []);
-    }, [customerData]);
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
 
-    const confirmDelete = (customer) => {
-        setCustomerToDelete(customer);
-        setDeleteDialogOpen(true);
-    };
-
-    const cancelDelete = () => {
-        setCustomerToDelete(null);
-        setDeleteDialogOpen(false);
-    };
-
-    const handleDelete = async () => {
-        if (!customerToDelete) return;
-
-        try {
-            await axios.delete(route('guests.destroy', customerToDelete.id), {
-                headers: { 'X-CSRF-TOKEN': csrfToken },
-            });
-            // Reload page to reflect changes in pagination if needed, or just filter locally.
-            // With pagination, it's often better to reload or refetch, but filtering locally works for current page.
-            // However, to keep pagination consistent, let's reload or just filter.
-            // setCustomers((prev) => prev.filter((c) => c.id !== customerToDelete.id));
-            router.reload({ only: ['customerData'] });
-            enqueueSnackbar('Customer deleted successfully.', { variant: 'success' });
-        } catch (error) {
-            enqueueSnackbar('Failed to delete: ' + (error.response?.data?.message || error.message), {
-                variant: 'error',
-            });
-        } finally {
-            cancelDelete();
+        if (nextFilters.search?.trim()) {
+            payload.search = nextFilters.search.trim();
         }
-    };
 
-    const handlePageChange = (event, value) => {
-        router.get(
-            route('guests.index'),
-            { page: value },
-            {
-                preserveState: true,
-                preserveScroll: true,
+        if (nextFilters.guest_type_id) {
+            payload.guest_type_id = nextFilters.guest_type_id;
+        }
+
+        if (Number(nextFilters.page) > 1) {
+            payload.page = Number(nextFilters.page);
+        }
+
+        router.get(route('guests.index'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, []);
+
+    const debouncedSubmit = React.useMemo(() => debounce((nextFilters) => submitFilters(nextFilters), 350), [submitFilters]);
+
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    React.useEffect(() => {
+        const next = {
+            search: filters?.search || '',
+            guest_type_id: filters?.guest_type_id || '',
+            page: 1,
+        };
+
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [filters?.guest_type_id, filters?.search]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const next = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                next.page = 1;
+            }
+
+            filtersRef.current = next;
+            setLocalFilters(next);
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(next);
+                return;
+            }
+
+            debouncedSubmit(next);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        const next = {
+            search: '',
+            guest_type_id: '',
+            page: 1,
+        };
+
+        debouncedSubmit.cancel();
+        filtersRef.current = next;
+        setLocalFilters(next);
+        submitFilters(next);
+    }, [debouncedSubmit, submitFilters]);
+
+    const confirmDelete = React.useCallback(() => {
+        if (!guestToDelete) {
+            return;
+        }
+
+        router.delete(route('guests.destroy', guestToDelete.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                enqueueSnackbar('Guest deleted successfully.', { variant: 'success' });
+                setDeleteDialogOpen(false);
+                setGuestToDelete(null);
             },
-        );
-    };
+            onError: () => {
+                enqueueSnackbar('Failed to delete guest.', { variant: 'error' });
+            },
+        });
+    }, [enqueueSnackbar, guestToDelete]);
 
     return (
         <>
-            <Box
-                sx={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                    padding: '20px',
-                }}
+            <AppPage
+                eyebrow="Guest Management"
+                title="Guests"
+                subtitle="Search, review, and manage real guest records backed by the customer and guest-type master data."
+                actions={[
+                    <Button key="trashed" variant="outlined" color="error" onClick={() => router.visit(route('guests.trashed'))}>
+                        Trashed
+                    </Button>,
+                    <Button key="add" variant="contained" onClick={() => router.visit(route('guests.create'))}>
+                        Add Guest
+                    </Button>,
+                ]}
             >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }} onClick={() => router.visit(route('dashboard'))}>
-                        {/* <IconButton onClick={() => window.history.back()}>
-                            <ArrowBackIcon sx={{ color: '#063455' }} />
-                        </IconButton> */}
-                        <Typography sx={{ fontWeight: 700, fontSize: '30px', color: '#063455' }}>Customers</Typography>
-                    </Box>
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Guests" value={customerData?.total || 0} accent />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Showing" value={rows.length} tone="light" />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <StatCard label="Active Guest Types" value={guestTypes.length} tone="muted" />
+                    </Grid>
+                </Grid>
 
-                    <Button variant="contained" startIcon={<Add />} sx={{ backgroundColor: '#063455', borderRadius: '16px', height: 35, textTransform: 'none' }} onClick={() => router.visit(route('guests.create'))}>
-                        Add Customer
-                    </Button>
-                </Box>
+                <SurfaceCard title="Live Filters" subtitle="Refine guest records by guest number, name, contact, email, sponsor, or guest type.">
+                    <FilterToolbar onReset={resetFilters}>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={7}>
+                                <TextField
+                                    size="small"
+                                    label="Search guests"
+                                    placeholder="Guest #, name, contact, email, or sponsor"
+                                    value={localFilters.search}
+                                    onChange={(event) => updateFilters({ search: event.target.value })}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={5}>
+                                <TextField
+                                    size="small"
+                                    select
+                                    label="Guest Type"
+                                    value={localFilters.guest_type_id}
+                                    onChange={(event) => updateFilters({ guest_type_id: event.target.value }, { immediate: true })}
+                                    fullWidth
+                                >
+                                    <MenuItem value="">All guest types</MenuItem>
+                                    {guestTypes.map((guestType) => (
+                                        <MenuItem key={guestType.id} value={guestType.id}>
+                                            {guestType.name}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                        </Grid>
+                    </FilterToolbar>
+                </SurfaceCard>
 
-                <Typography style={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>View and manage registered guests currently staying or scheduled to arrive</Typography>
-
-                <TableContainer component={Paper} style={{ boxShadow: 'none', overflowX: 'auto', borderRadius: '16px', marginTop: '2rem' }}>
-                    <Table sx={{ tableLayout: 'fixed', width: '100%' }}>
-                        <TableHead>
-                            <TableRow style={{ backgroundColor: '#063455', height: '60px' }}>
-                                <TableCell sx={{ color: '#fff', fontSize: '16px', fontWeight: 600, width: '200px', }}>Customer No</TableCell>
-                                <TableCell sx={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>Name</TableCell>
-                                <TableCell sx={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>Email</TableCell>
-                                <TableCell sx={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>Action</TableCell>
+                <SurfaceCard title="Guest Register" subtitle="Guest profiles with linked type, sponsor information, and compact operational actions.">
+                    <AdminDataTable
+                        columns={[
+                            { key: 'customer_no', label: 'Guest #', minWidth: 130 },
+                            { key: 'name', label: 'Guest', minWidth: 220 },
+                            { key: 'guest_type', label: 'Guest Type', minWidth: 150 },
+                            { key: 'contact', label: 'Contact', minWidth: 220 },
+                            { key: 'member', label: 'Authorized By', minWidth: 220 },
+                            { key: 'actions', label: 'Actions', minWidth: 96, align: 'right' },
+                        ]}
+                        rows={rows}
+                        pagination={customerData}
+                        emptyMessage="No guest records found."
+                        tableMinWidth={1180}
+                        stickyLastColumn
+                        renderRow={(guest) => (
+                            <TableRow key={guest.id} hover>
+                                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{guest.customer_no}</TableCell>
+                                <TableCell>
+                                    <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{guest.name}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {guest.gender || 'Unspecified'}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell>
+                                    {guest.guest_type?.name ? <Chip size="small" label={guest.guest_type.name} color="primary" variant="outlined" /> : '-'}
+                                </TableCell>
+                                <TableCell>
+                                    <Typography>{guest.contact || '-'}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {guest.email || '-'}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell>
+                                    <Typography>{guest.member_name || '-'}</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {guest.member_no || '-'}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <AdminRowActionGroup justify="flex-end">
+                                        <AdminIconAction title="View Guest" onClick={() => router.visit(route('guests.show', guest.id))}>
+                                            <VisibilityOutlined fontSize="small" />
+                                        </AdminIconAction>
+                                        <AdminIconAction title="Edit Guest" color="warning" onClick={() => router.visit(route('guests.edit', guest.id))}>
+                                            <EditOutlined fontSize="small" />
+                                        </AdminIconAction>
+                                        <AdminIconAction
+                                            title="Delete Guest"
+                                            color="error"
+                                            onClick={() => {
+                                                setGuestToDelete(guest);
+                                                setDeleteDialogOpen(true);
+                                            }}
+                                        >
+                                            <DeleteOutline fontSize="small" />
+                                        </AdminIconAction>
+                                    </AdminRowActionGroup>
+                                </TableCell>
                             </TableRow>
-                        </TableHead>
+                        )}
+                    />
+                </SurfaceCard>
+            </AppPage>
 
-                        <TableBody>
-                            {customers.length > 0 ? (
-                                customers.map((customer, index) => (
-                                    <TableRow key={customer.id} style={{ borderBottom: '1px solid #eee' }}>
-                                        {/* <TableCell sx={{ color: '#7F7F7F', fontSize: '14px', fontWeight: '400' }}>{index + 1}</TableCell> */}
-                                        <TableCell sx={{ color: '#000', fontSize: '14px', fontWeight: '600', width: '200px', }}>{customer.customer_no}</TableCell>
-                                        {/* <TableCell sx={{ color: '#7F7F7F', fontSize: '14px', fontWeight: '400' }}>{customer.name}</TableCell> */}
-                                        <TableCell
-                                            sx={{
-                                                color: '#7F7F7F',
-                                                fontSize: '14px',
-                                                fontWeight: '400',
-                                                maxWidth: '70px',
-                                                whiteSpace: 'nowrap',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                            }}
-                                        >
-                                            <Tooltip title={customer.name} placement="top">
-                                                <span>{customer.name}</span>
-                                            </Tooltip>
-                                        </TableCell>
-                                        {/* <TableCell sx={{ color: '#7F7F7F', fontSize: '14px', fontWeight:'400' }}>{customer.email}</TableCell> */}
-                                        <TableCell
-                                            sx={{
-                                                color: '#7F7F7F',
-                                                fontSize: '14px',
-                                                fontWeight: '400',
-                                                maxWidth: '100px',
-                                                whiteSpace: 'nowrap',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                            }}
-                                        >
-                                            <Tooltip title={customer.email} placement="top">
-                                                <span>{customer.email}</span>
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell>
-                                            <IconButton onClick={() => router.visit(route('guests.edit', customer.id))} size="small" title="Edit">
-                                                <FaEdit size={16} style={{ marginRight: 8, color: '#f57c00' }} />
-                                            </IconButton>
-                                            <IconButton onClick={() => confirmDelete(customer)} size="small" title="Delete">
-                                                <DeleteIcon fontSize="small" sx={{ color: '#d32f2f' }} />
-                                            </IconButton>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={5} align="center" sx={{ py: 3, color: '#999' }}>
-                                        No customers found.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 3 }}>
-                    <Pagination count={customerData.last_page} page={customerData.current_page} onChange={handlePageChange} color="primary" />
-                </Box>
-            </Box>
-
-            {/* Delete Confirmation Dialog */}
-            <Dialog open={deleteDialogOpen} onClose={cancelDelete} aria-labelledby="delete-dialog-title">
-                <DialogTitle id="delete-dialog-title">Delete Customer</DialogTitle>
+            <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
+                <DialogTitle>Delete Guest</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        Are you sure you want to delete <strong>{customerToDelete?.name}</strong>?
+                        Delete <strong>{guestToDelete?.name}</strong>? This will move the guest to trash.
                     </DialogContentText>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={cancelDelete}>Cancel</Button>
-                    <Button onClick={handleDelete} color="error" variant="contained">
+                    <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+                    <Button color="error" variant="contained" onClick={confirmDelete}>
                         Delete
                     </Button>
                 </DialogActions>
             </Dialog>
         </>
     );
-};
-
-export default ManageCustomer;
+}

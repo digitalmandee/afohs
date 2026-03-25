@@ -1,514 +1,356 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Head, router } from '@inertiajs/react';
-import {
-    Box,
-    Paper,
-    Typography,
-    Button,
-    Checkbox,
-    TextField,
-    Grid,
-    Divider,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Card,
-    CardContent,
-    Stack,
-    FormControlLabel,
-    Autocomplete
-} from '@mui/material';
-import { Search } from '@mui/icons-material';
-import PrintIcon from '@mui/icons-material/Print';
-import ReceiptIcon from '@mui/icons-material/Receipt';
-import { format } from 'date-fns';
-import dayjs from "dayjs";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { Button, Checkbox, FormControlLabel, Grid, MenuItem, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
+import { formatReportCurrency, normalizeIntArray, normalizeStringArray } from './posReportShared';
 
-export default function SalesSummaryWithItems({ salesData, startDate, endDate, tenants, waiters, cashiers, grandTotalQty, grandTotalAmount, grandTotalDiscount, grandTotalTax, grandTotalSale, filters }) {
-    const toArray = (v) => {
-        if (Array.isArray(v)) return v.filter(Boolean);
-        if (!v) return [];
-        return String(v)
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-    };
+const CUSTOMER_TYPE_OPTIONS = [
+    { label: 'Member', value: 'member' },
+    { label: 'Guest', value: 'guest' },
+    { label: 'Employee', value: 'employee' },
+];
 
-    const toIntArray = (v) =>
-        toArray(v)
-            .map((x) => Number(x))
-            .filter((n) => Number.isFinite(n) && n > 0);
+const PAYMENT_STATUS_OPTIONS = [
+    { label: 'Advance', value: 'advance' },
+    { label: 'Paid', value: 'paid' },
+    { label: 'Unpaid', value: 'unpaid' },
+];
 
-    const [reportFilters, setReportFilters] = useState({
-        start_date: filters?.start_date || startDate,
-        end_date: filters?.end_date || endDate,
-        tenant_ids: toIntArray(filters?.tenant_ids),
-        customer_types: toArray(filters?.customer_types),
+function InvoiceItemsTable({ invoice, showTaxColumn }) {
+    const columns = [
+        { key: 'time', label: 'Time', minWidth: 100 },
+        { key: 'code', label: 'Item Code', minWidth: 130 },
+        { key: 'name', label: 'Item Name', minWidth: 240 },
+        { key: 'qty', label: 'Qty Sold', minWidth: 100, align: 'right' },
+        { key: 'sale_price', label: 'Sale Price', minWidth: 130, align: 'right' },
+        { key: 'sub_total', label: 'Sub Total', minWidth: 130, align: 'right' },
+        { key: 'discount', label: 'Discount', minWidth: 130, align: 'right' },
+        ...(showTaxColumn ? [{ key: 'tax', label: 'Tax', minWidth: 120, align: 'right' }] : []),
+        { key: 'total_sale', label: 'Total Sale', minWidth: 130, align: 'right' },
+    ];
+
+    return (
+        <SurfaceCard
+            title={`Invoice ${invoice.invoice_no}`}
+            subtitle={`Customer ${invoice.customer || '-'} | Waiter ${invoice.waiter || '-'} | Table ${invoice.table || '-'} | KOT ${invoice.kot || '-'}`}
+        >
+            <AdminDataTable
+                columns={columns}
+                rows={invoice.items || []}
+                tableMinWidth={showTaxColumn ? 1280 : 1160}
+                emptyMessage="No items found for this invoice."
+                renderRow={(item, index) => (
+                    <TableRow key={`${invoice.invoice_no}-${index}`} hover>
+                        <TableCell>{item.time || '-'}</TableCell>
+                        <TableCell>{item.code || '-'}</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{item.name || '-'}</TableCell>
+                        <TableCell align="right">{item.qty}</TableCell>
+                        <TableCell align="right">{formatReportCurrency(item.sale_price)}</TableCell>
+                        <TableCell align="right">{formatReportCurrency(item.sub_total)}</TableCell>
+                        <TableCell align="right">{formatReportCurrency(item.discount)}</TableCell>
+                        {showTaxColumn ? <TableCell align="right">{formatReportCurrency(item.tax)}</TableCell> : null}
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>{formatReportCurrency(item.total_sale)}</TableCell>
+                    </TableRow>
+                )}
+            />
+            <Grid container spacing={1.5} sx={{ mt: 1.5 }}>
+                <Grid item xs={12} md={3}><StatCard label="Invoice Qty" value={invoice.total_qty || 0} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Sub Total" value={formatReportCurrency(invoice.total_amount)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Discount" value={formatReportCurrency(invoice.total_discount)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Total Sale" value={formatReportCurrency(invoice.total_sale)} tone="muted" /></Grid>
+            </Grid>
+        </SurfaceCard>
+    );
+}
+
+export default function SalesSummaryWithItems({
+    salesData = [],
+    startDate,
+    endDate,
+    tenants = [],
+    waiters = [],
+    cashiers = [],
+    grandTotalQty = 0,
+    grandTotalDiscount = 0,
+    grandTotalTax = 0,
+    grandTotalSale = 0,
+    filters = {},
+}) {
+    const [reportFilters, setReportFilters] = React.useState({
+        start_date: filters?.start_date || startDate || '',
+        end_date: filters?.end_date || endDate || '',
+        tenant_ids: normalizeIntArray(filters?.tenant_ids),
+        customer_types: normalizeStringArray(filters?.customer_types),
         customer_search: filters?.customer_search || '',
-        waiter_ids: toIntArray(filters?.waiter_ids),
-        cashier_ids: toIntArray(filters?.cashier_ids),
-        table_nos: toArray(filters?.table_nos),
-        category_names: toArray(filters?.category_names),
+        waiter_ids: normalizeIntArray(filters?.waiter_ids),
+        cashier_ids: normalizeIntArray(filters?.cashier_ids),
+        table_nos: normalizeStringArray(filters?.table_nos),
+        category_names: normalizeStringArray(filters?.category_names),
         item_search: filters?.item_search || '',
         discounted_only: Boolean(filters?.discounted_only) && String(filters?.discounted_only) !== '0',
         taxed_only: Boolean(filters?.taxed_only) && String(filters?.taxed_only) !== '0',
-        payment_statuses: toArray(filters?.payment_statuses),
+        payment_statuses: normalizeStringArray(filters?.payment_statuses),
     });
+    const { loading, beginLoading } = useFilterLoadingState([
+        salesData.length,
+        filters?.end_date,
+        filters?.start_date,
+        filters?.customer_search,
+        filters?.item_search,
+    ]);
 
-    const handleFilterChange = (field, value) => {
-        setReportFilters((prev) => ({ ...prev, [field]: value }));
-    };
+    const showTaxColumn = Number(grandTotalTax || 0) > 0 || salesData.some((invoice) => Number(invoice?.total_tax || 0) > 0);
 
-    const applyFilters = () => {
-        router.get(route('admin.reports.pos.sales-summary-with-items'), reportFilters);
-    };
+    const applyFilters = React.useCallback(() => {
+        beginLoading();
+        router.get(route('admin.reports.pos.sales-summary-with-items'), {
+            ...reportFilters,
+            tenant_ids: reportFilters.tenant_ids.join(','),
+            customer_types: reportFilters.customer_types.join(','),
+            waiter_ids: reportFilters.waiter_ids.join(','),
+            cashier_ids: reportFilters.cashier_ids.join(','),
+            table_nos: reportFilters.table_nos.join(','),
+            category_names: reportFilters.category_names.join(','),
+            payment_statuses: reportFilters.payment_statuses.join(','),
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading, reportFilters]);
+
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            start_date: startDate || '',
+            end_date: endDate || '',
+            tenant_ids: [],
+            customer_types: [],
+            customer_search: '',
+            waiter_ids: [],
+            cashier_ids: [],
+            table_nos: [],
+            category_names: [],
+            item_search: '',
+            discounted_only: false,
+            taxed_only: false,
+            payment_statuses: [],
+        };
+        setReportFilters(cleared);
+        beginLoading();
+        router.get(route('admin.reports.pos.sales-summary-with-items'), {
+            start_date: cleared.start_date,
+            end_date: cleared.end_date,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading, endDate, startDate]);
 
     const handlePrint = () => {
-        const printUrl = route('admin.reports.pos.sales-summary-with-items.print', reportFilters);
-        window.open(printUrl, '_blank');
+        window.open(route('admin.reports.pos.sales-summary-with-items.print', {
+            ...reportFilters,
+            tenant_ids: reportFilters.tenant_ids.join(','),
+            customer_types: reportFilters.customer_types.join(','),
+            waiter_ids: reportFilters.waiter_ids.join(','),
+            cashier_ids: reportFilters.cashier_ids.join(','),
+            table_nos: reportFilters.table_nos.join(','),
+            category_names: reportFilters.category_names.join(','),
+            payment_statuses: reportFilters.payment_statuses.join(','),
+        }), '_blank');
     };
-
-    const formatDate = (dateString) => {
-        try {
-            return format(new Date(dateString), 'dd/MM/yyyy');
-        } catch (error) {
-            return dateString;
-        }
-    };
-
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-PK', {
-            style: 'currency',
-            currency: 'PKR'
-        }).format(amount).replace('PKR', 'Rs');
-    };
-
-    const showTaxColumn =
-        Number(grandTotalTax || 0) > 0 || (salesData || []).some((inv) => Number(inv?.total_tax || 0) > 0);
 
     return (
         <>
-            {/* <Head title="Sales Summary (With Items)" /> */}
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: "#f5f5f5"
-                }}
+            <Head title="Sales Summary (With Items)" />
+            <AppPage
+                eyebrow="POS Reports"
+                title="Sales Summary (With Items)"
+                subtitle="Invoice-wise sales and item detail with the same premium report shell, totals, and empty-state handling as the rest of the POS suite."
+                actions={[
+                    <Button key="print" variant="outlined" onClick={handlePrint}>
+                        Print
+                    </Button>,
+                ]}
             >
-                <Box sx={{ p: 2 }}>
-                    {/* Header */}
-                    <Box sx={{ mb: 2 }}>
-                        <Grid container justifyContent="space-between" alignItems="center">
-                            <Grid item>
-                                <Typography sx={{ fontWeight: '700', fontSize: '30px', color: '#063455' }}>
-                                    Sales Summary (With Items)
-                                </Typography>
-                            </Grid>
-                            <Grid item>
-                                <Button
-                                    variant="contained"
-                                    startIcon={<PrintIcon />}
-                                    onClick={handlePrint}
-                                    sx={{
-                                        backgroundColor: '#063455',
-                                        color: 'white',
-                                        borderRadius: '16px',
-                                        textTransform: 'none',
-                                        '&:hover': { backgroundColor: '#063455' }
-                                    }}
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={3}><StatCard label="Invoices" value={salesData.length} accent /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="Quantity" value={grandTotalQty} tone="light" /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="Discount" value={formatReportCurrency(grandTotalDiscount)} tone="light" /></Grid>
+                    <Grid item xs={12} md={3}><StatCard label="Total Sale" value={formatReportCurrency(grandTotalSale)} tone="muted" /></Grid>
+                </Grid>
+
+                <SurfaceCard title="Report Filters" subtitle="Keep the rich invoice and item filtering while replacing the legacy POS report shell with shared components.">
+                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                        <Grid container spacing={2}>
+                            <DateRangeFilterFields
+                                startLabel="Start Date"
+                                endLabel="End Date"
+                                startValue={reportFilters.start_date}
+                                endValue={reportFilters.end_date}
+                                onStartChange={(value) => setReportFilters((current) => ({ ...current, start_date: value }))}
+                                onEndChange={(value) => setReportFilters((current) => ({ ...current, end_date: value }))}
+                                startGrid={{ xs: 12, md: 3 }}
+                                endGrid={{ xs: 12, md: 3 }}
+                            />
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    select
+                                    SelectProps={{ multiple: true }}
+                                    label="Restaurants"
+                                    value={reportFilters.tenant_ids}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, tenant_ids: event.target.value }))}
+                                    fullWidth
                                 >
-                                    Print
-                                </Button>
+                                    {tenants.map((tenant) => (
+                                        <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    select
+                                    SelectProps={{ multiple: true }}
+                                    label="Customer Types"
+                                    value={reportFilters.customer_types}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, customer_types: event.target.value }))}
+                                    fullWidth
+                                >
+                                    {CUSTOMER_TYPE_OPTIONS.map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    label="Customer Name / No"
+                                    value={reportFilters.customer_search}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, customer_search: event.target.value }))}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    select
+                                    SelectProps={{ multiple: true }}
+                                    label="Waiters"
+                                    value={reportFilters.waiter_ids}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, waiter_ids: event.target.value }))}
+                                    fullWidth
+                                >
+                                    {waiters.map((waiter) => (
+                                        <MenuItem key={waiter.id} value={waiter.id}>{waiter.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    select
+                                    SelectProps={{ multiple: true }}
+                                    label="Cashiers"
+                                    value={reportFilters.cashier_ids}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, cashier_ids: event.target.value }))}
+                                    fullWidth
+                                >
+                                    {cashiers.map((cashier) => (
+                                        <MenuItem key={cashier.id} value={cashier.id}>{cashier.name}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    label="Table Numbers"
+                                    helperText="Comma separated"
+                                    value={reportFilters.table_nos.join(', ')}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, table_nos: normalizeStringArray(event.target.value) }))}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    label="Categories"
+                                    helperText="Comma separated"
+                                    value={reportFilters.category_names.join(', ')}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, category_names: normalizeStringArray(event.target.value) }))}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    label="Item Code / Name"
+                                    value={reportFilters.item_search}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, item_search: event.target.value }))}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <TextField
+                                    select
+                                    SelectProps={{ multiple: true }}
+                                    label="Payment Statuses"
+                                    value={reportFilters.payment_statuses}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, payment_statuses: event.target.value }))}
+                                    fullWidth
+                                >
+                                    {PAYMENT_STATUS_OPTIONS.map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                                    <FormControlLabel
+                                        control={<Checkbox checked={reportFilters.discounted_only} onChange={(event) => setReportFilters((current) => ({ ...current, discounted_only: event.target.checked }))} />}
+                                        label="Discounted Only"
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox checked={reportFilters.taxed_only} onChange={(event) => setReportFilters((current) => ({ ...current, taxed_only: event.target.checked }))} />}
+                                        label="Taxed Only"
+                                    />
+                                </Stack>
                             </Grid>
                         </Grid>
-                        <Typography sx={{ fontWeight: '600', fontSize: '15px', color: '#063455' }}>
-                            Invoice-wise detailed sales report with item breakdown
-                        </Typography>
-                    </Box>
+                    </FilterToolbar>
+                </SurfaceCard>
 
-                    <Box sx={{ mb: 2 }}>
-                        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                            <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                <DatePicker
-                                    label="Start Date"
-                                    format="DD/MM/YYYY"
-                                    value={reportFilters.start_date ? dayjs(reportFilters.start_date) : null}
-                                    onChange={(newValue) =>
-                                        handleFilterChange('start_date', newValue ? newValue.format('YYYY-MM-DD') : '')
-                                    }
-                                    slotProps={{
-                                        textField: {
-                                            size: 'small',
-                                            sx: { minWidth: 160 },
-                                            InputProps: { sx: { borderRadius: '16px', '& fieldset': { borderRadius: '16px' } } },
-                                        },
-                                    }}
-                                />
-                                <DatePicker
-                                    label="End Date"
-                                    format="DD/MM/YYYY"
-                                    value={reportFilters.end_date ? dayjs(reportFilters.end_date) : null}
-                                    onChange={(newValue) =>
-                                        handleFilterChange('end_date', newValue ? newValue.format('YYYY-MM-DD') : '')
-                                    }
-                                    slotProps={{
-                                        textField: {
-                                            size: 'small',
-                                            sx: { minWidth: 160 },
-                                            InputProps: { sx: { borderRadius: '16px', '& fieldset': { borderRadius: '16px' } } },
-                                        },
-                                    }}
-                                />
-                            </LocalizationProvider>
+                {salesData.length === 0 ? (
+                    <SurfaceCard title="Sales Register" subtitle="The report shell still renders cleanly when there are no invoices to show.">
+                        <AdminDataTable
+                            columns={[{ key: 'placeholder', label: 'Invoices', minWidth: 220 }]}
+                            rows={[]}
+                            loading={loading}
+                            emptyMessage="No sales data found for the selected date range."
+                            renderRow={() => null}
+                        />
+                    </SurfaceCard>
+                ) : (
+                    salesData.map((invoice, index) => (
+                        <InvoiceItemsTable
+                            key={`${invoice.invoice_no || index}-${index}`}
+                            invoice={invoice}
+                            showTaxColumn={showTaxColumn}
+                        />
+                    ))
+                )}
 
-                            <Autocomplete
-                                multiple
-                                size="small"
-                                options={tenants || []}
-                                getOptionLabel={(opt) => opt?.name || ''}
-                                value={(tenants || []).filter((t) => reportFilters.tenant_ids.includes(t.id))}
-                                onChange={(_, value) => handleFilterChange('tenant_ids', value.map((v) => v.id))}
-                                renderInput={(params) => <TextField {...params} label="Restaurant" />}
-                                sx={{ minWidth: 220 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                size="small"
-                                options={[
-                                    { label: 'Member', value: 'member' },
-                                    { label: 'Guest', value: 'guest' },
-                                    { label: 'Employee', value: 'employee' },
-                                ]}
-                                getOptionLabel={(opt) => opt.label}
-                                value={[
-                                    { label: 'Member', value: 'member' },
-                                    { label: 'Guest', value: 'guest' },
-                                    { label: 'Employee', value: 'employee' },
-                                ].filter((o) => reportFilters.customer_types.includes(o.value))}
-                                onChange={(_, value) => handleFilterChange('customer_types', value.map((v) => v.value))}
-                                renderInput={(params) => <TextField {...params} label="Customer Type" />}
-                                sx={{ minWidth: 220 }}
-                            />
-
-                            <TextField
-                                size="small"
-                                label="Customer Name/No"
-                                value={reportFilters.customer_search}
-                                onChange={(e) => handleFilterChange('customer_search', e.target.value)}
-                                sx={{ minWidth: 220 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                size="small"
-                                options={waiters || []}
-                                getOptionLabel={(opt) => opt?.name || ''}
-                                value={(waiters || []).filter((w) => reportFilters.waiter_ids.includes(w.id))}
-                                onChange={(_, value) => handleFilterChange('waiter_ids', value.map((v) => v.id))}
-                                renderInput={(params) => <TextField {...params} label="Waiter" />}
-                                sx={{ minWidth: 200 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                size="small"
-                                options={cashiers || []}
-                                getOptionLabel={(opt) => opt?.name || ''}
-                                value={(cashiers || []).filter((c) => reportFilters.cashier_ids.includes(c.id))}
-                                onChange={(_, value) => handleFilterChange('cashier_ids', value.map((v) => v.id))}
-                                renderInput={(params) => <TextField {...params} label="Cashier" />}
-                                sx={{ minWidth: 200 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                freeSolo
-                                size="small"
-                                options={[]}
-                                value={reportFilters.table_nos}
-                                onChange={(_, value) => handleFilterChange('table_nos', value)}
-                                renderInput={(params) => <TextField {...params} label="Table #" />}
-                                sx={{ minWidth: 140 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                freeSolo
-                                size="small"
-                                options={[]}
-                                value={reportFilters.category_names}
-                                onChange={(_, value) => handleFilterChange('category_names', value)}
-                                renderInput={(params) => <TextField {...params} label="Category" />}
-                                sx={{ minWidth: 220 }}
-                            />
-
-                            <TextField
-                                size="small"
-                                label="Item Code/Name"
-                                value={reportFilters.item_search}
-                                onChange={(e) => handleFilterChange('item_search', e.target.value)}
-                                sx={{ minWidth: 200 }}
-                            />
-
-                            <Autocomplete
-                                multiple
-                                size="small"
-                                options={[
-                                    { label: 'Advance', value: 'advance' },
-                                    { label: 'Paid', value: 'paid' },
-                                    { label: 'Unpaid', value: 'unpaid' },
-                                ]}
-                                getOptionLabel={(opt) => opt.label}
-                                value={[
-                                    { label: 'Advance', value: 'advance' },
-                                    { label: 'Paid', value: 'paid' },
-                                    { label: 'Unpaid', value: 'unpaid' },
-                                ].filter((o) => reportFilters.payment_statuses.includes(o.value))}
-                                onChange={(_, value) => handleFilterChange('payment_statuses', value.map((v) => v.value))}
-                                renderInput={(params) => <TextField {...params} label="Status" />}
-                                sx={{ minWidth: 180 }}
-                            />
-
-                            <FormControlLabel
-                                control={
-                                    <Checkbox
-                                        checked={reportFilters.discounted_only}
-                                        onChange={(e) => handleFilterChange('discounted_only', e.target.checked)}
-                                        size="small"
-                                    />
-                                }
-                                label="Discounted"
-                            />
-                            <FormControlLabel
-                                control={
-                                    <Checkbox
-                                        checked={reportFilters.taxed_only}
-                                        onChange={(e) => handleFilterChange('taxed_only', e.target.checked)}
-                                        size="small"
-                                    />
-                                }
-                                label="Taxed"
-                            />
-
-                            <Button
-                                variant="contained"
-                                startIcon={<Search />}
-                                onClick={applyFilters}
-                                sx={{
-                                    backgroundColor: '#063455',
-                                    color: 'white',
-                                    borderRadius: '16px',
-                                    textTransform: 'none',
-                                    '&:hover': { backgroundColor: '#063455' },
-                                }}
-                            >
-                                Search
-                            </Button>
-                        </Stack>
-                    </Box>
-
-                    {/* Summary Stats */}
-                    <Grid container spacing={3} sx={{ mb: 3 }}>
-                        <Grid item xs={12} md={3}>
-                            <Card sx={{ borderRadius: '16px', bgcolor: '#063455' }}>
-                                <CardContent sx={{ textAlign: 'center' }}>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '16px', color: '#fff' }}>
-                                        Total Invoices
-                                    </Typography>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '20px', color: '#fff' }}>
-                                        {salesData?.length || 0}
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <Card sx={{ borderRadius: '16px', bgcolor: '#063455' }}>
-                                <CardContent sx={{ textAlign: 'center' }}>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '16px', color: '#fff' }}>
-                                        Total Quantity
-                                    </Typography>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '20px', color: '#fff' }}>
-                                        {grandTotalQty}
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <Card sx={{ borderRadius: '16px', bgcolor: '#063455' }}>
-                                <CardContent sx={{ textAlign: 'center' }}>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '16px', color: '#fff' }}>
-                                        Total Discount
-                                    </Typography>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '20px', color: '#fff' }}>
-                                        {formatCurrency(grandTotalDiscount)}
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <Card sx={{ borderRadius: '16px', bgcolor: '#063455' }}>
-                                <CardContent sx={{ textAlign: 'center' }}>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '16px', color: '#fff' }}>
-                                        Total Sale
-                                    </Typography>
-                                    <Typography sx={{ fontWeight: '500', fontSize: '20px', color: '#fff' }}>
-                                        {formatCurrency(grandTotalSale)}
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
+                <SurfaceCard title="Grand Totals" subtitle="High-level QA totals stay visible even when drilling into invoice-level detail.">
+                    <Grid container spacing={2.25}>
+                        <Grid item xs={12} md={3}><StatCard label="Invoices" value={salesData.length} accent /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="Quantity" value={grandTotalQty} tone="light" /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="Discount" value={formatReportCurrency(grandTotalDiscount)} tone="light" /></Grid>
+                        <Grid item xs={12} md={3}><StatCard label="Total Sale" value={formatReportCurrency(grandTotalSale)} tone="muted" /></Grid>
+                        {showTaxColumn ? (
+                            <Grid item xs={12} md={3}><StatCard label="Tax" value={formatReportCurrency(grandTotalTax)} tone="muted" /></Grid>
+                        ) : null}
                     </Grid>
-
-                    {/* Sales Report */}
-                    <Paper elevation={2} sx={{ p: 3 }}>
-                        <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold', textAlign: 'center' }}>
-                            AFOHS - SALES SUMMARY (WITH ITEMS)
-                        </Typography>
-
-                        <Divider sx={{ mb: 3 }} />
-
-                        {salesData && Array.isArray(salesData) && salesData.length > 0 ? (
-                            <Box>
-                                {salesData.map((invoice, index) => (
-                                    <Box key={index} sx={{ mb: 4, border: '1px solid #ddd', borderRadius: 2 }}>
-                                        {/* Invoice Header */}
-                                        <Box sx={{
-                                            p: 2,
-                                            backgroundColor: '#f5f5f5',
-                                            borderBottom: '1px solid #ddd',
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center'
-                                        }}>
-                                            <Box>
-                                                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                                                    INVOICE#: {invoice.invoice_no}
-                                                </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    DATE: {invoice.date} | CUSTOMER: {invoice.customer} | ORDER VIA: {invoice.order_via}
-                                                </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    WAITER: {invoice.waiter} | TABLE#: {invoice.table} | COVERS: {invoice.covers}
-                                                </Typography>
-                                            </Box>
-                                            <Box sx={{ textAlign: 'right' }}>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    KOT: {invoice.kot}
-                                                </Typography>
-                                            </Box>
-                                        </Box>
-
-                                        {/* Items Table */}
-                                        <TableContainer>
-                                            <Table size="small">
-                                                <TableHead>
-                                                    <TableRow sx={{bgcolor:'#063455'}}>
-                                                        <TableCell sx={{ fontWeight: '600', color: '#fff' }}>Time</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Item Code</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Item Name</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff', }}>QTY Sold</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Sale Price</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Sub Total</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Discount</TableCell>
-                                                        {showTaxColumn && (
-                                                            <TableCell sx={{ fontWeight: '600', color: '#fff' }}>Tax</TableCell>
-                                                        )}
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>Total Sale</TableCell>
-                                                    </TableRow>
-                                                </TableHead>
-                                                <TableBody>
-                                                    {invoice.items.map((item, itemIndex) => (
-                                                        <TableRow key={itemIndex}>
-                                                            <TableCell sx={{ fontSize: '0.75rem' }}>{item.time || '-'}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem' }}>{item.code}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem' }}>{item.name}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center' }}>{item.qty}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center' }}>{formatCurrency(item.sale_price)}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center' }}>{formatCurrency(item.sub_total)}</TableCell>
-                                                            <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center' }}>{formatCurrency(item.discount)}</TableCell>
-                                                            {showTaxColumn && (
-                                                                <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center' }}>
-                                                                    {formatCurrency(item.tax)}
-                                                                </TableCell>
-                                                            )}
-                                                            <TableCell sx={{ fontSize: '0.75rem', textAlign: 'center', fontWeight: 'bold' }}>{formatCurrency(item.total_sale)}</TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                    {/* Invoice Total Row */}
-                                                    <TableRow sx={{ backgroundColor: '#063455' }}>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>TOTAL:</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}></TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}></TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>{invoice.total_qty}</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}></TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>{formatCurrency(invoice.total_amount)}</TableCell>
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>{formatCurrency(invoice.total_discount)}</TableCell>
-                                                        {showTaxColumn && (
-                                                            <TableCell sx={{ fontWeight: '600', color: '#fff' }}>
-                                                                {formatCurrency(invoice.total_tax)}
-                                                            </TableCell>
-                                                        )}
-                                                        <TableCell sx={{ fontWeight: '600', color:'#fff' }}>{formatCurrency(invoice.total_sale)}</TableCell>
-                                                    </TableRow>
-                                                </TableBody>
-                                            </Table>
-                                        </TableContainer>
-                                    </Box>
-                                ))}
-
-                                {/* Grand Total */}
-                                <Box sx={{ mt: 4, p: 3, bgcolor: '#0a3d62', color: 'white', borderRadius: 2 }}>
-                                    <Typography
-                                        variant="h6"
-                                        sx={{
-                                            textAlign: 'center',
-                                            fontWeight: 'bold',
-                                            mb: 2
-                                        }}
-                                    >
-                                        GRAND TOTALS
-                                    </Typography>
-                                    <Stack direction="row" spacing={2} flexWrap="wrap" justifyContent="center" useFlexGap>
-                                        <Typography variant="body1">
-                                            <strong>Invoices: {salesData.length}</strong>
-                                        </Typography>
-                                        <Typography variant="body1">
-                                            <strong>Quantity: {grandTotalQty}</strong>
-                                        </Typography>
-                                        <Typography variant="body1">
-                                            <strong>Discount: {formatCurrency(grandTotalDiscount)}</strong>
-                                        </Typography>
-                                        {showTaxColumn && (
-                                            <Typography variant="body1">
-                                                <strong>Tax: {formatCurrency(grandTotalTax)}</strong>
-                                            </Typography>
-                                        )}
-                                        <Typography variant="body1">
-                                            <strong>Total Sale: {formatCurrency(grandTotalSale)}</strong>
-                                        </Typography>
-                                    </Stack>
-                                </Box>
-                            </Box>
-                        ) : (
-                            <Box sx={{ textAlign: 'center', py: 4 }}>
-                                <ReceiptIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-                                <Typography variant="h6" color="text.secondary">
-                                    No sales data found for the selected date range
-                                </Typography>
-                            </Box>
-                        )}
-                    </Paper>
-                </Box>
-            </div>
+                </SurfaceCard>
+            </AppPage>
         </>
     );
 }

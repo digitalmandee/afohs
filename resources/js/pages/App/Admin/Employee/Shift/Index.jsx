@@ -3,13 +3,14 @@ import AddIcon from '@mui/icons-material/Add';
 import { FaRegEdit } from 'react-icons/fa';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import SearchIcon from '@mui/icons-material/Search';
-import { Box, Button, IconButton, TextField, DialogActions, InputBase, Dialog, DialogContent, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, CircularProgress, MenuItem, Select, FormControl, InputLabel, TablePagination, Autocomplete, Chip, OutlinedInput, Checkbox, ListItemText } from '@mui/material';
-import { useState, useEffect } from 'react';
+import { Box, Button, IconButton, TextField, DialogActions, Dialog, DialogContent, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, CircularProgress, MenuItem, Select, FormControl, InputLabel, TablePagination, Autocomplete, Chip, OutlinedInput, Checkbox, ListItemText } from '@mui/material';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useSnackbar } from 'notistack';
 import { FaTrash } from 'react-icons/fa';
 import { FaEdit } from 'react-icons/fa';
 import { Delete } from '@mui/icons-material';
+import debounce from 'lodash.debounce';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -23,7 +24,7 @@ const formatTime = (timeString) => {
     return `${hour12}:${minutes} ${ampm}`;
 };
 
-const ShiftIndex = ({ shifts: initialShifts }) => {
+const ShiftIndex = ({ shifts: initialShifts, filters = {} }) => {
     const { enqueueSnackbar } = useSnackbar();
     const [loading, setLoading] = useState(false);
     // If passed from controller as prop, usage depends on implementation.
@@ -51,9 +52,8 @@ const ShiftIndex = ({ shifts: initialShifts }) => {
     // So I have `shifts` as prop.
 
     const { data: shiftsData, current_page, per_page, total, last_page } = initialShifts;
-    const [search, setSearch] = useState('');
+    const [search, setSearch] = useState(filters?.search || '');
 
-    // Modal States
     const [openAddModal, setOpenAddModal] = useState(false);
     const [openDeleteModal, setOpenDeleteModal] = useState(false);
     const [editMode, setEditMode] = useState(false);
@@ -69,22 +69,26 @@ const ShiftIndex = ({ shifts: initialShifts }) => {
         status: true,
     });
 
-    const handleSearch = (e) => {
-        if (e.key === 'Enter') {
-            router.visit(route('shifts.index'), {
-                data: { search: search },
-                preserveState: true,
-                preserveScroll: true,
-            });
-        }
-    };
-
-    const handlePageChange = (event, newPage) => {
+    const submitSearch = (nextSearch, page = 1) => {
         router.visit(route('shifts.index'), {
-            data: { page: newPage + 1, search }, // MUI Page is 0-indexed
+            data: { search: nextSearch || undefined, page },
             preserveState: true,
             preserveScroll: true,
+            replace: true,
         });
+    };
+
+    const debouncedSearch = useMemo(() => debounce((nextSearch) => submitSearch(nextSearch, 1), 300), []);
+
+    useEffect(() => () => debouncedSearch.cancel(), [debouncedSearch]);
+
+    useEffect(() => {
+        debouncedSearch(search.trim());
+    }, [search, debouncedSearch]);
+
+    const handlePageChange = (event, newPage) => {
+        debouncedSearch.cancel();
+        submitSearch(search.trim(), newPage + 1);
     };
 
     const handleOpen = () => {
@@ -194,7 +198,6 @@ const ShiftIndex = ({ shifts: initialShifts }) => {
                         size="small"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        onKeyDown={handleSearch}
                         sx={{
                             width: '280px',
                             '& .MuiOutlinedInput-root': {

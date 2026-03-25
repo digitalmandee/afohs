@@ -4,6 +4,7 @@ import { CircularProgress, FormControl, InputAdornment, MenuItem, Select } from 
 import { Search, ArrowBack } from '@mui/icons-material';
 import { Table, TableBody, TableCell, TableContainer, TableHead, Button, TableRow, Paper, Pagination, TextField, Box, Typography } from '@mui/material';
 import axios from 'axios';
+import debounce from 'lodash.debounce';
 
 const LeaveReport = () => {
     // const [open, setOpen] = useState(true);
@@ -38,10 +39,14 @@ const LeaveReport = () => {
         }
     };
 
-    const handleSearch = () => {
-        setCurrentPage(1); // Reset to first page when searching
-        getMonthlyReport(1);
-    };
+    const debouncedSearch = React.useMemo(
+        () =>
+            debounce((page = 1) => {
+                setCurrentPage(page);
+                getMonthlyReport(page);
+            }, 300),
+        [limit, month, searchTerm]
+    );
 
     const handleClearSearch = async () => {
         setSearchTerm('');
@@ -64,25 +69,14 @@ const LeaveReport = () => {
         }
     };
 
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter') {
-            handleSearch();
-        }
-    };
-
     useEffect(() => {
         getMonthlyReport(currentPage);
     }, [currentPage, limit, month]);
 
-    // Auto-search when search term is cleared
     useEffect(() => {
-        if (searchTerm === '') {
-            const timeoutId = setTimeout(() => {
-                getMonthlyReport(1);
-            }, 300); // Debounce for 300ms
-            return () => clearTimeout(timeoutId);
-        }
-    }, [searchTerm]);
+        debouncedSearch(1);
+        return () => debouncedSearch.cancel();
+    }, [searchTerm, debouncedSearch]);
 
     // Generate months dynamically
     const months = Array.from({ length: 12 }, (_, i) => {
@@ -191,7 +185,6 @@ const LeaveReport = () => {
                                     placeholder="Search by name or employee ID..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    onKeyPress={handleKeyPress}
                                     size="small"
                                     // sx={{ width: 350 }}
                                     InputProps={{
@@ -207,23 +200,6 @@ const LeaveReport = () => {
                                         },
                                     }}
                                 />
-                                <Button
-                                    variant="contained"
-                                    startIcon={<Search />}
-                                    onClick={handleSearch}
-                                    sx={{
-                                        backgroundColor: '#063455',
-                                        color: 'white',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        '&:hover': {
-                                            backgroundColor: '#063455',
-                                        },
-                                    }}
-                                >
-                                    Search
-                                </Button>
-                                {/* {searchTerm && ( */}
                                 <Button
                                     variant="outlined"
                                     onClick={handleClearSearch}

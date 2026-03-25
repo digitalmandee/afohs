@@ -11,7 +11,7 @@ import { routeNameForContext } from '@/lib/utils';
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
 
-export default function AddKitchen({ userNo, customer = null }) {
+export default function AddKitchen({ userNo, customer = null, printerProfiles = [] }) {
     const phoneNumber = customer?.phone_number || '';
     const [phoneCountryCodeFromData, phoneNumberWithoutCode] = phoneNumber.includes('-') ? phoneNumber.split('-') : [phoneNumber.match(/^\+\d+/)?.[0] || '+702', phoneNumber.replace(/^\+\d+/, '').trim()];
 
@@ -25,8 +25,7 @@ export default function AddKitchen({ userNo, customer = null }) {
         email: customer?.email || '',
         phone_number: phoneNumberWithoutCode || '',
         profile_photo: customer?.profile_photo || null,
-        printer_ip: customer?.kitchen_detail?.printer_ip || '',
-        printer_port: customer?.kitchen_detail?.printer_port || '',
+        printer_profile_id: customer?.kitchen_detail?.printer_profile_id || '',
     });
 
     const [errors, setErrors] = useState({});
@@ -46,8 +45,7 @@ export default function AddKitchen({ userNo, customer = null }) {
             email: '',
             phone_number: '',
             profile_photo: null,
-            printer_ip: '',
-            printer_port: '',
+            printer_profile_id: '',
         });
         setProfileImage(null);
     };
@@ -98,11 +96,11 @@ export default function AddKitchen({ userNo, customer = null }) {
         setPrinterMessage(null);
         try {
             const response = await axios.get(route(routeNameForContext('printers.discover')));
-            const printers = response.data?.printers || [];
+            const printers = (response.data?.printers || []).filter((printer) => printer.source === 'network_scan');
             setDiscoveredPrinters(printers);
             setPrinterMessage({
                 type: 'success',
-                text: printers.length ? 'Printer scan completed. Choose a printer to assign to this kitchen.' : 'No printers were found on the current network scan.',
+                text: printers.length ? 'Printer discovery completed. Choose a printer to assign to this kitchen.' : 'No network or system printers were found from the current scan.',
             });
         } catch (error) {
             setDiscoveredPrinters([]);
@@ -116,19 +114,9 @@ export default function AddKitchen({ userNo, customer = null }) {
     };
 
     const assignPrinterToThisKitchen = (printer) => {
-        setNewCustomer((prev) => ({
-            ...prev,
-            printer_ip: printer.printer_ip,
-            printer_port: String(printer.printer_port || 9100),
-        }));
-        setErrors((prev) => ({
-            ...prev,
-            printer_ip: null,
-            printer_port: null,
-        }));
         setPrinterMessage({
-            type: 'success',
-            text: `Assigned ${printer.label || printer.printer_ip} to this kitchen. Save changes to persist it.`,
+            type: 'info',
+            text: `Scanned ${printer.label || printer.printer_ip}. Create a saved printer profile in Printer Management first, then assign that profile here.`,
         });
     };
 
@@ -162,8 +150,11 @@ export default function AddKitchen({ userNo, customer = null }) {
         setPrinterMessage(null);
         try {
             const response = await axios.post(route(routeNameForContext('printer.test')), {
-                printer_ip: printer.printer_ip,
-                printer_port: Number(printer.printer_port) || 9100,
+                printer_source: printer.source,
+                printer_ip: printer.printer_ip || null,
+                printer_port: printer.printer_port ? Number(printer.printer_port) || 9100 : null,
+                printer_name: printer.printer_name || null,
+                printer_connector: printer.printer_connector || null,
             });
             setPrinterMessage({
                 type: 'success',
@@ -187,8 +178,7 @@ export default function AddKitchen({ userNo, customer = null }) {
         if (!newCustomer.name) newErrors.name = 'Kitchen Name is required.';
         if (!newCustomer.email) newErrors.email = 'Email is required.';
         if (!newCustomer.phone_number) newErrors.phone = 'Phone Number is required.';
-        if (!newCustomer.printer_ip) newErrors.printer_ip = 'Printer IP is required.';
-        if (!newCustomer.printer_port) newErrors.printer_port = 'Printer Port is required.';
+        if (!newCustomer.printer_profile_id) newErrors.printer_profile_id = 'Printer profile is required.';
 
         // Email format validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -347,13 +337,13 @@ export default function AddKitchen({ userNo, customer = null }) {
                                                         Printer Configuration
                                                     </Typography>
                                                     <Typography variant="body2" color="text.secondary">
-                                                        This kitchen uses the same saved printer configuration shown in Printer Management.
+                                                        This kitchen should be linked to one saved network printer profile from Printer Management.
                                                     </Typography>
                                                 </Box>
                                                 <Chip
-                                                    label={newCustomer.printer_ip ? 'Configured' : 'Not Configured'}
-                                                    color={newCustomer.printer_ip ? 'success' : 'default'}
-                                                    variant={newCustomer.printer_ip ? 'filled' : 'outlined'}
+                                                    label={newCustomer.printer_profile_id ? 'Configured' : 'Not Configured'}
+                                                    color={newCustomer.printer_profile_id ? 'success' : 'default'}
+                                                    variant={newCustomer.printer_profile_id ? 'filled' : 'outlined'}
                                                 />
                                             </Box>
 
@@ -368,45 +358,35 @@ export default function AddKitchen({ userNo, customer = null }) {
                                                     {scanLoading ? 'Scanning...' : 'Scan Printers'}
                                                 </Button>
                                                 {isEditMode ? (
-                                                    <Button variant="outlined" onClick={testSavedPrinter} disabled={testingSavedPrinter || !newCustomer.printer_ip}>
+                                                    <Button variant="outlined" onClick={testSavedPrinter} disabled={testingSavedPrinter || !newCustomer.printer_profile_id}>
                                                         {testingSavedPrinter ? 'Testing Saved Printer...' : 'Test Assigned Printer'}
                                                     </Button>
                                                 ) : null}
                                             </Stack>
 
                                             <Grid container spacing={2}>
-                                                <Grid item xs={12} sm={6}>
+                                                <Grid item xs={12}>
                                                     <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                                                        Assigned Printer IP
+                                                        Assigned Printer Profile
                                                     </Typography>
                                                     <TextField
+                                                        select
                                                         fullWidth
-                                                        placeholder="e.g. 192.168.1.100"
-                                                        name="printer_ip"
-                                                        value={newCustomer.printer_ip}
+                                                        name="printer_profile_id"
+                                                        value={newCustomer.printer_profile_id}
                                                         onChange={handleInputChange}
                                                         margin="normal"
                                                         variant="outlined"
-                                                        error={!!errors.printer_ip}
-                                                        helperText={errors.printer_ip || 'You can assign from scan results or enter manually.'}
-                                                    />
-                                                </Grid>
-
-                                                <Grid item xs={12} sm={6}>
-                                                    <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                                                        Assigned Printer Port
-                                                    </Typography>
-                                                    <TextField
-                                                        fullWidth
-                                                        placeholder="e.g. 9100"
-                                                        name="printer_port"
-                                                        value={newCustomer.printer_port}
-                                                        onChange={handleInputChange}
-                                                        margin="normal"
-                                                        variant="outlined"
-                                                        error={!!errors.printer_port}
-                                                        helperText={errors.printer_port || 'Default network thermal printers usually use 9100.'}
-                                                    />
+                                                        error={!!errors.printer_profile_id}
+                                                        helperText={errors.printer_profile_id || 'Create and manage profiles in Printer Management, then assign one here.'}
+                                                    >
+                                                        <MenuItem value="">Select Printer Profile</MenuItem>
+                                                        {printerProfiles.map((profile) => (
+                                                            <MenuItem key={profile.id} value={profile.id}>
+                                                                {profile.name} ({profile.printer_ip}:{profile.printer_port})
+                                                            </MenuItem>
+                                                        ))}
+                                                    </TextField>
                                                 </Grid>
                                             </Grid>
 
@@ -416,7 +396,7 @@ export default function AddKitchen({ userNo, customer = null }) {
                                                 </Typography>
                                                 {discoveredPrinters.length === 0 ? (
                                                     <Alert severity="info">
-                                                        No printers scanned yet. Use Scan Printers to discover devices on the current network for this kitchen profile.
+                                                        No printers scanned yet. Use Scan Printers to discover network printers and system-installed printer queues for this kitchen profile.
                                                     </Alert>
                                                 ) : (
                                                     <Stack spacing={1.25}>
@@ -433,7 +413,7 @@ export default function AddKitchen({ userNo, customer = null }) {
                                                                     </Grid>
                                                                     <Grid item xs={12} md={3}>
                                                                         <Chip
-                                                                            label={printer.assignment_label || 'Found but unassigned'}
+                                                                            label={printer.assignment_label || 'Discovered network printer'}
                                                                             color={
                                                                                 printer.status === 'assigned_to_kitchen'
                                                                                     ? 'success'

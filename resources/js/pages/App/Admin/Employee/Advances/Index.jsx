@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import AdminLayout from '@/layouts/AdminLayout';
 import { Search, Visibility } from '@mui/icons-material';
 import { Box, Card, CardContent, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, FormControl, InputLabel, Select, MenuItem, Grid, Chip, TextField, Pagination } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, Close as CloseIcon, Payment as PaymentIcon } from '@mui/icons-material';
+import debounce from 'lodash.debounce';
 
 const formatCurrency = (amount) => `Rs ${parseFloat(amount || 0).toLocaleString()}`;
 
@@ -14,19 +15,31 @@ const getStatusColor = (status) => {
 };
 
 const Index = ({ advances, employees = [], stats = {}, filters = {} }) => {
+    const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [amountQuery, setAmountQuery] = useState(filters.amount || '');
     const [selectedEmployee, setSelectedEmployee] = useState(filters.employee_id || '');
     const [selectedStatus, setSelectedStatus] = useState(filters.status || '');
 
-    const handleFilter = () => {
+    const handleFilter = (override = {}) => {
         router.get(
             route('employees.advances.index'),
             {
-                employee_id: selectedEmployee || undefined,
-                status: selectedStatus || undefined,
+                search: (override.search ?? searchTerm) || undefined,
+                amount: (override.amount ?? amountQuery) || undefined,
+                employee_id: (override.employee_id ?? selectedEmployee) || undefined,
+                status: (override.status ?? selectedStatus) || undefined,
             },
-            { preserveState: true },
+            { preserveState: true, preserveScroll: true, replace: true },
         );
     };
+
+    const debouncedFilter = useMemo(() => debounce((payload = {}) => handleFilter(payload), 300), [searchTerm, amountQuery, selectedEmployee, selectedStatus]);
+
+    useEffect(() => () => debouncedFilter.cancel(), [debouncedFilter]);
+
+    useEffect(() => {
+        debouncedFilter();
+    }, [searchTerm, amountQuery, selectedEmployee, selectedStatus, debouncedFilter]);
 
     const handleApprove = (id) => {
         if (confirm('Approve this advance request?')) {
@@ -113,6 +126,34 @@ const Index = ({ advances, employees = [], stats = {}, filters = {} }) => {
                 {/* Filters */}
                 <Box sx={{ mb: 3, mt: 2, bgcolor: 'transparent', boxShadow: 'none' }}>
                     <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} sm={3}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Search employee"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                sx={{
+                                    '& .MuiOutlinedInput-root': {
+                                        borderRadius: '16px',
+                                    },
+                                }}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={2}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Minimum Amount"
+                                value={amountQuery}
+                                onChange={(e) => setAmountQuery(e.target.value)}
+                                sx={{
+                                    '& .MuiOutlinedInput-root': {
+                                        borderRadius: '16px',
+                                    },
+                                }}
+                            />
+                        </Grid>
                         <Grid item xs={12} sm={3}>
                             <FormControl fullWidth size="small"
                                 sx={{
@@ -223,8 +264,8 @@ const Index = ({ advances, employees = [], stats = {}, filters = {} }) => {
                                 </Select>
                             </FormControl>
                         </Grid>
-                        <Grid item xs={12} sm={3} sx={{ display: 'flex', gap: 1 }}>
-                            <Button variant="contained" startIcon={<Search />} onClick={handleFilter} sx={{ backgroundColor: '#063455', borderRadius: '16px', textTransform: 'none' }}>
+                        <Grid item xs={12} sm={4} sx={{ display: 'flex', gap: 1 }}>
+                            <Button variant="contained" startIcon={<Search />} onClick={() => handleFilter()} sx={{ backgroundColor: '#063455', borderRadius: '16px', textTransform: 'none' }}>
                                 Search
                             </Button>
                             <Button variant="outlined" onClick={() => router.visit(route('employees.advances.index'))} sx={{ border: '1px solid #063455', color: '#063455', borderRadius: '16px', px: 4, textTransform: 'none' }}>

@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Customer;
 use App\Models\FinancialInvoice;
 use App\Models\FinancialReceipt;
+use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\Ingredient;
 use App\Models\Order;
@@ -37,11 +38,11 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
     {
         $actor = $this->bootstrapActor();
         [$warehouse, $location] = $this->createWarehouseContext();
-        [$menuProduct, $rawProduct] = $this->createRecipeDrivenMenuProduct();
+        [$menuProduct, $rawInventoryItem] = $this->createRecipeDrivenMenuProduct();
         $order = $this->createOrder($actor, ['status' => 'in_progress']);
         $orderItem = $this->createOrderItem($order, $menuProduct, 3);
 
-        $this->seedInventoryLedger($order, $warehouse, $location, $menuProduct, 3, $rawProduct, 6);
+        $this->seedInventoryLedger($order, $warehouse, $location, $menuProduct, 3, $rawInventoryItem, 6);
 
         $request = $this->makeRequest('POST', [
             'updated_items' => [[
@@ -63,17 +64,17 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
         $response = app(OrderController::class)->update($request, $order->id);
 
         $this->assertInstanceOf(RedirectResponse::class, $response);
-        $this->assertSame(8.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
-        $this->assertSame(16.0, (float) Product::findOrFail($rawProduct->id)->current_stock);
-        $this->assertDatabaseHas('inventory_transactions', [
+        $this->assertSame(7.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
+        $this->assertSame(16.0, (float) InventoryItem::findOrFail($rawInventoryItem->id)->current_stock);
+        $this->assertDatabaseMissing('inventory_transactions', [
             'product_id' => $menuProduct->id,
             'reference_type' => Order::class,
             'reference_id' => $order->id,
             'type' => 'return_in',
-            'qty_in' => 1,
+            'reason' => 'POS order adjustment return',
         ]);
         $this->assertDatabaseHas('inventory_transactions', [
-            'product_id' => $rawProduct->id,
+            'inventory_item_id' => $rawInventoryItem->id,
             'reference_type' => Order::class,
             'reference_id' => $order->id,
             'type' => 'return_in',
@@ -149,13 +150,12 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
 
         app(OrderController::class)->update($request, $order->id);
 
-        $this->assertSame(7.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
-        $this->assertDatabaseHas('inventory_transactions', [
+        $this->assertSame(8.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
+        $this->assertDatabaseMissing('inventory_transactions', [
             'product_id' => $menuProduct->id,
             'reference_type' => Order::class,
             'reference_id' => $order->id,
             'type' => 'sale',
-            'qty_out' => 1,
             'reason' => 'POS order adjustment consumption',
         ]);
     }
@@ -186,7 +186,14 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
         $this->assertSame('cancelled', $order->status);
         $this->assertSame('return', $order->cancelType);
         $this->assertSame('cancelled', $invoice->status);
-        $this->assertSame(10.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
+        $this->assertSame(8.0, (float) Product::findOrFail($menuProduct->id)->current_stock);
+        $this->assertDatabaseMissing('inventory_transactions', [
+            'product_id' => $menuProduct->id,
+            'reference_type' => Order::class,
+            'reference_id' => $order->id,
+            'type' => 'return_in',
+            'reason' => 'POS order adjustment return',
+        ]);
     }
 
     public function test_full_order_cancel_with_void_does_not_restore_inventory_and_voids_invoice(): void
@@ -401,19 +408,15 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
             'tenant_id' => $this->tenantId,
         ]);
 
-        $rawProduct = Product::create([
+        $rawInventoryItem = InventoryItem::create([
             'name' => 'Patty',
             'category_id' => $rawCategory->id,
-            'base_price' => 5,
-            'cost_of_goods_sold' => 2,
+            'default_unit_cost' => 2,
             'current_stock' => 0,
-            'minimal_stock' => 0,
-            'available_order_types' => ['dineIn'],
-            'is_salable' => false,
-            'is_purchasable' => true,
-            'item_type' => 'raw_material',
-            'status' => 'active',
+            'minimum_stock' => 0,
             'manage_stock' => true,
+            'is_purchasable' => true,
+            'status' => 'active',
             'tenant_id' => $this->tenantId,
         ]);
 
@@ -426,7 +429,7 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
             'name' => 'Patty Ingredient',
             'total_quantity' => 0,
             'used_quantity' => 0,
-            'inventory_product_id' => $rawProduct->id,
+            'inventory_item_id' => $rawInventoryItem->id,
             'remaining_quantity' => 0,
             'status' => 'active',
         ]);
@@ -436,7 +439,7 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
             'cost' => 0,
         ]);
 
-        return [$menuProduct->fresh('ingredients.inventoryProduct'), $rawProduct];
+        return [$menuProduct->fresh('ingredients.inventoryItem'), $rawInventoryItem];
     }
 
     private function createCustomer(): Customer
@@ -529,7 +532,7 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
         WarehouseLocation $location,
         Product $finishedProduct,
         float $finishedConsumedQty,
-        ?Product $rawProduct = null,
+        ?InventoryItem $rawInventoryItem = null,
         float $rawConsumedQty = 0,
     ): void {
         $service = app(InventoryMovementService::class);
@@ -542,14 +545,14 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
             'unit_cost' => (float) ($finishedProduct->cost_of_goods_sold ?? 1),
         ]);
 
-        if ($rawProduct) {
+        if ($rawInventoryItem) {
             $service->createOpeningBalance([
                 'warehouse_id' => $warehouse->id,
                 'warehouse_location_id' => $location->id,
-                'product_id' => $rawProduct->id,
+                'inventory_item_id' => $rawInventoryItem->id,
                 'transaction_date' => now()->toDateString(),
                 'quantity' => 20,
-                'unit_cost' => (float) ($rawProduct->cost_of_goods_sold ?? 1),
+                'unit_cost' => (float) ($rawInventoryItem->default_unit_cost ?? 1),
             ]);
         }
 
@@ -571,9 +574,9 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
             'created_by' => auth()->id(),
         ]);
 
-        if ($rawProduct && $rawConsumedQty > 0) {
+        if ($rawInventoryItem && $rawConsumedQty > 0) {
             $service->record([
-                'product_id' => $rawProduct->id,
+                'inventory_item_id' => $rawInventoryItem->id,
                 'tenant_id' => $order->tenant_id,
                 'warehouse_id' => $warehouse->id,
                 'warehouse_location_id' => $location->id,
@@ -581,8 +584,8 @@ class PosOrderAdjustmentWorkflowTest extends TestCase
                 'type' => 'sale',
                 'qty_in' => 0,
                 'qty_out' => $rawConsumedQty,
-                'unit_cost' => (float) ($rawProduct->cost_of_goods_sold ?? 1),
-                'total_cost' => (float) ($rawProduct->cost_of_goods_sold ?? 1) * $rawConsumedQty,
+                'unit_cost' => (float) ($rawInventoryItem->default_unit_cost ?? 1),
+                'total_cost' => (float) ($rawInventoryItem->default_unit_cost ?? 1) * $rawConsumedQty,
                 'reference_type' => Order::class,
                 'reference_id' => $order->id,
                 'reason' => 'Seed recipe sale',

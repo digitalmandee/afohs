@@ -24,6 +24,18 @@ class EmployeeLoanController extends Controller
         if ($request->status) {
             $query->where('status', $request->status);
         }
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($inner) use ($search) {
+                $inner
+                    ->whereHas('employee', function ($employeeQuery) use ($search) {
+                        $employeeQuery
+                            ->where('name', 'like', '%' . $search . '%')
+                            ->orWhere('employee_id', 'like', '%' . $search . '%');
+                    })
+                    ->orWhere('reason', 'like', '%' . $search . '%');
+            });
+        }
         if ($request->date_from) {
             $query->whereDate('loan_date', '>=', $request->date_from);
         }
@@ -65,7 +77,7 @@ class EmployeeLoanController extends Controller
             'loans' => $loans,
             'employees' => $employees,
             'stats' => $stats,
-            'filters' => $request->only(['employee_id', 'status', 'date_from', 'date_to', 'sort_by', 'sort_order']),
+            'filters' => $request->only(['employee_id', 'status', 'date_from', 'date_to', 'sort_by', 'sort_order', 'search']),
         ]);
     }
 

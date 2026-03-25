@@ -35,7 +35,19 @@ class AccountingOperationsController extends Controller
             $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
-                    ->orWhere('mem_no', 'like', "%{$search}%");
+                    ->orWhere('mem_no', 'like', "%{$search}%")
+                    ->orWhereHas('member', function ($memberQuery) use ($search) {
+                        $memberQuery->whereRaw('LOWER(full_name) like ?', ['%' . strtolower($search) . '%'])
+                            ->orWhere('membership_no', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('corporateMember', function ($corporateQuery) use ($search) {
+                        $corporateQuery->whereRaw('LOWER(full_name) like ?', ['%' . strtolower($search) . '%'])
+                            ->orWhere('membership_no', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                        $customerQuery->whereRaw('LOWER(name) like ?', ['%' . strtolower($search) . '%'])
+                            ->orWhere('customer_no', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -113,7 +125,19 @@ class AccountingOperationsController extends Controller
                 $search = trim((string) $request->search);
                 $query->where(function ($q) use ($search) {
                     $q->where('invoice_no', 'like', "%{$search}%")
-                        ->orWhere('mem_no', 'like', "%{$search}%");
+                        ->orWhere('mem_no', 'like', "%{$search}%")
+                        ->orWhereHas('member', function ($memberQuery) use ($search) {
+                            $memberQuery->whereRaw('LOWER(full_name) like ?', ['%' . strtolower($search) . '%'])
+                                ->orWhere('membership_no', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('corporateMember', function ($corporateQuery) use ($search) {
+                            $corporateQuery->whereRaw('LOWER(full_name) like ?', ['%' . strtolower($search) . '%'])
+                                ->orWhere('membership_no', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                            $customerQuery->whereRaw('LOWER(name) like ?', ['%' . strtolower($search) . '%'])
+                                ->orWhere('customer_no', 'like', "%{$search}%");
+                        });
                 });
             }
 
@@ -146,7 +170,7 @@ class AccountingOperationsController extends Controller
                     }
                 }
 
-                $age = $parsedDueDate ? $parsedDueDate->diffInDays($today) : 0;
+                $age = $parsedDueDate ? max(0, $parsedDueDate->diffInDays($today, false)) : 0;
                 $balance = ($invoice->total_price ?? 0) - ($invoice->paid_amount ?? 0);
                 $source = $sourceResolver->resolveForFinancialInvoice(
                     $invoice,

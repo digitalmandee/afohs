@@ -16,6 +16,7 @@ import {
     TableRow,
     TextField,
     Typography,
+    Alert,
 } from '@mui/material';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
@@ -64,7 +65,7 @@ const defaultFilters = (filters, transactions) => ({
     page: 1,
 });
 
-export default function Transaction({ transactions, filters, users = [], transactionTypes = {}, summary = {}, tenants = [] }) {
+export default function Transaction({ transactions, filters, users = [], transactionTypes = {}, summary = {}, tenants = [], error = null }) {
     const rows = transactions?.data || [];
     const [localFilters, setLocalFilters] = React.useState(() => defaultFilters(filters, transactions));
     const filtersRef = React.useRef(localFilters);
@@ -220,6 +221,8 @@ export default function Transaction({ transactions, filters, users = [], transac
                     </Button>,
                 ]}
             >
+                {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
+
                 <Grid container spacing={1.5}>
                     <Grid item xs={12} sm={6} md={3}><StatCard label="Transactions" value={formatCount(summary?.count)} accent compact /></Grid>
                     <Grid item xs={12} sm={6} md={3}><StatCard label="Total Amount" value={formatAmount(summary?.total_amount)} tone="light" compact /></Grid>

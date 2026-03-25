@@ -23,6 +23,7 @@ import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import { AdminIconAction, AdminPillAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 import Pagination from '@/components/Pagination';
 const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
     const props = usePage().props;
@@ -616,52 +617,36 @@ const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
                                         </PopupState>
                                     </TableCell>
                                     <TableCell align="center">
-                                        <Button
-                                            variant="outlined"
-                                            size="small"
-                                            color="#063455"
-                                            style={{
-                                                color: '#063455',
-                                                textTransform: 'none',
-                                            }}
+                                        <AdminPillAction
+                                            label="Card"
                                             onClick={() => {
                                                 setCardMember({ ...user, is_corporate: true });
                                                 setOpenCardModal(true);
                                             }}
-                                        >
-                                            View
-                                        </Button>
+                                        />
                                     </TableCell>
                                     <TableCell align="center">
-                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                            <Tooltip title="View Profile">
-                                                <IconButton size="small" onClick={() => router.visit(route('corporate-membership.profile', user.id))} sx={{ color: '#063455' }}>
-                                                    <Visibility size={18} />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="Edit Member">
-                                                <IconButton size="small" onClick={() => router.visit(route('corporate-membership.edit', user.id))} sx={{ color: '#f57c00' }}>
-                                                    <FaEdit size={18} />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="View Invoice">
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={() => {
-                                                        setInvoiceMember(user);
-                                                        setOpenInvoiceModal(true);
-                                                    }}
-                                                    sx={{ color: '#2e7d32' }}
-                                                >
-                                                    <ReceiptIcon fontSize="small" />
-                                                </IconButton>
-                                            </Tooltip>
-                                            <Tooltip title="Delete Member">
-                                                <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: '#d32f2f' }}>
-                                                    <Delete size={18} />
-                                                </IconButton>
-                                            </Tooltip>
-                                        </div>
+                                        <AdminRowActionGroup justify="center">
+                                            <AdminIconAction title="View Profile" onClick={() => router.visit(route('corporate-membership.profile', user.id))}>
+                                                <Visibility size={18} />
+                                            </AdminIconAction>
+                                            <AdminIconAction title="Edit Member" onClick={() => router.visit(route('corporate-membership.edit', user.id))} color="warning">
+                                                <FaEdit size={16} />
+                                            </AdminIconAction>
+                                            <AdminIconAction
+                                                title="View Invoice"
+                                                onClick={() => {
+                                                    setInvoiceMember(user);
+                                                    setOpenInvoiceModal(true);
+                                                }}
+                                                color="success"
+                                            >
+                                                <ReceiptIcon fontSize="small" />
+                                            </AdminIconAction>
+                                            <AdminIconAction title="Delete Member" onClick={() => handleDeleteClick(user)} color="error">
+                                                <Delete size={18} />
+                                            </AdminIconAction>
+                                        </AdminRowActionGroup>
                                     </TableCell>
                                 </TableRow>
                             )}

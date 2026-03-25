@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Typography, Button, Menu, MenuItem, TextField, createTheme, ThemeProvider, Table, TableContainer, TableHead, TableRow, TableCell, TableBody, Paper, IconButton, Box, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Tooltip, Autocomplete, CircularProgress, Chip } from '@mui/material';
 import { router, usePage } from '@inertiajs/react';
 import { Search, FilterAlt, Delete } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { FaEdit } from 'react-icons/fa';
 import axios from 'axios';
+import debounce from 'lodash.debounce';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -25,6 +26,7 @@ const PartnersAffiliatesIndex = ({ partners, filters = {} }) => {
     };
 
     const handleApplyFilters = () => {
+        debouncedApply.cancel();
         router.get(route('admin.membership.partners-affiliates.index'), filterValues, {
             preserveState: true,
             preserveScroll: true,
@@ -33,6 +35,9 @@ const PartnersAffiliatesIndex = ({ partners, filters = {} }) => {
     };
 
     const handleResetFilters = () => {
+        debouncedApply.cancel();
+        hasMountedRef.current = true;
+        isSyncingFromPropsRef.current = true;
         setFilterValues({
             search: '',
             type: 'all',
@@ -48,6 +53,20 @@ const PartnersAffiliatesIndex = ({ partners, filters = {} }) => {
             },
         );
     };
+
+    const debouncedApply = useMemo(
+        () =>
+            debounce((nextFilters) => {
+                router.get(route('admin.membership.partners-affiliates.index'), nextFilters, {
+                    preserveState: true,
+                    preserveScroll: true,
+                    replace: true,
+                });
+            }, 350),
+        [],
+    );
+    const hasMountedRef = useRef(false);
+    const isSyncingFromPropsRef = useRef(false);
 
     const handleDeleteClick = (item) => {
         setItemToDelete(item);
@@ -85,6 +104,31 @@ const PartnersAffiliatesIndex = ({ partners, filters = {} }) => {
 
         return () => clearTimeout(timer);
     }, [filterValues.search, open]);
+
+    useEffect(() => () => debouncedApply.cancel(), [debouncedApply]);
+
+    useEffect(() => {
+        isSyncingFromPropsRef.current = true;
+        setFilterValues({
+            search: filters.search || '',
+            type: filters.type || 'all',
+            status: filters.status || 'all',
+        });
+    }, [filters.search, filters.status, filters.type]);
+
+    useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return;
+        }
+
+        if (isSyncingFromPropsRef.current) {
+            isSyncingFromPropsRef.current = false;
+            return;
+        }
+
+        debouncedApply(filterValues);
+    }, [debouncedApply, filterValues]);
 
     const fetchPartners = async (query) => {
         setLoading(true);

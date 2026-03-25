@@ -26,14 +26,15 @@ class InventoryItemScopeAlignmentTest extends TestCase
         $this->assertStringNotContainsString("->where('manage_stock', true)->orWhere('item_type', 'raw_material')", $contents);
     }
 
-    public function test_ingredient_controller_reuses_shared_raw_material_scope_for_picker_queries(): void
+    public function test_ingredient_controller_uses_inventory_items_for_picker_queries(): void
     {
         $controllerPath = app_path('Http/Controllers/IngredientController.php');
         $contents = file_get_contents($controllerPath);
 
         $this->assertNotFalse($contents, 'Unable to read IngredientController.php');
-        $this->assertSame(2, substr_count($contents, '->rawMaterialStockManaged()'));
-        $this->assertStringContainsString("->where('item_type', 'raw_material')", $contents);
+        $this->assertSame(2, substr_count($contents, 'InventoryItem::query()'));
+        $this->assertSame(2, substr_count($contents, '->warehouseOperationalEligible()'));
         $this->assertStringContainsString("->where('manage_stock', true)", $contents);
+        $this->assertStringNotContainsString('inventory_product_id', $contents);
     }
 }

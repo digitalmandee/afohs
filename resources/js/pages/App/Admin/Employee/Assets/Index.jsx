@@ -1,28 +1,95 @@
-import React, { useState, useEffect } from 'react';
-import { Head, Link } from '@inertiajs/react';
-import { Box, Button, Chip, IconButton, InputAdornment, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Tooltip, Typography, Pagination, CircularProgress, Snackbar, Alert } from '@mui/material';
-import { Add, Delete, Edit, Search, Visibility, DeleteSweep } from '@mui/icons-material';
-import axios from 'axios';
+import React, { useEffect, useMemo, useState } from 'react';
+import { router } from '@inertiajs/react';
+import {
+    Alert,
+    Box,
+    Button,
+    Chip,
+    Grid,
+    IconButton,
+    Pagination,
+    TableCell,
+    TableRow,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import { Add, Delete, Edit, Search } from '@mui/icons-material';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import Create from './Create';
 import EditAsset from './Edit';
-import { FaEdit, FaTrash } from 'react-icons/fa';
+import axios from 'axios';
 
-const Index = () => {
-    const [open, setOpen] = useState(true); // Helper state for sidebar if needed
+const sampleAssets = [
+    {
+        id: 'sample-1',
+        name: 'Sample Office Chair',
+        classification: 'Furniture',
+        type: 'Chair',
+        location: 'Head Office',
+        quantity: 4,
+        status: 'active',
+        is_sample: true,
+    },
+    {
+        id: 'sample-2',
+        name: 'Sample Laptop',
+        classification: 'IT Equipment',
+        type: 'Laptop',
+        location: 'Accounts',
+        quantity: 2,
+        status: 'maintenance',
+        is_sample: true,
+    },
+];
+
+const columns = [
+    { key: 'name', label: 'Name', minWidth: 220 },
+    { key: 'classification', label: 'Classification', minWidth: 220, wrap: true },
+    { key: 'type', label: 'Type', minWidth: 200, wrap: true },
+    { key: 'location', label: 'Location', minWidth: 160 },
+    { key: 'quantity', label: 'Qty', minWidth: 90, align: 'center' },
+    { key: 'status', label: 'Status', minWidth: 140 },
+    { key: 'actions', label: 'Actions', minWidth: 90, align: 'right' },
+];
+
+const splitChips = (value, color) =>
+    String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => (
+            <Chip
+                key={`${color}-${item}`}
+                label={item}
+                size="small"
+                variant="outlined"
+                color={color}
+                sx={{ mr: 0.5, mb: 0.5 }}
+            />
+        ));
+
+const AssetsIndex = () => {
     const [assets, setAssets] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [limit, setLimit] = useState(10);
+    const [limit] = useState(10);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
 
-    // Modal states
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedAsset, setSelectedAsset] = useState(null);
 
-    const getAssets = async () => {
+    const getAssets = React.useCallback(async () => {
         setIsLoading(true);
+        setErrorMessage('');
+
         try {
             const res = await axios.get(route('employees.assets.list'), {
                 params: {
@@ -31,246 +98,213 @@ const Index = () => {
                     search: searchTerm,
                 },
             });
+
             if (res.data.success) {
-                setAssets(res.data.assets.data);
-                setTotalPages(res.data.assets.last_page);
+                setAssets(res.data.assets?.data || []);
+                setTotalPages(res.data.assets?.last_page || 1);
+                setTotalItems(res.data.assets?.total || 0);
+            } else {
+                setAssets([]);
+                setTotalPages(1);
+                setTotalItems(0);
             }
         } catch (error) {
-            console.error('Error fetching assets:', error);
+            setAssets([]);
+            setTotalPages(1);
+            setTotalItems(0);
+            setErrorMessage('Unable to load assets right now.');
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [limit, page, searchTerm]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
             getAssets();
         }, 300);
-        return () => clearTimeout(timer);
-    }, [page, searchTerm, limit]);
 
-    // Handle Delete
+        return () => clearTimeout(timer);
+    }, [getAssets]);
+
     const handleDelete = async (id) => {
-        if (!confirm('Are you sure you want to delete this asset?')) return;
+        if (!confirm('Are you sure you want to delete this asset?')) {
+            return;
+        }
+
         try {
-            const res = await axios.delete(route('employees.assets.destroy', id));
-            if (res.data.success) {
-                getAssets();
-                showSnackbar('Asset deleted successfully');
-            }
+            await axios.delete(route('employees.assets.destroy', id));
+            getAssets();
         } catch (error) {
-            console.error('Error deleting asset:', error);
-            showSnackbar('Error deleting asset', 'error');
+            setErrorMessage('Unable to delete the selected asset.');
         }
     };
 
-    // Snackbar state
-    const [snackbar, setSnackbar] = useState({
-        open: false,
-        message: '',
-        severity: 'success',
-    });
-
-    const handleCloseSnackbar = () => {
-        setSnackbar({ ...snackbar, open: false });
+    const resetFilters = () => {
+        setSearchTerm('');
+        setPage(1);
     };
 
-    const showSnackbar = (message, severity = 'success') => {
-        setSnackbar({ open: true, message, severity });
-    };
+    const displayAssets = assets.length > 0 ? assets : sampleAssets;
+    const paginationSummary = useMemo(
+        () => `${totalItems || displayAssets.length} records`,
+        [displayAssets.length, totalItems],
+    );
 
     return (
-        <>
-            <div style={{
-                height: '100vh',
-                backgroundColor: '#f5f5f5'
-            }}>
-                {/* <Head title="Asset Inventory" /> */}
-                <Box sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                        <Typography sx={{ color: '#063455', fontWeight: 700, fontSize: '30px' }}>
-                            Asset Inventory
-                        </Typography>
-                        <Box>
-                            <Button
-                                variant="contained"
-                                startIcon={<Add />}
-                                onClick={() => setCreateModalOpen(true)}
-                                sx={{
-                                    backgroundColor: '#063455',
-                                    textTransform: 'none',
-                                    borderRadius: '16px',
-                                    height: 35
-                                }}
-                            >
-                                Add New Asset
-                            </Button>
-                            <Button
-                                onClick={() => router.visit(route('employees.assets.trashed'))}
-                                style={{
-                                    // color: '#063455',
-                                    // backgroundColor: 'white',
-                                    borderRadius: '16px',
-                                    height: 35,
-                                    marginLeft: '10px',
-                                    textTransform: 'none',
-                                    // border: '1px solid #063455',
-                                }}
-                                variant="outlined"
-                                color='error'
-                                startIcon={<FaTrash size={14} />}
-                            >
-                                Trashed
-                            </Button>
-                        </Box>
-                    </Box>
-
-                    <Box sx={{ mb: 3, display:'flex', justifyContent:'flex-end' }}>
-                        <TextField
-                            variant="outlined"
-                            placeholder="Search assets..."
-                            value={searchTerm}
-                            onChange={(e) => {
-                                setSearchTerm(e.target.value);
-                                setPage(1);
-                            }}
-                            size="small"
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <Search color="action" />
-                                    </InputAdornment>
-                                ),
-                            }}
-                            sx={{
-                                width: '270px',
-
-                                '& .MuiOutlinedInput-root': {
-                                    borderRadius: '16px',
-
-                                    '& fieldset': {
-                                        borderRadius: '16px',
-                                    },
-                                },
-                            }}
-                        />
-                    </Box>
-
-                    {/* <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                        <Tooltip title="View Trashed Assets">
-                            <Link href={route('employees.assets.trashed')}>
-                                <IconButton component="span" sx={{ mr: 1, color: 'error.main', bgcolor: 'rgba(211, 47, 47, 0.1)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.2)' } }}>
-                                    <DeleteSweep />
-                                </IconButton>
-                            </Link>
-                        </Tooltip>
-                    </Box> */}
-
-                    <TableContainer component={Paper} sx={{ borderRadius: '12px', boxShadow: 2 }}>
-                        <Table>
-                            <TableHead sx={{ backgroundColor: '#063455' }}>
-                                <TableRow>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Name</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Classification</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Type</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Location</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Qty</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Status</TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>Actions</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                                            <CircularProgress size={30} />
-                                        </TableCell>
-                                    </TableRow>
-                                ) : assets.length > 0 ? (
-                                    assets.map((asset) => (
-                                        <TableRow key={asset.id} hover>
-                                            <TableCell>{asset.name}</TableCell>
-                                            <TableCell>
-                                                {asset.classification.split(',').map((item, index) => (
-                                                    <Chip key={index} label={item.trim()} size="small" variant="outlined" color="primary" sx={{ mr: 0.5, mb: 0.5 }} />
-                                                ))}
-                                            </TableCell>
-                                            <TableCell>
-                                                {asset.type.split(',').map((item, index) => (
-                                                    <Chip key={index} label={item.trim()} size="small" variant="outlined" color="secondary" sx={{ mr: 0.5, mb: 0.5 }} />
-                                                ))}
-                                            </TableCell>
-                                            <TableCell>{asset.location || '-'}</TableCell>
-                                            <TableCell>{asset.quantity}</TableCell>
-                                            <TableCell>
-                                                <Chip label={asset.status} size="small" color={asset.status === 'active' ? 'success' : 'default'} sx={{ textTransform: 'capitalize' }} />
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                                                    <Button
-                                                        size="small"
-                                                        sx={{ minWidth: 0, p: 1 }}
-                                                        onClick={() => {
-                                                            setSelectedAsset(asset);
-                                                            setEditModalOpen(true);
-                                                        }}
-                                                    >
-                                                        <Edit fontSize="small" color="primary" />
-                                                    </Button>
-                                                    <Button size="small" sx={{ minWidth: 0, p: 1 }} color="error" onClick={() => handleDelete(asset.id)}>
-                                                        <Delete fontSize="small" />
-                                                    </Button>
-                                                </Box>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                                            No assets found.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                        <Pagination count={totalPages} page={page} onChange={(e, v) => setPage(v)} color="primary" />
-                    </Box>
+        <AppPage
+            title="Asset Inventory"
+            subtitle="Track employee-facing assets with a visible register, safe loading states, and sample fallback rows when data is empty."
+            actions={(
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => setCreateModalOpen(true)}
+                        sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                        Add New Asset
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => router.visit(route('employees.assets.trashed'))}
+                        sx={{ textTransform: 'none', borderRadius: 999 }}
+                    >
+                        Trashed
+                    </Button>
                 </Box>
+            )}
+        >
+            {errorMessage ? (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                    {errorMessage}
+                </Alert>
+            ) : null}
 
+            <SurfaceCard
+                title="Live Filters"
+                subtitle="Search assets instantly by name, classification, type, or location."
+            >
+                <FilterToolbar onReset={resetFilters}>
+                    <Grid container spacing={1.25}>
+                        <Grid item xs={12} md={6}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                placeholder="Search assets..."
+                                value={searchTerm}
+                                onChange={(event) => {
+                                    setSearchTerm(event.target.value);
+                                    setPage(1);
+                                }}
+                                InputProps={{
+                                    startAdornment: <Search color="action" sx={{ mr: 1 }} />,
+                                }}
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ height: '100%', display: 'flex', alignItems: 'center' }}
+                            >
+                                {paginationSummary}
+                            </Typography>
+                        </Grid>
+                    </Grid>
+                </FilterToolbar>
+            </SurfaceCard>
 
-                <Create
-                    open={createModalOpen}
-                    onClose={() => setCreateModalOpen(false)}
+            <SurfaceCard
+                title="Asset Register"
+                subtitle="The table remains visible for live data, empty states, and sample QA rows."
+            >
+                <AdminDataTable
+                    columns={columns}
+                    rows={displayAssets}
+                    loading={isLoading}
+                    error={errorMessage}
+                    emptyMessage="No assets found."
+                    tableMinWidth={1120}
+                    renderRow={(asset) => (
+                        <TableRow key={asset.id} hover>
+                            <TableCell>
+                                <Typography sx={{ fontWeight: 700 }}>{asset.name}</Typography>
+                            </TableCell>
+                            <TableCell>{splitChips(asset.classification, 'primary')}</TableCell>
+                            <TableCell>{splitChips(asset.type, 'secondary')}</TableCell>
+                            <TableCell>{asset.location || '-'}</TableCell>
+                            <TableCell align="center">{asset.quantity}</TableCell>
+                            <TableCell>
+                                <Chip
+                                    label={asset.is_sample ? 'sample data' : asset.status}
+                                    size="small"
+                                    color={asset.status === 'active' ? 'success' : 'default'}
+                                    sx={{ textTransform: 'capitalize' }}
+                                />
+                            </TableCell>
+                            <TableCell>
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    <Tooltip title={asset.is_sample ? 'Sample rows cannot be edited' : 'Edit asset'}>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                disabled={!!asset.is_sample}
+                                                onClick={() => {
+                                                    setSelectedAsset(asset);
+                                                    setEditModalOpen(true);
+                                                }}
+                                            >
+                                                <Edit fontSize="small" color="primary" />
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                    <Tooltip title={asset.is_sample ? 'Sample rows cannot be deleted' : 'Delete asset'}>
+                                        <span>
+                                            <IconButton
+                                                size="small"
+                                                color="error"
+                                                disabled={!!asset.is_sample}
+                                                onClick={() => handleDelete(asset.id)}
+                                            >
+                                                <Delete fontSize="small" />
+                                            </IconButton>
+                                        </span>
+                                    </Tooltip>
+                                </Box>
+                            </TableCell>
+                        </TableRow>
+                    )}
+                />
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Pagination count={totalPages} page={page} onChange={(event, value) => setPage(value)} color="primary" />
+                </Box>
+            </SurfaceCard>
+
+            <Create
+                open={createModalOpen}
+                onClose={() => setCreateModalOpen(false)}
+                onSuccess={() => {
+                    getAssets();
+                }}
+            />
+
+            {selectedAsset ? (
+                <EditAsset
+                    open={editModalOpen}
+                    onClose={() => {
+                        setEditModalOpen(false);
+                        setSelectedAsset(null);
+                    }}
+                    asset={selectedAsset}
                     onSuccess={() => {
                         getAssets();
-                        showSnackbar('Asset created successfully');
                     }}
                 />
-                {selectedAsset && (
-                    <EditAsset
-                        open={editModalOpen}
-                        onClose={() => {
-                            setEditModalOpen(false);
-                            setSelectedAsset(null);
-                        }}
-                        asset={selectedAsset}
-                        onSuccess={() => {
-                            getAssets();
-                            showSnackbar('Asset updated successfully');
-                        }}
-                    />
-                )}
-                <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-                    <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-                        {snackbar.message}
-                    </Alert>
-                </Snackbar>
-            </div>
-        </>
+            ) : null}
+        </AppPage>
     );
 };
 
-export default Index;
+export default AssetsIndex;

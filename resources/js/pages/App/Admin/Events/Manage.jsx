@@ -1,379 +1,184 @@
 import { router } from '@inertiajs/react';
-import { ArrowBack, Search, Visibility } from '@mui/icons-material';
-import { Box, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, ThemeProvider, Typography, createTheme, IconButton, Tooltip, TableFooter } from '@mui/material';
+import { Cancel, Visibility } from '@mui/icons-material';
+import { TableCell, TableRow } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import 'bootstrap/dist/css/bootstrap.min.css';
 import { useEffect, useState } from 'react';
-import { Badge, Container } from 'react-bootstrap';
 import dayjs from 'dayjs';
+import axios from 'axios';
+import { FaEdit } from 'react-icons/fa';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import EventBookingInvoiceModal from '@/components/App/Events/EventBookingInvoiceModal';
 import EventViewDocumentsModal from '@/components/App/Events/EventViewDocumentsModal';
 import EventBookingActionModal from '@/components/App/Events/EventBookingActionModal';
-import axios from 'axios';
-import { FaEdit } from 'react-icons/fa';
-import { Cancel } from '@mui/icons-material';
 import RoomBookingFilter from '../Booking/BookingFilter';
+import {
+    EventStatusChip,
+    formatAmount,
+    formatDate,
+    IconActionButton,
+    OutlineActionButton,
+    PageShell,
+    TableActionStack,
+    TotalsRow,
+    TruncatedValue,
+} from '../Booking/roomEventListUi';
 
-const theme = createTheme({
-    palette: {
-        primary: {
-            main: '#063455',
-        },
-        secondary: {
-            main: '#063455',
-        },
-        success: {
-            main: '#0e5f3c',
-        },
-        warning: {
-            main: '#5f0e0e',
-        },
-    },
-});
-
-const EventsManage = ({ bookings, filters = {}, aggregates }) => {
+const EventsManage = ({ bookings, aggregates }) => {
     const [filteredBookings, setFilteredBookings] = useState(bookings.data || []);
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
     const [selectedBookingId, setSelectedBookingId] = useState(null);
     const [venues, setVenues] = useState([]);
-
-    // View Documents Modal state
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedBookingForDocs, setSelectedBookingForDocs] = useState(null);
-
-    const handleShowInvoice = (booking) => {
-        setSelectedBookingId(booking.id);
-        setShowInvoiceModal(true);
-    };
-
-    const handleCloseInvoice = () => {
-        setShowInvoiceModal(false);
-        setSelectedBookingId(null);
-    };
-
-    const handleBookingUpdate = () => {
-        router.reload({ only: ['bookings'] });
-    };
-
-    // View Documents handlers
-    const handleShowDocs = (booking) => {
-        setSelectedBookingForDocs(booking);
-        setShowDocsModal(true);
-    };
-
-    const handleCloseDocs = () => {
-        setShowDocsModal(false);
-        setSelectedBookingForDocs(null);
-    };
-
-    // Action Modal State
     const [actionModalOpen, setActionModalOpen] = useState(false);
     const [actionType, setActionType] = useState(null);
     const [selectedActionBooking, setSelectedActionBooking] = useState(null);
 
-    const handleOpenActionModal = (booking, type) => {
-        setSelectedActionBooking(booking);
-        setActionType(type);
-        setActionModalOpen(true);
-    };
-
-    const handleConfirmAction = (bookingId, reason, refundData) => {
-        if (actionType === 'cancel') {
-            const data = { cancellation_reason: reason };
-            if (refundData && refundData.amount) {
-                data.refund_amount = refundData.amount;
-                data.refund_mode = refundData.mode;
-                data.refund_account = refundData.account;
-            }
-            router.put(route('events.booking.cancel', bookingId), data, {
-                onSuccess: () => setActionModalOpen(false),
-            });
-        } else if (actionType === 'refund') {
-            const data = {
-                refund_amount: refundData.amount,
-                refund_mode: refundData.mode,
-                refund_account: refundData.account,
-                notes: reason,
-            };
-            router.put(route('events.booking.refund', bookingId), data, {
-                onSuccess: () => setActionModalOpen(false),
-            });
-        } else {
-            // Undo
-            router.put(
-                route('events.booking.undo-cancel', bookingId),
-                {},
-                {
-                    onSuccess: () => setActionModalOpen(false),
-                },
-            );
-        }
-    };
-
-    const getStatusBadge = (booking) => {
-        const { status, invoice } = booking;
-
-        if (status === 'confirmed') {
-            return <Badge bg="success">Confirmed</Badge>;
-        } else if (status === 'completed') {
-            return <Badge bg="primary">Completed</Badge>;
-        } else if (status === 'cancelled') {
-            return <Badge bg="danger">Cancelled</Badge>;
-        } else if (status === 'refunded') {
-            return <Badge bg="info">Refunded</Badge>;
-        } else if (invoice?.status === 'paid') {
-            return <Badge bg="success">Paid</Badge>;
-        } else if (invoice?.status === 'unpaid') {
-            return <Badge bg="warning">Unpaid</Badge>;
-        }
-        return <Badge bg="secondary">Pending</Badge>;
-    };
-
-    // Load venues on component mount
     useEffect(() => {
-        const loadVenues = async () => {
-            try {
-                const response = await axios.get('/api/events/venues');
-                setVenues(response.data);
-            } catch (error) {
-                console.error('Error loading venues:', error);
-            }
-        };
-        loadVenues();
+        axios
+            .get('/api/events/venues')
+            .then((response) => setVenues(response.data))
+            .catch(() => setVenues([]));
     }, []);
 
     useEffect(() => {
         setFilteredBookings(bookings.data || []);
     }, [bookings]);
 
+    const handleConfirmAction = (bookingId, reason, refundData) => {
+        if (actionType === 'cancel') {
+            const data = { cancellation_reason: reason };
+            if (refundData?.amount) {
+                data.refund_amount = refundData.amount;
+                data.refund_mode = refundData.mode;
+                data.refund_account = refundData.account;
+            }
+            router.put(route('events.booking.cancel', bookingId), data, { onSuccess: () => setActionModalOpen(false) });
+            return;
+        }
+
+        if (actionType === 'refund') {
+            router.put(
+                route('events.booking.refund', bookingId),
+                {
+                    refund_amount: refundData.amount,
+                    refund_mode: refundData.mode,
+                    refund_account: refundData.account,
+                    notes: reason,
+                },
+                { onSuccess: () => setActionModalOpen(false) },
+            );
+            return;
+        }
+
+        router.put(route('events.booking.undo-cancel', bookingId), {}, { onSuccess: () => setActionModalOpen(false) });
+    };
+
     return (
         <>
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                    overflowX: 'hidden',
-                }}
-            >
-                <ThemeProvider theme={theme}>
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <Container fluid className="p-4 bg-light">
-                            {/* Header */}
-                            <Box className="d-flex justify-content-between align-items-center">
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Typography style={{ color: '#063455', fontWeight: 700, fontSize: '30px' }}>Event Bookings</Typography>
-                                </Box>
-                            </Box>
-                            <Typography style={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Create, edit, and monitor all event bookings</Typography>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <PageShell
+                    eyebrow="Events"
+                    title="Event Bookings"
+                    subtitle="Create, monitor, and act on event bookings in the same premium register shell used by the newer admin screens."
+                    filterSubtitle="Filter live by guest type, guest name, membership, venue, booking date, and event date."
+                    filterContent={<RoomBookingFilter embedded routeName="events.manage" showRoomType={false} showVenues venues={venues} showStatus={false} showDates={{ booking: true, checkIn: true, checkOut: false }} dateLabels={{ booking: 'Booking Date', checkIn: 'Event Date' }} />}
+                    tableTitle="Event Booking Register"
+                    tableSubtitle="Unified event-booking table with modern badges, compact actions, and preserved cancellation workflows."
+                >
+                    <AdminDataTable
+                        columns={[
+                            { key: 'bookingNo', label: 'Booking No', minWidth: 130 },
+                            { key: 'membership', label: 'Membership / Guest ID', minWidth: 160 },
+                            { key: 'guestName', label: 'Guest Name', minWidth: 180, wrap: true },
+                            { key: 'guestType', label: 'Guest Type', minWidth: 140 },
+                            { key: 'event', label: 'Event', minWidth: 140, wrap: true },
+                            { key: 'venue', label: 'Venue', minWidth: 140, wrap: true },
+                            { key: 'timing', label: 'Timing', minWidth: 150 },
+                            { key: 'menu', label: 'Menu', minWidth: 150, wrap: true },
+                            { key: 'bookingDate', label: 'Booking Date', minWidth: 130 },
+                            { key: 'eventDate', label: 'Event Date', minWidth: 130 },
+                            { key: 'total', label: 'Total', minWidth: 100, align: 'right' },
+                            { key: 'advance', label: 'Advance', minWidth: 100, align: 'right' },
+                            { key: 'paid', label: 'Paid', minWidth: 100, align: 'right' },
+                            { key: 'balance', label: 'Balance', minWidth: 100, align: 'right' },
+                            { key: 'status', label: 'Status', minWidth: 120 },
+                            { key: 'actions', label: 'Actions', minWidth: 160, sticky: 'right' },
+                        ]}
+                        rows={filteredBookings}
+                        pagination={bookings}
+                        tableMinWidth={2050}
+                        stickyLastColumn
+                        emptyMessage="No event bookings found."
+                        renderRow={(booking) => {
+                            const invoicePaid = Number(booking.invoice?.paid_amount ?? 0) + Number(booking.invoice?.advance_payment ?? 0);
+                            const totalReceived = invoicePaid + Number(booking.security_deposit ?? 0);
+                            const totalPrice = Number(booking.total_price ?? 0);
+                            const membershipOrGuestId = booking.member?.membership_no || booking.corporateMember?.membership_no || booking.corporate_member?.membership_no || booking.customer?.customer_no || '-';
+                            const guestTypeName = booking.member ? 'Member' : booking.corporateMember || booking.corporate_member ? 'Corporate Member' : booking.customer ? booking.customer?.guest_type?.name || booking.customer?.guestType?.name || 'Guest' : '-';
+                            const timing = booking.event_time_from && booking.event_time_to ? `${booking.event_time_from} - ${booking.event_time_to}` : booking.event_time_from || booking.event_time_to || 'N/A';
 
-                            {/* Filter Section */}
-                            <RoomBookingFilter routeName="events.manage" showRoomType={false} showVenues={true} venues={venues} showStatus={false} showDates={{ booking: true, checkIn: true, checkOut: false }} dateLabels={{ booking: 'Booking Date', checkIn: 'Event Date' }} />
+                            return (
+                                <TableRow key={booking.id} hover>
+                                    <TableCell sx={{ fontWeight: 700 }}>{booking.booking_no}</TableCell>
+                                    <TableCell>{membershipOrGuestId}</TableCell>
+                                    <TableCell><TruncatedValue value={booking.name || booking.customer?.name || booking.member?.full_name || booking.corporateMember?.full_name || booking.corporate_member?.full_name || 'N/A'} /></TableCell>
+                                    <TableCell>{guestTypeName}</TableCell>
+                                    <TableCell><TruncatedValue value={booking.nature_of_event || 'N/A'} /></TableCell>
+                                    <TableCell><TruncatedValue value={booking.event_venue?.name || 'N/A'} /></TableCell>
+                                    <TableCell>{timing}</TableCell>
+                                    <TableCell><TruncatedValue value={booking.menu?.name || 'N/A'} /></TableCell>
+                                    <TableCell>{formatDate(booking.created_at)}</TableCell>
+                                    <TableCell>{formatDate(booking.event_date)}</TableCell>
+                                    <TableCell align="right">{formatAmount(booking.total_price)}</TableCell>
+                                    <TableCell align="right">{formatAmount(booking.advance_amount)}</TableCell>
+                                    <TableCell align="right">{formatAmount(totalReceived)}</TableCell>
+                                    <TableCell align="right">{formatAmount(totalPrice - invoicePaid)}</TableCell>
+                                    <TableCell><EventStatusChip status={booking.status || booking.invoice?.status || 'pending'} /></TableCell>
+                                    <TableCell>
+                                        <TableActionStack>
+                                            <IconActionButton title="View Documents" onClick={() => { setSelectedBookingForDocs(booking); setShowDocsModal(true); }}>
+                                                <Visibility fontSize="small" />
+                                            </IconActionButton>
+                                            <IconActionButton title="Edit Booking" onClick={() => router.visit(route('events.booking.edit', booking.id))} color="#f57c00">
+                                                <FaEdit size={16} />
+                                            </IconActionButton>
+                                            <OutlineActionButton label="View" onClick={() => { setSelectedBookingId(booking.id); setShowInvoiceModal(true); }} />
+                                            {!['completed', 'cancelled', 'refunded'].includes(booking.status) ? (
+                                                <IconActionButton title="Cancel Booking" onClick={() => { setSelectedActionBooking(booking); setActionType('cancel'); setActionModalOpen(true); }} color="#d32f2f">
+                                                    <Cancel fontSize="small" />
+                                                </IconActionButton>
+                                            ) : null}
+                                            {booking.status === 'cancelled' && (booking.invoice?.paid_amount > 0 || booking.invoice?.advance_payment > 0 || booking.security_deposit > 0) ? (
+                                                <OutlineActionButton label="Refund" color="error" onClick={() => { setSelectedActionBooking(booking); setActionType('refund'); setActionModalOpen(true); }} />
+                                            ) : null}
+                                            {['cancelled', 'refunded'].includes(booking.status) ? (
+                                                <OutlineActionButton label="Undo" onClick={() => { setSelectedActionBooking(booking); setActionType('undo'); setActionModalOpen(true); }} />
+                                            ) : null}
+                                        </TableActionStack>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        }}
+                    />
 
-                            {/* Bookings Table */}
-                            <TableContainer component={Paper} style={{ boxShadow: 'none', overflowX: 'auto', borderRadius: '12px' }}>
-                                <Table>
-                                    <TableHead>
-                                        <TableRow style={{ backgroundColor: '#063455', height: '30px' }}>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Booking No</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Membership / Guest ID</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Guest Name</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Guest Type</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Event</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Venue</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Timing</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Menu</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Booking Date</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap' }}>Event Date</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Total</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Advance</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Paid</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Balance</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Status</TableCell>
-                                            <TableCell sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>Actions</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {filteredBookings.length > 0 ? (
-                                            filteredBookings.map((booking) => {
-                                                const invoicePaid = Number(booking.invoice?.paid_amount ?? 0) + Number(booking.invoice?.advance_payment ?? 0);
-                                                const totalReceived = invoicePaid + Number(booking.security_deposit ?? 0);
-                                                const totalPrice = Number(booking.total_price ?? 0);
-                                                const membershipOrGuestId = booking.member?.membership_no || booking.corporateMember?.membership_no || booking.corporate_member?.membership_no || booking.customer?.customer_no || '-';
-                                                const guestTypeName =
-                                                    booking.member
-                                                        ? 'Member'
-                                                        : booking.corporateMember || booking.corporate_member
-                                                          ? 'Corporate Member'
-                                                          : booking.customer
-                                                            ? booking.customer?.guest_type?.name || booking.customer?.guestType?.name || 'Guest'
-                                                            : '-';
-                                                const timing = booking.event_time_from && booking.event_time_to ? `${booking.event_time_from} - ${booking.event_time_to}` : booking.event_time_from || booking.event_time_to || 'N/A';
-                                                const menuName = booking.menu?.name || 'N/A';
-                                                return (
-                                                <TableRow key={booking.id}>
-                                                    <TableCell sx={{ color: '#000', fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>{booking.booking_no}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{membershipOrGuestId}</TableCell>
-                                                    {/* <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{booking.name || booking.customer?.name || booking.member?.full_name || booking.corporateMember?.full_name || booking.corporate_member?.full_name || 'N/A'}</TableCell> */}
-                                                    <TableCell
-                                                        sx={{
-                                                            color: '#7F7F7F',
-                                                            fontWeight: 400,
-                                                            fontSize: '14px',
-                                                            maxWidth: '120px',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap',
-                                                        }}
-                                                    >
-                                                        <Tooltip title={booking.name || booking.customer?.name || booking.member?.full_name || booking.corporateMember?.full_name || booking.corporate_member?.full_name || 'N/A'} arrow>
-                                                            <span>{booking.name || booking.customer?.name || booking.member?.full_name || booking.corporateMember?.full_name || booking.corporate_member?.full_name || 'N/A'}</span>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{guestTypeName}</TableCell>
-                                                    <TableCell
-                                                        sx={{
-                                                            color: '#7F7F7F',
-                                                            fontWeight: 400,
-                                                            fontSize: '14px',
-                                                            maxWidth: '100px',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap',
-                                                        }}
-                                                    >
-                                                        {/* {booking.nature_of_event} */}
-                                                        <Tooltip title={booking.nature_of_event || 'N/A'} arrow>
-                                                            <span>{booking.nature_of_event || 'N/A'}</span>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell
-                                                        sx={{
-                                                            color: '#7F7F7F',
-                                                            fontWeight: 400,
-                                                            fontSize: '14px',
-                                                            maxWidth: '100px',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap',
-                                                        }}
-                                                    >
-                                                        <Tooltip title={booking.event_venue?.name || 'N/A'} arrow>
-                                                            <span>{booking.event_venue?.name || 'N/A'}</span>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{timing}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>
-                                                        <Tooltip title={menuName} arrow>
-                                                            <span>{menuName}</span>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{booking.created_at ? dayjs(booking.created_at).format('DD-MM-YYYY') : 'N/A'}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px', whiteSpace: 'nowrap' }}>{booking.event_date ? dayjs(booking.event_date).format('DD-MM-YYYY') : 'N/A'}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{booking.total_price}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{booking.advance_amount ?? 0}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{totalReceived}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '14px' }}>{totalPrice - invoicePaid}</TableCell>
-                                                    <TableCell sx={{ color: '#7F7F7F', fontWeight: 400, fontSize: '16px', whiteSpace: 'nowrap' }}>{getStatusBadge(booking)}</TableCell>
-                                                    <TableCell>
-                                                        <Box
-                                                            sx={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: 1, // adds space between buttons
-                                                                flexWrap: 'nowrap', // ensures they stay on the same line
-                                                            }}
-                                                        >
-                                                            <Button size="small" onClick={() => handleShowDocs(booking)} title="View Documents" sx={{ minWidth: 'auto', p: '4px', color: '#063455' }}>
-                                                                <Visibility fontSize="small" />
-                                                            </Button>
-                                                            <IconButton onClick={() => router.visit(route('events.booking.edit', booking.id))} size="small" title="Edit">
-                                                                <FaEdit size={16} style={{ marginRight: 8, color: '#f57c00' }} />
-                                                            </IconButton>
-                                                            <Button
-                                                                variant="outlined"
-                                                                size="small"
-                                                                onClick={() => handleShowInvoice(booking)}
-                                                                sx={{
-                                                                    border: '1px solid #063455',
-                                                                    // color: '#063455',
-                                                                    textTransform: 'none',
-                                                                    // width: 100,
-                                                                }}
-                                                            >
-                                                                View
-                                                            </Button>
+                    {aggregates ? (
+                        <TotalsRow
+                            items={[
+                                { label: 'Total Amount', value: aggregates.total_amount },
+                                { label: 'Advance', value: aggregates.total_advance },
+                                { label: 'Paid', value: aggregates.total_paid },
+                                { label: 'Balance', value: aggregates.total_balance },
+                            ]}
+                        />
+                    ) : null}
+                </PageShell>
+            </LocalizationProvider>
 
-                                                            {!['completed', 'cancelled', 'refunded'].includes(booking.status) && (
-                                                                <Button size="small" variant="outlined" color="error" onClick={() => handleOpenActionModal(booking, 'cancel')} title="Cancel Booking" sx={{ minWidth: 'auto', p: '4px', color: '#d32f2f', borderColor: '#d32f2f' }}>
-                                                                    <Cancel fontSize="small" />
-                                                                </Button>
-                                                            )}
-                                                            {booking.status === 'cancelled' && (booking.invoice?.paid_amount > 0 || booking.invoice?.advance_payment > 0 || booking.security_deposit > 0) && (
-                                                                <Button size="small" variant="outlined" color="error" onClick={() => handleOpenActionModal(booking, 'refund')} title="Process Refund" sx={{ textTransform: 'none' }}>
-                                                                    Refund
-                                                                </Button>
-                                                            )}
-                                                            {['cancelled', 'refunded'].includes(booking.status) && (
-                                                                <Button size="small" variant="outlined" onClick={() => handleOpenActionModal(booking, 'undo')} title="Undo Cancellation" sx={{ textTransform: 'none' }}>
-                                                                    Undo
-                                                                </Button>
-                                                            )}
-                                                        </Box>
-                                                    </TableCell>
-                                                </TableRow>
-                                                );
-                                            })
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={12} align="center">
-                                                    <Typography variant="body1" color="textSecondary">
-                                                        No event bookings found
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                    {aggregates && (
-                                        <TableFooter>
-                                            <TableRow>
-                                                <TableCell colSpan={6} sx={{ fontWeight: 'bold', fontSize: '15px' }}>
-                                                    Grand Total
-                                                </TableCell>
-                                                <TableCell sx={{ fontWeight: 'bold', fontSize: '15px' }}>{aggregates.total_amount}</TableCell>
-                                                <TableCell sx={{ fontWeight: 'bold', fontSize: '15px' }}>{aggregates.total_advance}</TableCell>
-                                                <TableCell sx={{ fontWeight: 'bold', fontSize: '15px' }}>{aggregates.total_paid}</TableCell>
-                                                <TableCell sx={{ fontWeight: 'bold', fontSize: '15px' }}>{aggregates.total_balance}</TableCell>
-                                                <TableCell colSpan={2} />
-                                            </TableRow>
-                                        </TableFooter>
-                                    )}
-                                </Table>
-                            </TableContainer>
-
-                            {/* Pagination */}
-                            {bookings.links && (
-                                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-                                    {bookings.links.map((link, index) => (
-                                        <Button key={index} variant={link.active ? 'contained' : 'outlined'} size="small" onClick={() => link.url && router.visit(link.url)} disabled={!link.url} sx={{ mx: 0.5 }}>
-                                            <span dangerouslySetInnerHTML={{ __html: link.label }} />
-                                        </Button>
-                                    ))}
-                                </Box>
-                            )}
-                        </Container>
-
-                        {/* Event Booking Invoice Modal */}
-                        <EventBookingInvoiceModal open={showInvoiceModal} onClose={handleCloseInvoice} bookingId={selectedBookingId} setBookings={handleBookingUpdate} />
-
-                        {/* View Documents Modal */}
-                        <EventViewDocumentsModal open={showDocsModal} onClose={handleCloseDocs} bookingId={selectedBookingForDocs?.id} />
-
-                        {/* Action Modal */}
-                        <EventBookingActionModal open={actionModalOpen} onClose={() => setActionModalOpen(false)} booking={selectedActionBooking} action={actionType} onConfirm={handleConfirmAction} />
-                    </LocalizationProvider>
-                </ThemeProvider>
-            </div>
+            <EventBookingInvoiceModal open={showInvoiceModal} onClose={() => { setShowInvoiceModal(false); setSelectedBookingId(null); }} bookingId={selectedBookingId} setBookings={() => router.reload({ only: ['bookings'] })} />
+            <EventViewDocumentsModal open={showDocsModal} onClose={() => { setShowDocsModal(false); setSelectedBookingForDocs(null); }} bookingId={selectedBookingForDocs?.id} />
+            <EventBookingActionModal open={actionModalOpen} onClose={() => setActionModalOpen(false)} booking={selectedActionBooking} action={actionType} onConfirm={handleConfirmAction} />
         </>
     );
 };

@@ -3,6 +3,7 @@ import { router } from '@inertiajs/react';
 import { Button, Grid, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -73,12 +74,14 @@ export default function ProfitLoss({ income = [], expense = [], summary = {}, fi
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period without dropping back into the legacy report form layout.">
                 <FilterToolbar onReset={() => router.get(route('accounting.reports.profit-loss'))}>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="From" type="date" value={localFilters.from} onChange={(event) => setLocalFilters((current) => ({ ...current, from: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                            <TextField label="To" type="date" value={localFilters.to} onChange={(event) => setLocalFilters((current) => ({ ...current, to: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => setLocalFilters((current) => ({ ...current, from: value }))}
+                            onEndChange={(value) => setLocalFilters((current) => ({ ...current, to: value }))}
+                            startGrid={{ xs: 12, md: 3 }}
+                            endGrid={{ xs: 12, md: 3 }}
+                        />
                         <Grid item xs={12}>
                             <Button
                                 variant="contained"

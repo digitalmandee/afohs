@@ -4,7 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Models\OrderPrintLog;
-use App\Models\User;
+use App\Services\Printing\KitchenPrinterResolver;
+use App\Services\Printing\PrinterConnectorFactory;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,18 +13,18 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use Mike42\Escpos\Printer;
 
 class PrintOrderJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-    public array $backoff = [5, 15, 45];
+    public int $tries = 0;
+    public array $backoff = [60];
 
     public function __construct(
         public int $orderId,
+        public ?int $restaurantId,
         public int $kitchenId,
         public array $items,
         public int $printLogId,
@@ -34,16 +35,17 @@ class PrintOrderJob implements ShouldQueue
     public function handle()
     {
         $order = Order::query()->with('table:id,table_no')->find($this->orderId);
-        $kitchen = User::query()->with('kitchenDetail:id,kitchen_id,printer_ip,printer_port')->find($this->kitchenId);
+        $printerTarget = app(KitchenPrinterResolver::class)->resolveKitchenPrinter($this->kitchenId, $this->restaurantId);
         $logRow = OrderPrintLog::find($this->printLogId);
 
-        if (!$order || !$kitchen || !$kitchen->kitchenDetail?->printer_ip) {
-            $error = !$order ? 'order_not_found' : (!$kitchen ? 'kitchen_not_found' : 'missing_printer_config');
+        if (!$order || !$printerTarget) {
+            $error = !$order ? 'order_not_found' : 'missing_printer_config';
             if ($logRow) {
                 $logRow->update([
                     'status' => 'failed',
                     'error' => $error,
                     'attempt' => (int) $this->attempts(),
+                    'last_attempt_at' => now(),
                 ]);
             }
 
@@ -60,19 +62,27 @@ class PrintOrderJob implements ShouldQueue
             return;
         }
 
-        $ip = (string) $kitchen->kitchenDetail->printer_ip;
-        $port = (int) ($kitchen->kitchenDetail->printer_port ?: 9100);
+        $source = (string) ($printerTarget['printer_source'] ?? 'network_scan');
+        $printerProfileId = $printerTarget['printer_profile_id'] ?? null;
+        $ip = $printerTarget['printer_ip'] ?? null;
+        $port = $printerTarget['printer_port'] ?? null;
+        $printerName = $printerTarget['printer_name'] ?? null;
+        $printerConnector = $printerTarget['printer_connector'] ?? null;
+        $targetName = $printerTarget['target_name'] ?? null;
 
         try {
-            $connector = new NetworkPrintConnector($ip, $port, 5);
+            $connector = app(PrinterConnectorFactory::class)->create($printerTarget);
             $printer = new Printer($connector);
 
             $printer->setJustification(Printer::JUSTIFY_CENTER);
             $printer->text("KITCHEN ORDER TICKET\n");
-            $printer->text("Kitchen: {$kitchen->name}\n");
+            $printer->text("Kitchen: {$targetName}\n");
             $printer->text("Order #: {$order->id}\n");
             $printer->text("Table: " . ($order->table?->table_no ?: 'N/A') . "\n");
             $printer->text(now()->format('Y-m-d H:i:s') . "\n");
+            if ($source === 'system_printer') {
+                $printer->text("Printer: {$printerName}\n");
+            }
             $printer->text("--------------------------------\n");
 
             foreach ($this->items as $item) {
@@ -91,8 +101,10 @@ class PrintOrderJob implements ShouldQueue
                 $logRow->update([
                     'status' => 'sent',
                     'printed_at' => now(),
+                    'last_attempt_at' => now(),
                     'error' => null,
                     'attempt' => (int) $this->attempts(),
+                    'printer_profile_id' => $printerProfileId,
                 ]);
             }
 
@@ -101,8 +113,11 @@ class PrintOrderJob implements ShouldQueue
                 'request_id' => $this->requestId,
                 'order_id' => $this->orderId,
                 'kitchen_id' => $this->kitchenId,
+                'printer_source' => $source,
                 'printer_ip' => $ip,
                 'printer_port' => $port,
+                'printer_name' => $printerName,
+                'printer_connector' => $printerConnector,
                 'print_log_id' => $this->printLogId,
                 'status' => 'sent',
                 'attempt' => $this->attempts(),
@@ -110,9 +125,11 @@ class PrintOrderJob implements ShouldQueue
         } catch (\Throwable $th) {
             if ($logRow) {
                 $logRow->update([
-                    'status' => 'failed',
+                    'status' => 'queued',
                     'error' => $th->getMessage(),
                     'attempt' => (int) $this->attempts(),
+                    'last_attempt_at' => now(),
+                    'printer_profile_id' => $printerProfileId,
                 ]);
             }
 
@@ -121,15 +138,27 @@ class PrintOrderJob implements ShouldQueue
                 'request_id' => $this->requestId,
                 'order_id' => $this->orderId,
                 'kitchen_id' => $this->kitchenId,
+                'printer_source' => $source,
                 'printer_ip' => $ip,
                 'printer_port' => $port,
+                'printer_name' => $printerName,
+                'printer_connector' => $printerConnector,
                 'print_log_id' => $this->printLogId,
                 'status' => 'failed',
                 'error' => $th->getMessage(),
                 'attempt' => $this->attempts(),
             ]);
 
-            throw $th;
+            static::dispatch(
+                orderId: $this->orderId,
+                restaurantId: $this->restaurantId,
+                kitchenId: $this->kitchenId,
+                items: $this->items,
+                printLogId: $this->printLogId,
+                requestId: $this->requestId
+            )
+                ->delay(now()->addMinute())
+                ->onQueue('printing');
         }
     }
 }

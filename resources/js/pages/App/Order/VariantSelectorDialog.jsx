@@ -56,8 +56,8 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
     };
 
     const handleConfirm = () => {
-        if (product.manage_stock && product.variant_stock_supported === false) {
-            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+        if (product.inventory_tracked && product.variant_stock_supported === false) {
+            enqueueSnackbar('Inventory-backed products cannot use variant stock yet.', { variant: 'error' });
             return;
         }
 
@@ -101,9 +101,8 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
             max_discount: product.max_discount,
             max_discount_type: product.max_discount_type,
             menu_code: product.menu_code,
-            manage_stock: product.manage_stock,
-            current_stock: product.current_stock,
-            minimal_stock: product.minimal_stock,
+            inventory_tracked: product.inventory_tracked,
+            inventory_available_quantity: product.inventory_available_quantity,
         };
 
         onConfirm(orderItem);
@@ -129,14 +128,14 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
                                     value={selectedValues[variant.name]?.name || ''}
                                     onChange={(_, valueName) => {
                                         const selected = variant.values.find((v) => v.name === valueName);
-                                        if (selected && (!product.manage_stock || selected.stock !== 0)) {
+                                        if (selected) {
                                             handleSelect(variant.name, selected);
                                         }
                                     }}
                                     size="small"
                                 >
                                     {variant.values.map((v) => (
-                                        <ToggleButton key={v.name} value={v.name} disabled={product.manage_stock && v.stock === 0}>
+                                        <ToggleButton key={v.name} value={v.name}>
                                             {v.name} (R<span style={{ textTransform: 'lowercase' }}>s </span> +{v.additional_price})
                                         </ToggleButton>
                                     ))}
@@ -144,9 +143,9 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
                             </Box>
                         ))}
 
-                        {product.manage_stock && product.variant_stock_supported === false && (
+                        {product.inventory_tracked && product.variant_stock_supported === false && (
                             <Alert severity="warning" sx={{ mb: 2 }}>
-                                This product is warehouse-managed, so variant-level stock is unavailable. Remove variants or disable stock management before ordering it.
+                                This product is inventory-backed, so variant-level stock is unavailable. Remove variants before ordering it.
                             </Alert>
                         )}
 
@@ -192,7 +191,7 @@ const VariantSelectorDialog = ({ open, onClose, productId, initialItem, onConfir
 
                     <DialogActions>
                         <Button onClick={onClose}>Cancel</Button>
-                        <Button variant="contained" disabled={product.manage_stock && product.variant_stock_supported === false ? true : Object.values(selectedValues).some((v) => !v || (product.manage_stock && v.stock === 0))} onClick={handleConfirm}>
+                        <Button variant="contained" disabled={product.inventory_tracked && product.variant_stock_supported === false ? true : Object.values(selectedValues).some((v) => !v)} onClick={handleConfirm}>
                             {initialItem ? 'Update' : 'Add'}
                         </Button>
                     </DialogActions>

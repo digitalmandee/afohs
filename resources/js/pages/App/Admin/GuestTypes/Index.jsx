@@ -1,17 +1,34 @@
-import React, { useState } from 'react';
-import { Head, router } from '@inertiajs/react';
-import { Box, Button, Container, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Switch, IconButton, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import React from 'react';
+import { router } from '@inertiajs/react';
+import {
+    Button,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    FormControlLabel,
+    Grid,
+    Switch,
+    TableCell,
+    TableRow,
+    TextField,
+    Typography,
+} from '@mui/material';
+import { Add, EditOutlined } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import { FaEdit } from 'react-icons/fa';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 
-export default function GuestTypesIndex({ guestTypes }) {
+export default function GuestTypesIndex({ guestTypes = [] }) {
     const { enqueueSnackbar } = useSnackbar();
-    const [openDialog, setOpenDialog] = useState(false);
-    const [editingType, setEditingType] = useState(null);
-    const [formData, setFormData] = useState({ name: '', status: true });
+    const [openDialog, setOpenDialog] = React.useState(false);
+    const [editingType, setEditingType] = React.useState(null);
+    const [formData, setFormData] = React.useState({ name: '', status: true });
 
-    const handleOpen = (type = null) => {
+    const handleOpen = React.useCallback((type = null) => {
         if (type) {
             setEditingType(type);
             setFormData({ name: type.name, status: !!type.status });
@@ -19,122 +36,141 @@ export default function GuestTypesIndex({ guestTypes }) {
             setEditingType(null);
             setFormData({ name: '', status: true });
         }
-        setOpenDialog(true);
-    };
 
-    const handleClose = () => {
+        setOpenDialog(true);
+    }, []);
+
+    const handleClose = React.useCallback(() => {
         setOpenDialog(false);
         setEditingType(null);
-    };
+        setFormData({ name: '', status: true });
+    }, []);
 
-    const handleSubmit = () => {
+    const handleSubmit = React.useCallback(() => {
         if (editingType) {
             router.put(route('guest-types.update', editingType.id), formData, {
+                preserveScroll: true,
                 onSuccess: () => {
-                    enqueueSnackbar('Guest Type updated successfully', { variant: 'success' });
+                    enqueueSnackbar('Guest type updated successfully.', { variant: 'success' });
                     handleClose();
                 },
             });
-        } else {
-            router.post(route('guest-types.store'), formData, {
-                onSuccess: () => {
-                    enqueueSnackbar('Guest Type created successfully', { variant: 'success' });
-                    handleClose();
+            return;
+        }
+
+        router.post(route('guest-types.store'), formData, {
+            preserveScroll: true,
+            onSuccess: () => {
+                enqueueSnackbar('Guest type created successfully.', { variant: 'success' });
+                handleClose();
+            },
+        });
+    }, [editingType, enqueueSnackbar, formData, handleClose]);
+
+    const handleStatusChange = React.useCallback(
+        (type) => {
+            router.put(
+                route('guest-types.update', type.id),
+                {
+                    name: type.name,
+                    status: !type.status,
                 },
-            });
-        }
-    };
+                {
+                    preserveScroll: true,
+                    onSuccess: () => enqueueSnackbar('Guest type status updated.', { variant: 'success' }),
+                },
+            );
+        },
+        [enqueueSnackbar],
+    );
 
-    const handleStatusChange = (type) => {
-        router.put(
-            route('guest-types.update', type.id),
-            {
-                ...type,
-                status: !type.status,
-            },
-            {
-                onSuccess: () => enqueueSnackbar('Status updated', { variant: 'success' }),
-            },
-        );
-    };
-
-    const handleDelete = (id) => {
-        if (confirm('Are you sure you want to delete this guest type?')) {
-            router.delete(route('guest-types.destroy', id), {
-                onSuccess: () => enqueueSnackbar('Guest Type deleted', { variant: 'success' }),
-            });
-        }
-    };
+    const activeCount = guestTypes.filter((type) => !!type.status).length;
 
     return (
-        <Box sx={{ minHeight: '100vh', backgroundColor: '#f5f5f5', p: 3 }}>
-            <Head title="Guest Types" />
+        <>
+            <AppPage
+                eyebrow="Guest Management"
+                title="Guest Types"
+                subtitle="Maintain the active guest-type dictionary used by Room, Event, and Guest profile workflows."
+                actions={[
+                    <Button key="add" variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
+                        Add Guest Type
+                    </Button>,
+                ]}
+            >
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={6}>
+                        <StatCard label="Guest Types" value={guestTypes.length} accent />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <StatCard label="Active" value={activeCount} tone="light" />
+                    </Grid>
+                </Grid>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                {/* <IconButton onClick={() => window.history.back()}>
-                    <ArrowBackIcon sx={{ color: '#063455' }} />
-                </IconButton> */}
-                <Typography sx={{ fontWeight: 700, fontSize: '30px', color: '#063455' }}>Guest Types</Typography>
-                <Button startIcon={<AddIcon />}
-                    onClick={() => handleOpen()}
-                    sx={{ ml: 'auto', borderRadius: '16px', backgroundColor: '#063455', textTransform: 'none', color: '#fff' }}>
-                    Add Guest Type
-                </Button>
-            </Box>
-
-            <TableContainer component={Paper} sx={{ borderRadius: '16px' }}>
-                <Table>
-                    <TableHead sx={{ backgroundColor: '#063455' }}>
-                        <TableRow>
-                            <TableCell sx={{ color: '#fff', fontWeight: 600, fontSize: '14px' }}>Name</TableCell>
-                            <TableCell sx={{ color: '#fff', fontWeight: 600, fontSize: '14px' }}>Status</TableCell>
-                            <TableCell sx={{ color: '#fff', fontWeight: 600, fontSize: '14px' }}>Actions</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {guestTypes.map((type) => (
-                            <TableRow key={type.id}>
-                                <TableCell sx={{ color: '#7f7f7f', fontSize: '14px' }}>{type.name}</TableCell>
-                                <TableCell sx={{ color: '#7f7f7f', fontSize: '14px' }}>
-                                    <Switch checked={!!type.status} onChange={() => handleStatusChange(type)} color="primary" />
-                                    {type.status ? 'Active' : 'Inactive'}
+                <SurfaceCard title="Guest Type Register" subtitle="Compact icon-only actions with operational status control kept inline.">
+                    <AdminDataTable
+                        columns={[
+                            { key: 'name', label: 'Name', minWidth: 280 },
+                            { key: 'status', label: 'Status', minWidth: 180 },
+                            { key: 'actions', label: 'Actions', minWidth: 84, align: 'right' },
+                        ]}
+                        rows={guestTypes}
+                        emptyMessage="No guest types found."
+                        tableMinWidth={760}
+                        stickyLastColumn
+                        renderRow={(type) => (
+                            <TableRow key={type.id} hover>
+                                <TableCell>
+                                    <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{type.name}</Typography>
                                 </TableCell>
                                 <TableCell>
-                                    <IconButton onClick={() => handleOpen(type)} style={{ color: '#f57c00' }}>
-                                        <FaEdit size={18} />
-                                    </IconButton>
-                                    {/* <IconButton onClick={() => handleDelete(type.id)} color="error">
-                                        <DeleteIcon />
-                                    </IconButton> */}
+                                    <FormControlLabel
+                                        control={<Switch checked={!!type.status} onChange={() => handleStatusChange(type)} color="primary" />}
+                                        label={type.status ? 'Active' : 'Inactive'}
+                                        sx={{ m: 0 }}
+                                    />
+                                </TableCell>
+                                <TableCell align="right">
+                                    <AdminRowActionGroup justify="flex-end">
+                                        <AdminIconAction title="Edit Guest Type" color="warning" onClick={() => handleOpen(type)}>
+                                            <EditOutlined fontSize="small" />
+                                        </AdminIconAction>
+                                    </AdminRowActionGroup>
                                 </TableCell>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+                        )}
+                    />
+                </SurfaceCard>
+            </AppPage>
 
-            <Dialog open={openDialog} onClose={handleClose} maxWidth="sm" fullWidth
-                sx={{
-                    '& .MuiDialog-paper': {
-                        borderRadius: '16px'
-                    }
-                }}>
+            <Dialog open={openDialog} onClose={handleClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
                 <DialogTitle>{editingType ? 'Edit Guest Type' : 'Add Guest Type'}</DialogTitle>
                 <DialogContent>
-                    <TextField autoFocus margin="dense" label="Name" fullWidth value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-                    <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
-                        <Typography sx={{ mr: 2 }}>Status:</Typography>
-                        <Switch checked={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.checked })} />
-                        <Typography>{formData.status ? 'Active' : 'Inactive'}</Typography>
-                    </Box>
+                    <Grid container spacing={2} sx={{ mt: 0 }}>
+                        <Grid item xs={12}>
+                            <TextField
+                                autoFocus
+                                fullWidth
+                                label="Name"
+                                value={formData.name}
+                                onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <FormControlLabel
+                                control={<Switch checked={!!formData.status} onChange={(event) => setFormData((current) => ({ ...current, status: event.target.checked }))} />}
+                                label={formData.status ? 'Active' : 'Inactive'}
+                            />
+                        </Grid>
+                    </Grid>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleClose} sx={{ borderRadius: '12px' }}>Cancel</Button>
-                    <Button onClick={handleSubmit} variant="contained" sx={{ backgroundColor: '#063455', borderRadius: '12px' }}>
+                    <Button onClick={handleClose}>Cancel</Button>
+                    <Button onClick={handleSubmit} variant="contained">
                         {editingType ? 'Update' : 'Create'}
                     </Button>
                 </DialogActions>
             </Dialog>
-        </Box>
+        </>
     );
 }

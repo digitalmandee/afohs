@@ -58,6 +58,7 @@ class LeaveApplicationController extends Controller
     {
         $search = $request->query('search', '');
         $date = $request->query('date', '');
+        $status = $request->query('status', '');
         $page = $request->query('page', 1);
 
         $query = LeaveApplication::with(['employee:id,employee_id,name', 'leaveCategory:id,name,color'])
@@ -70,6 +71,10 @@ class LeaveApplicationController extends Controller
                     ->where('name', 'like', '%' . $search . '%')
                     ->orWhere('employee_id', 'like', '%' . $search . '%');
             });
+        }
+
+        if (!empty($status) && $status !== 'all') {
+            $query->where('status', $status);
         }
 
         // Apply date filter only if date is provided and not empty

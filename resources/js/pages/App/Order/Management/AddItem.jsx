@@ -112,10 +112,10 @@ const AddItems = ({ setOrderItems, orderItems, setShowAddItem, allrestaurants, i
 
     // This would be called when user clicks a product
     const handleProductClick = (product) => {
-        if (product.manage_stock && product.minimal_stock > product.current_stock - 1) return;
+        if (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) return;
 
-        if (product.manage_stock && product.variant_stock_supported === false) {
-            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+        if (product.inventory_tracked && product.variant_stock_supported === false) {
+            enqueueSnackbar('Inventory-backed products cannot use variant stock yet.', { variant: 'error' });
             return;
         }
 
@@ -146,9 +146,8 @@ const AddItems = ({ setOrderItems, orderItems, setShowAddItem, allrestaurants, i
                 is_taxable: product.is_taxable,
                 max_discount: product.max_discount,
                 max_discount_type: product.max_discount_type,
-                manage_stock: product.manage_stock,
-                current_stock: product.current_stock,
-                minimal_stock: product.minimal_stock,
+                inventory_tracked: product.inventory_tracked,
+                inventory_available_quantity: product.inventory_available_quantity,
                 menu_code: product.menu_code,
             };
 

@@ -97,6 +97,12 @@ Route::group([
         Route::get('/settings/printers', [PrinterTestController::class, 'index'])->name('printers.index');
         Route::get('/settings/printers/discover', [PrinterTestController::class, 'discover'])->name('printers.discover');
         Route::put('/settings/printers', [PrinterTestController::class, 'updateMappings'])->name('printers.update');
+        Route::post('/settings/printers/profiles', [PrinterTestController::class, 'storeProfile'])->name('printers.profiles.store');
+        Route::put('/settings/printers/profiles/{printerProfile}', [PrinterTestController::class, 'updateProfile'])->name('printers.profiles.update');
+        Route::delete('/settings/printers/profiles/{printerProfile}', [PrinterTestController::class, 'destroyProfile'])->name('printers.profiles.destroy');
+        Route::post('/settings/printers/scan-ranges', [PrinterTestController::class, 'storeScanRange'])->name('printers.scan-ranges.store');
+        Route::put('/settings/printers/scan-ranges/{printerScanRange}', [PrinterTestController::class, 'updateScanRange'])->name('printers.scan-ranges.update');
+        Route::delete('/settings/printers/scan-ranges/{printerScanRange}', [PrinterTestController::class, 'destroyScanRange'])->name('printers.scan-ranges.destroy');
         Route::post('/settings/printers/test-kitchen', [PrinterTestController::class, 'testKitchenPrinter'])->name('printers.test-kitchen');
         Route::post('/settings/printers/test-receipt', [PrinterTestController::class, 'testReceiptPrinter'])->name('printers.test-receipt');
         Route::get('/settings/printer-test', [PrinterTestController::class, 'index'])->name('printer.index');

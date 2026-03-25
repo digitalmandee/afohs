@@ -157,11 +157,10 @@ const OrderMenu = () => {
 
     // This would be called when user clicks a product
     const handleProductClick = (product, qtyOverride = 1) => {
-        // Only check stock if management is enabled
-        if (product.manage_stock && product.minimal_stock > product.current_stock - 1) return;
+        if (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) return;
 
-        if (product.manage_stock && product.variant_stock_supported === false) {
-            enqueueSnackbar('Warehouse-managed products cannot use variant stock yet.', { variant: 'error' });
+        if (product.inventory_tracked && product.variant_stock_supported === false) {
+            enqueueSnackbar('Inventory-backed products cannot use variant stock yet.', { variant: 'error' });
             return;
         }
 
@@ -219,9 +218,8 @@ const OrderMenu = () => {
                     is_taxable: product.is_taxable, // Add is_taxable flag
                     max_discount: product.max_discount,
                     max_discount_type: product.max_discount_type,
-                    manage_stock: product.manage_stock,
-                    current_stock: product.current_stock,
-                    minimal_stock: product.minimal_stock,
+                    inventory_tracked: product.inventory_tracked,
+                    inventory_available_quantity: product.inventory_available_quantity,
                 };
 
                 handleOrderDetailChange('order_items', [...orderDetails.order_items, newItem]);
@@ -750,8 +748,8 @@ const OrderMenu = () => {
                                                                     flexDirection: 'column',
                                                                     alignItems: 'center',
                                                                     border: '1px solid #eee',
-                                                                    opacity: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 0.5 : 1,
-                                                                    cursor: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
+                                                                    opacity: (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) || product.inventory_ready_for_pos === false || (product.inventory_tracked && product.variant_stock_supported === false) ? 0.5 : 1,
+                                                                    cursor: (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) || product.inventory_ready_for_pos === false || (product.inventory_tracked && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
                                                                     borderRadius: 2,
                                                                     height: '100%',
                                                                     width: 100,
@@ -833,8 +831,8 @@ const OrderMenu = () => {
                                                             borderRadius: 2,
                                                             height: '100%',
                                                             width: 100,
-                                                            opacity: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 0.5 : 1,
-                                                            cursor: (product.manage_stock && product.minimal_stock > product.current_stock - 1) || product.inventory_ready_for_pos === false || (product.manage_stock && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
+                                                            opacity: (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) || product.inventory_ready_for_pos === false || (product.inventory_tracked && product.variant_stock_supported === false) ? 0.5 : 1,
+                                                            cursor: (product.inventory_tracked && Number(product.inventory_available_quantity || 0) < 1) || product.inventory_ready_for_pos === false || (product.inventory_tracked && product.variant_stock_supported === false) ? 'not-allowed' : 'pointer',
                                                             // bgcolor: 'pink',
                                                             '&:hover': {
                                                                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)',

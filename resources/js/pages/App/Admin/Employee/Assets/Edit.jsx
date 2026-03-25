@@ -35,9 +35,11 @@ const Edit = ({ open, onClose, asset, onSuccess }) => {
             axios
                 .get(route('employees.assets.options'))
                 .then((res) => {
-                    setClassifications(res.data.classifications);
-                    setTypes(res.data.types);
-                    setLocations(res.data.locations);
+                    setOptions({
+                        classifications: res.data.classifications || [],
+                        types: res.data.types || [],
+                        locations: res.data.locations || [],
+                    });
                 })
                 .catch((err) => console.error(err))
                 .finally(() => setOptionsLoading(false));

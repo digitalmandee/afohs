@@ -29,15 +29,44 @@ class VoucherController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('voucher_name', 'like', "%{$search}%")
                   ->orWhere('voucher_code', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhereHas('member', function ($memberQuery) use ($search) {
+                      $memberQuery->where('full_name', 'like', "%{$search}%")
+                          ->orWhere('membership_no', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('employee', function ($employeeQuery) use ($search) {
+                      $employeeQuery->where('name', 'like', "%{$search}%")
+                          ->orWhere('employee_id', 'like', "%{$search}%");
+                  });
             });
         }
 
-        $vouchers = $query->latest()->paginate(15);
+        if ($request->filled('account')) {
+            $account = trim((string) $request->account);
+            $query->where(function ($q) use ($account) {
+                $q->whereHas('member', function ($memberQuery) use ($account) {
+                    $memberQuery->where('full_name', 'like', "%{$account}%")
+                        ->orWhere('membership_no', 'like', "%{$account}%");
+                })->orWhereHas('employee', function ($employeeQuery) use ($account) {
+                    $employeeQuery->where('name', 'like', "%{$account}%")
+                        ->orWhere('employee_id', 'like', "%{$account}%");
+                });
+            });
+        }
+
+        if ($request->filled('from')) {
+            $query->whereDate('valid_from', '>=', $request->date('from'));
+        }
+
+        if ($request->filled('to')) {
+            $query->whereDate('valid_to', '<=', $request->date('to'));
+        }
+
+        $vouchers = $query->latest()->paginate(15)->withQueryString();
 
         // Statistics
         $stats = [
@@ -54,7 +83,7 @@ class VoucherController extends Controller
         return Inertia::render('App/Admin/Vouchers/Dashboard', [
             'vouchers' => $vouchers,
             'stats' => $stats,
-            'filters' => $request->only(['type', 'status', 'search'])
+            'filters' => $request->only(['type', 'status', 'search', 'account', 'from', 'to'])
         ]);
     }
 

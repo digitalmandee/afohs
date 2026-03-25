@@ -1,134 +1,119 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Head, router } from '@inertiajs/react';
-import { Box, Button, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import { Search } from '@mui/icons-material';
-import dayjs from 'dayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { Button, Grid, TableCell, TableRow, TextField } from '@mui/material';
+import AppPage from '@/components/App/ui/AppPage';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useFilterLoadingState from '@/hooks/useFilterLoadingState';
+import { formatReportCurrency } from './posReportShared';
 
-export default function MonthlyEmployeeFoodBillsReport({ startDate, endDate, filters, rows }) {
-    const [reportFilters, setReportFilters] = useState({
-        start_date: filters?.start_date || startDate,
-        end_date: filters?.end_date || endDate,
+export default function MonthlyEmployeeFoodBillsReport({ startDate, endDate, filters = {}, rows = [] }) {
+    const [reportFilters, setReportFilters] = React.useState({
+        start_date: filters?.start_date || startDate || '',
+        end_date: filters?.end_date || endDate || '',
         employee_search: filters?.employee_search || '',
     });
+    const { loading, beginLoading } = useFilterLoadingState([
+        filters?.employee_search,
+        filters?.end_date,
+        filters?.start_date,
+        rows.length,
+    ]);
 
-    const handleFilterChange = (field, value) => {
-        setReportFilters((prev) => ({ ...prev, [field]: value }));
-    };
+    const applyFilters = React.useCallback(() => {
+        beginLoading();
+        router.get(route('admin.reports.pos.monthly-employee-food-bills'), reportFilters, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading, reportFilters]);
 
-    const applyFilters = () => {
-        router.get(route('admin.reports.pos.monthly-employee-food-bills'), reportFilters);
-    };
+    const resetFilters = React.useCallback(() => {
+        const cleared = {
+            start_date: startDate || '',
+            end_date: endDate || '',
+            employee_search: '',
+        };
+        setReportFilters(cleared);
+        beginLoading();
+        router.get(route('admin.reports.pos.monthly-employee-food-bills'), cleared, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [beginLoading, endDate, startDate]);
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' })
-            .format(amount || 0)
-            .replace('PKR', 'Rs');
-    };
-
-    const title = 'MONTHLY EMPLOYEE FOOD BILLS REPORT';
+    const totalOrders = rows.reduce((sum, row) => sum + Number(row.orders || 0), 0);
+    const totalAmount = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
 
     return (
         <>
-            <Head title={title} />
-            <Box sx={{ p: 3, minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
-                <Typography sx={{ fontWeight: 700, fontSize: '26px', color: '#063455', mb: 2 }}>{title}</Typography>
+            <Head title="Monthly Employee Food Bills Report" />
+            <AppPage
+                eyebrow="POS Reports"
+                title="Monthly Employee Food Bills"
+                subtitle="Track employee meal spending inside the same shared reporting shell used across the upgraded POS report suite."
+            >
+                <Grid container spacing={2.25}>
+                    <Grid item xs={12} md={4}><StatCard label="Employees" value={rows.length} accent /></Grid>
+                    <Grid item xs={12} md={4}><StatCard label="Orders" value={totalOrders} tone="light" /></Grid>
+                    <Grid item xs={12} md={4}><StatCard label="Total Bills" value={formatReportCurrency(totalAmount)} tone="muted" /></Grid>
+                </Grid>
 
-                <Paper sx={{ p: 2, borderRadius: '16px', mb: 2 }}>
-                    <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <DatePicker
-                                label="Start Date"
-                                format="DD/MM/YYYY"
-                                value={reportFilters.start_date ? dayjs(reportFilters.start_date) : null}
-                                onChange={(newValue) =>
-                                    handleFilterChange('start_date', newValue ? newValue.format('YYYY-MM-DD') : '')
-                                }
-                                slotProps={{
-                                    textField: {
-                                        size: 'small',
-                                        InputProps: { sx: { borderRadius: '16px', '& fieldset': { borderRadius: '16px' } } },
-                                    },
-                                }}
+                <SurfaceCard title="Report Filters" subtitle="Choose a date range and employee search term before running the report.">
+                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                        <Grid container spacing={2}>
+                            <DateRangeFilterFields
+                                startLabel="Start Date"
+                                endLabel="End Date"
+                                startValue={reportFilters.start_date}
+                                endValue={reportFilters.end_date}
+                                onStartChange={(value) => setReportFilters((current) => ({ ...current, start_date: value }))}
+                                onEndChange={(value) => setReportFilters((current) => ({ ...current, end_date: value }))}
+                                startGrid={{ xs: 12, md: 3 }}
+                                endGrid={{ xs: 12, md: 3 }}
                             />
-                            <DatePicker
-                                label="End Date"
-                                format="DD/MM/YYYY"
-                                value={reportFilters.end_date ? dayjs(reportFilters.end_date) : null}
-                                onChange={(newValue) =>
-                                    handleFilterChange('end_date', newValue ? newValue.format('YYYY-MM-DD') : '')
-                                }
-                                slotProps={{
-                                    textField: {
-                                        size: 'small',
-                                        InputProps: { sx: { borderRadius: '16px', '& fieldset': { borderRadius: '16px' } } },
-                                    },
-                                }}
-                            />
-                        </LocalizationProvider>
+                            <Grid item xs={12} md={6}>
+                                <TextField
+                                    label="Employee Name / ID"
+                                    value={reportFilters.employee_search}
+                                    onChange={(event) => setReportFilters((current) => ({ ...current, employee_search: event.target.value }))}
+                                    fullWidth
+                                />
+                            </Grid>
+                        </Grid>
+                    </FilterToolbar>
+                </SurfaceCard>
 
-                        <TextField
-                            size="small"
-                            label="Employee Name/ID"
-                            value={reportFilters.employee_search}
-                            onChange={(e) => handleFilterChange('employee_search', e.target.value)}
-                            sx={{ minWidth: 240 }}
-                        />
-
-                        <Button
-                            variant="contained"
-                            startIcon={<Search />}
-                            onClick={applyFilters}
-                            sx={{
-                                backgroundColor: '#063455',
-                                color: 'white',
-                                borderRadius: '16px',
-                                textTransform: 'none',
-                                '&:hover': { backgroundColor: '#063455' },
-                            }}
-                        >
-                            Search
-                        </Button>
-                    </Stack>
-                </Paper>
-
-                <Paper sx={{ p: 2, borderRadius: '16px' }}>
-                    <TableContainer>
-                        <Table size="small">
-                            <TableHead sx={{ backgroundColor: '#063455' }}>
-                                <TableRow>
-                                    <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Sr #</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Employee #</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#fff' }}>Employee Name</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#fff', textAlign: 'right' }}>Orders</TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#fff', textAlign: 'right' }}>Total</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {(rows || []).map((r, idx) => (
-                                    <TableRow key={r.employee_id}>
-                                        <TableCell>{idx + 1}</TableCell>
-                                        <TableCell>{r.employee_no}</TableCell>
-                                        <TableCell>{r.employee_name}</TableCell>
-                                        <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{r.orders}</TableCell>
-                                        <TableCell sx={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(r.total)}</TableCell>
-                                    </TableRow>
-                                ))}
-                                {(!rows || rows.length === 0) && (
-                                    <TableRow>
-                                        <TableCell colSpan={5} sx={{ textAlign: 'center', py: 4 }}>
-                                            No data found
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                </Paper>
-            </Box>
+                <SurfaceCard title="Employee Billing Register" subtitle="Visible report grid with loading and empty-state handling instead of the older plain paper table.">
+                    <AdminDataTable
+                        columns={[
+                            { key: 'serial', label: 'Sr #', minWidth: 90 },
+                            { key: 'employee_no', label: 'Employee #', minWidth: 150 },
+                            { key: 'employee_name', label: 'Employee Name', minWidth: 240 },
+                            { key: 'orders', label: 'Orders', minWidth: 120, align: 'right' },
+                            { key: 'total', label: 'Total', minWidth: 140, align: 'right' },
+                        ]}
+                        rows={rows}
+                        loading={loading}
+                        tableMinWidth={880}
+                        emptyMessage="No employee food bills found for the selected filters."
+                        renderRow={(row, index) => (
+                            <TableRow key={row.employee_id || index} hover>
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell>{row.employee_no || '-'}</TableCell>
+                                <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{row.employee_name || '-'}</TableCell>
+                                <TableCell align="right">{row.orders || 0}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>{formatReportCurrency(row.total)}</TableCell>
+                            </TableRow>
+                        )}
+                    />
+                </SurfaceCard>
+            </AppPage>
         </>
     );
 }
-

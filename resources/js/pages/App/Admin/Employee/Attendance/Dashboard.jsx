@@ -1,569 +1,385 @@
-import React, { useEffect, useState } from 'react';
-import { Button, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Paper, CircularProgress, Pagination, IconButton, FormControl, InputLabel, Select, MenuItem, TextField, Grid, Box, Chip, Tooltip } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import CategoryIcon from '@mui/icons-material/Category';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import SettingsIcon from '@mui/icons-material/Settings';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import DescriptionIcon from '@mui/icons-material/Description';
-import EventNoteIcon from '@mui/icons-material/EventNote';
-import EventSeatIcon from '@mui/icons-material/EventSeat';
-import PeopleIcon from '@mui/icons-material/People';
-import PrintIcon from '@mui/icons-material/Print';
-import EditIcon from '@mui/icons-material/Edit';
-import Add from '@mui/icons-material/Add';
-import Search from '@mui/icons-material/Search';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { FaEdit } from 'react-icons/fa';
-// const drawerWidthOpen = 240;
-// const drawerWidthClosed = 110;
+import {
+    Autocomplete,
+    Box,
+    Button,
+    Chip,
+    Grid,
+    IconButton,
+    Stack,
+    TableCell,
+    TableRow,
+    TextField,
+    Tooltip,
+    Typography,
+} from '@mui/material';
+import debounce from 'lodash.debounce';
+import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded';
+import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
+import ChecklistRoundedIcon from '@mui/icons-material/ChecklistRounded';
+import EventAvailableRoundedIcon from '@mui/icons-material/EventAvailableRounded';
+import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
+import ModeEditOutlineRoundedIcon from '@mui/icons-material/ModeEditOutlineRounded';
+import Groups2RoundedIcon from '@mui/icons-material/Groups2Rounded';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import AppPage from '@/components/App/ui/AppPage';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import StatCard from '@/components/App/ui/StatCard';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
 
-const AttendanceDashboard = () => {
-    const { props } = usePage();
-    const { employees, stats, departments, filters } = props; // coming from Laravel
-    const [searchTerm, setSearchTerm] = useState(filters?.search || '');
-    const [selectedDepartments, setSelectedDepartments] = useState(filters?.department_ids || []);
-    const [isLoading, setIsLoading] = useState(false);
-    // const [open, setOpen] = useState(true);
+const quickLinks = [
+    {
+        label: 'Leave Management',
+        caption: 'Applications and approvals',
+        icon: <AssignmentRoundedIcon />,
+        href: route('employees.leaves.application.index'),
+    },
+    {
+        label: 'Manage Attendance',
+        caption: 'Daily attendance updates',
+        icon: <ChecklistRoundedIcon />,
+        href: route('employees.attendances.management'),
+    },
+    {
+        label: 'Monthly Report',
+        caption: 'Month-wise attendance summary',
+        icon: <CalendarMonthRoundedIcon />,
+        href: route('employees.attendances.monthly.report'),
+    },
+    {
+        label: 'Attendance Report',
+        caption: 'Printable reporting view',
+        icon: <EventAvailableRoundedIcon />,
+        href: route('employees.attendances.report'),
+    },
+];
 
-    const handleFilter = () => {
-        setIsLoading(true);
-        router.get(
-            route('employees.attendances.dashboard'),
-            {
-                search: searchTerm,
-                department_ids: selectedDepartments,
-                page: 1, // Reset to first page when filtering
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                onFinish: () => setIsLoading(false),
-                onError: () => setIsLoading(false),
-            },
-        );
-    };
+const columns = [
+    { key: 'employee_id', label: 'Emp ID', minWidth: 120 },
+    { key: 'name', label: 'Employee', minWidth: 220 },
+    { key: 'department', label: 'Department', minWidth: 180 },
+    { key: 'designation', label: 'Designation', minWidth: 180 },
+    { key: 'joining_date', label: 'Joining Date', minWidth: 140 },
+    { key: 'email', label: 'Email', minWidth: 220, truncate: true },
+    { key: 'status', label: 'Status', minWidth: 140 },
+    { key: 'actions', label: 'Actions', minWidth: 90, align: 'right' },
+];
 
-    const handleClearFilters = () => {
-        setSelectedDepartments([]);
-        setSearchTerm('');
-        router.get(
-            route('employees.attendances.dashboard'),
-            {},
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
+const resolveEmployeeStatus = (employee) => {
+    if (employee?.department?.deleted_at) {
+        return { label: 'Needs Attention', color: 'error' };
+    }
 
-    const handleSearch = () => {
-        router.get(
-            route('employees.attendances.dashboard'),
-            {
-                search: searchTerm,
-                department_ids: selectedDepartments,
-                page: 1, // Reset to first page when searching
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
+    const normalized = String(employee?.status || 'active').toLowerCase();
+    if (normalized === 'active') {
+        return { label: 'Active', color: 'success' };
+    }
+    if (normalized === 'inactive') {
+        return { label: 'Inactive', color: 'default' };
+    }
+    if (normalized === 'terminated') {
+        return { label: 'Terminated', color: 'error' };
+    }
 
-    const handleClearSearch = () => {
-        setSearchTerm('');
-        router.get(
-            route('employees.attendances.dashboard'),
-            {
-                department_ids: selectedDepartments,
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
-            },
-        );
-    };
-
-    return (
-        <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                }}
-            >
-                <div style={{ padding: '1rem' }}>
-                    <div style={{ backgroundColor: 'transparent' }}>
-                        <div style={{ display: 'flex', width: '98%', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography style={{ fontWeight: '700', color: '#063455', fontSize: '30px' }}>
-                                Application Dashboard
-                            </Typography>
-                            <Button variant='contained' startIcon={<Add style={{ marginBottom: 3 }} />} style={{ color: 'white', backgroundColor: '#063455', borderRadius: '16px', textTransform: 'none' }} onClick={() => router.visit(route('employees.leaves.application.create'))}>
-                                New Application
-                            </Button>
-                        </div>
-                        <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>
-                            Tracks presence, absence, late entries, and overtime
-                        </Typography>
-
-                        <div
-                            style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                justifyContent: 'center',
-                                gap: '50px',
-                                width: '98%',
-                                marginBottom: '24px',
-                                marginTop: '2rem'
-                            }}
-                        >
-                            {[
-                                // {
-                                //     label: 'Leave Category',
-                                //     icon: <CategoryIcon style={{ color: '#fff' }} />,
-                                //     // bgColor: '#063455',
-                                //     // borderColor: '#FFE0C2',
-                                //     path: route('employees.leaves.category.index'),
-                                // },
-                                // {
-                                //     label: 'Leave Application',
-                                //     icon: <AssignmentIcon style={{ color: '#fff' }} />,
-                                //     // bgColor: '#063455',
-                                //     // borderColor: '#FCCFEF',
-                                //     path: route('employees.leaves.application.index'),
-                                // },
-                                {
-                                    label: 'Leave Management',
-                                    icon: <SettingsIcon style={{ color: '#fff' }} />,
-                                    // bgColor: '#063455',
-                                    // borderColor: '#A4FFBF',
-                                    path: route('employees.leaves.application.index'),
-                                },
-                                // {
-                                //     label: 'Leave Report',
-                                //     icon: <BarChartIcon style={{ color: '#fff' }} />,
-                                //     // bgColor: '#063455',
-                                //     // borderColor: '#BEC0FF',
-                                //     path: route('employees.leaves.application.report'),
-                                // },
-                                {
-                                    label: 'Manage Attendance',
-                                    icon: <AssignmentIcon style={{ color: '#fff' }} />,
-                                    // bgColor: '#063455',
-                                    // borderColor: '#F8EF91',
-                                    path: route('employees.attendances.management'),
-                                },
-                                {
-                                    label: 'Monthly Report',
-                                    icon: <DescriptionIcon style={{ color: '#fff' }} />,
-                                    // bgColor: '#063455',
-                                    // borderColor: '#A6FFD7',
-                                    path: route('employees.attendances.monthly.report'),
-                                },
-                                {
-                                    label: 'Attendance Report',
-                                    icon: <EventNoteIcon style={{ color: '#fff' }} />,
-                                    // bgColor: '#063455',
-                                    // borderColor: '#B8FF8F',
-                                    path: route('employees.attendances.report'),
-                                },
-                                // {
-                                //     label: 'Leave Reports',
-                                //     icon: <BarChartIcon style={{ color: '#fff' }} />,
-                                //     // bgColor: '#063455',
-                                //     // borderColor: '#BEC0FF',
-                                //     path: route('employees.leaves.application.report'),
-                                // },
-                            ].map((card, index) => (
-                                <div
-                                    key={index}
-                                    style={{
-                                        flex: '1 1 calc(25% - 50px)', // 4 items per row
-                                        maxWidth: '220px',
-                                        maxHeight: '160px',
-                                        padding: '20px',
-                                        backgroundColor: '#063455',
-                                        borderRadius: '16px',
-                                        border: `2px solid ${card.borderColor}`,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        textAlign: 'center',
-                                    }}
-                                    onClick={() => card.path && router.visit(card.path)}
-                                >
-                                    <div
-                                        style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            // backgroundColor: "#fff",
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            marginBottom: '12px',
-                                        }}
-                                    >
-                                        {card.icon}
-                                    </div>
-                                    <div style={{ fontSize: '14px', color: '#fff' }}>{card.label}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Filter Section */}
-                        <Box sx={{ mb: 3 }}>
-                            <Typography sx={{ fontWeight: 600, fontSize: '18px', color: '#063455', mb: 3 }}>Search & Filter Options</Typography>
-
-                            {/* Search Fields */}
-                            <Grid container spacing={2} sx={{ mb: 3 }}>
-                                <Grid item xs={12} md={3}>
-                                    <TextField
-                                        fullWidth
-                                        size="small"
-                                        placeholder="Search by name, ID, email, or designation..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        onKeyPress={(e) => {
-                                            if (e.key === 'Enter') {
-                                                handleFilter();
-                                            }
-                                        }}
-                                        sx={{
-                                            '& .MuiOutlinedInput-root': {
-                                                borderRadius: 16,
-                                            },
-                                        }}
-                                    />
-                                </Grid>
-                                <Grid item xs={12} md={3}>
-                                    {/* <FormControl fullWidth size="small">
-                                        <InputLabel>Departments</InputLabel>
-                                        <Select
-                                            multiple
-                                            value={selectedDepartments}
-                                            label="Departments"
-                                            onChange={(e) => setSelectedDepartments(e.target.value)}
-                                            renderValue={(selected) => (
-                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                    {selected.map((value) => {
-                                                        const dept = departments?.find((d) => d.id === value);
-                                                        return (
-                                                            <Chip
-                                                                key={value}
-                                                                label={dept?.name || value}
-                                                                size="small"
-                                                                sx={{
-                                                                    backgroundColor: '#063455',
-                                                                    color: 'white',
-                                                                    '& .MuiChip-deleteIcon': {
-                                                                        color: 'white',
-                                                                    },
-                                                                }}
-                                                            />
-                                                        );
-                                                    })}
-                                                </Box>
-                                            )}
-                                            sx={{
-                                                borderRadius: 16,
-                                            }}
-                                        >
-                                            {departments?.map((dept) => (
-                                                <MenuItem key={dept.id} value={dept.id}>
-                                                    {dept.name}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl> */}
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel>Departments</InputLabel>
-
-                                        <Select
-                                            multiple
-                                            value={selectedDepartments}
-                                            label="Departments"
-                                            onChange={(e) => setSelectedDepartments(e.target.value)}
-                                            renderValue={(selected) => (
-                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                    {selected.map((value) => {
-                                                        const dept = departments?.find((d) => d.id === value);
-                                                        return (
-                                                            <Chip
-                                                                key={value}
-                                                                label={dept?.name || value}
-                                                                size="small"
-                                                                sx={{
-                                                                    backgroundColor: '#063455',
-                                                                    color: '#fff',
-                                                                    '& .MuiChip-deleteIcon': {
-                                                                        color: '#fff',
-                                                                    },
-                                                                }}
-                                                            />
-                                                        );
-                                                    })}
-                                                </Box>
-                                            )}
-                                            sx={{
-                                                borderRadius: 16,
-                                            }}
-                                            MenuProps={{
-                                                PaperProps: {
-                                                    sx: {
-                                                        '& .MuiMenuItem-root': {
-                                                            borderRadius: '16px',
-                                                            mx: '8px',
-                                                            my: '0.3px'
-                                                        },
-                                                        '& .MuiMenuItem-root:hover': {
-                                                            backgroundColor: '#063455',
-                                                            color: '#fff',
-                                                        },
-                                                        '& .MuiMenuItem-root.Mui-selected': {
-                                                            backgroundColor: '#063455',
-                                                            color: '#fff',
-                                                        },
-                                                        '& .MuiMenuItem-root.Mui-selected:hover': {
-                                                            backgroundColor: '#063455',
-                                                            color: '#fff',
-                                                        },
-                                                    },
-                                                },
-                                            }}
-                                        >
-                                            {departments?.map((dept) => (
-                                                <MenuItem key={dept.id} value={dept.id}>
-                                                    {dept.name}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-
-                                </Grid>
-                                <Grid item xs={12} md={1.5}>
-                                    <Button
-                                        fullWidth
-                                        startIcon={<Search />}
-                                        variant="contained"
-                                        onClick={handleFilter}
-                                        disabled={isLoading}
-                                        sx={{
-                                            backgroundColor: '#063455',
-                                            color: 'white',
-                                            textTransform: 'none',
-                                            borderRadius: 16,
-                                            height: '40px',
-                                            '&:hover': {
-                                                backgroundColor: '#052d45',
-                                            },
-                                            '&:disabled': {
-                                                backgroundColor: '#ccc',
-                                                color: '#666',
-                                            },
-                                        }}
-                                    >
-                                        {isLoading ? (
-                                            <>
-                                                <CircularProgress size={16} sx={{ mr: 1, color: 'inherit' }} />
-                                                Loading...
-                                            </>
-                                        ) : (
-                                            'Search'
-                                        )}
-                                    </Button>
-                                </Grid>
-                                {(selectedDepartments.length > 0 || searchTerm) && (
-                                    // <Grid container spacing={2}>
-                                    <Grid item xs={12} md={1.5}>
-                                        <Button
-                                            fullWidth
-                                            variant="outlined"
-                                            onClick={handleClearFilters}
-                                            sx={{
-                                                color: '#063455',
-                                                borderColor: '#063455',
-                                                textTransform: 'none',
-                                                borderRadius: 16,
-                                                height: '40px',
-                                                '&:hover': {
-                                                    borderColor: '#052d45',
-                                                    backgroundColor: 'rgba(6, 52, 85, 0.04)',
-                                                },
-                                            }}
-                                        >
-                                            Reset
-                                        </Button>
-                                    </Grid>
-                                    // </Grid>
-                                )}
-                            </Grid>
-                        </Box>
-
-                        {/* Employee List Section */}
-                        <div style={{ backgroundColor: 'white', width: '98%', borderRadius: '12px', padding: '24px' }}>
-                            <div style={{ marginBottom: '24px' }}>
-                                <div style={{ fontSize: '18px', fontWeight: '500', padding: '0 1rem' }}>Employee List</div>
-                            </div>
-
-                            <TableContainer component={Paper} style={{ borderRadius: '12px' }}>
-                                <Table>
-                                    <TableHead style={{ backgroundColor: '#063455', height: 30 }}>
-                                        <TableRow>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', }}>EMP ID</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', }}>Name</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', }}>Department</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', }}>Designation</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Joining Date</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Email Address</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', whiteSpace: 'nowrap' }}>Employee Status</TableCell>
-                                            <TableCell style={{ color: '#fff', fontWeight: '600', }}>Actions</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {employees.data.length > 0 ? (
-                                            employees.data.map((emp) => {
-                                                // Check if department or employee type is deleted (has deleted_at field)
-                                                const isDepartmentDeleted = emp.department?.deleted_at !== null;
-                                                const hasDeletedRelation = isDepartmentDeleted;
-
-                                                const rowStyle = hasDeletedRelation
-                                                    ? {
-                                                        backgroundColor: '#ffebee', // Light red background
-                                                        color: '#d32f2f', // Red text
-                                                        opacity: 0.7,
-                                                    }
-                                                    : {};
-
-                                                return (
-                                                    <TableRow key={emp.id} style={rowStyle}>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : {
-                                                            color: '#000', fontWeight: '600',
-                                                            fontSize: '14px',
-                                                            textOverflow: 'ellipsis',
-                                                            overflow: 'hidden',
-                                                            maxWidth: '100px',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            <Tooltip title={emp.employee_id} arrow>
-                                                                {emp.employee_id}
-                                                            </Tooltip>
-                                                        </TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : {
-                                                            color: '#7f7f7f', fontWeight: '400',
-                                                            fontSize: '14px',
-                                                            textOverflow: 'ellipsis',
-                                                            overflow: 'hidden',
-                                                            maxWidth: '120px',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            <Tooltip title={emp.name} arrow>
-                                                                {emp.name}
-                                                            </Tooltip>
-                                                        </TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : { color: '#7f7f7f', fontWeight: '400', fontSize: '14px' }}>
-                                                            {emp.department?.name ? (
-                                                                <>
-                                                                    {emp.department.name}
-                                                                    {isDepartmentDeleted && (
-                                                                        <Typography
-                                                                            variant="caption"
-                                                                            style={{
-                                                                                color: '#d32f2f',
-                                                                                fontStyle: 'italic',
-                                                                                display: 'block',
-                                                                                fontSize: '0.7rem',
-                                                                            }}
-                                                                        >
-                                                                            (Department Deleted)
-                                                                        </Typography>
-                                                                    )}
-                                                                </>
-                                                            ) : (
-                                                                <Typography variant="caption" style={{ color: '#d32f2f', fontStyle: 'italic' }}>
-                                                                    No Department
-                                                                </Typography>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : { color: '#7f7f7f', fontWeight: '400', fontSize: '14px' }}>{emp.designation}</TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : { color: '#7f7f7f', fontWeight: '400', fontSize: '14px' }}>{emp.joining_date}</TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : {
-                                                            color: '#7f7f7f', fontWeight: '400',
-                                                            fontSize: '14px',
-                                                            textOverflow: 'ellipsis',
-                                                            overflow: 'hidden',
-                                                            maxWidth: '120px',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            <Tooltip title={emp.email} arrow>
-                                                                {emp.email}
-                                                            </Tooltip>
-                                                        </TableCell>
-                                                        <TableCell style={hasDeletedRelation ? { color: '#d32f2f' } : { color: '#7f7f7f', fontWeight: '400', fontSize: '14px' }}>
-                                                            {hasDeletedRelation ? (
-                                                                <Typography
-                                                                    variant="caption"
-                                                                    style={{
-                                                                        color: '#d32f2f',
-                                                                        fontWeight: 'bold',
-                                                                        backgroundColor: '#ffcdd2',
-                                                                        padding: '2px 8px',
-                                                                        borderRadius: '4px',
-                                                                    }}
-                                                                >
-                                                                    Needs Attention
-                                                                    {isDepartmentDeleted ? ' (Department)' : ''}
-                                                                </Typography>
-                                                            ) : (
-                                                                (emp.status ?? 'Active')
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <IconButton
-                                                                onClick={() => router.visit(route('employees.edit', emp.id))}
-                                                            >
-                                                                <FaEdit size={18} style={{ marginRight: 10, color: '#f57c00' }} />
-                                                            </IconButton>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })
-                                        ) : (
-                                            <TableRow>
-                                                <TableCell colSpan={9} align="center">
-                                                    No employees found.
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-
-                            {/* Pagination */}
-                            <Box sx={{ display: 'flex', justifyContent: 'end', mt: 3 }}>
-                                <Pagination
-                                    count={employees.last_page}
-                                    page={employees.current_page}
-                                    onChange={(e, page) =>
-                                        router.get(route('employees.attendances.dashboard'), {
-                                            page,
-                                            search: searchTerm,
-                                            department_ids: selectedDepartments,
-                                        })
-                                    }
-                                />
-                            </Box>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </>
-    );
+    return { label: employee?.status || 'Active', color: 'info' };
 };
 
-export default AttendanceDashboard;
+export default function AttendanceDashboard() {
+    const { props } = usePage();
+    const {
+        employees,
+        stats = {},
+        departments = [],
+        filters: initialFilters = {},
+    } = props;
+
+    const safeEmployees = employees?.data || [];
+    const pagination = employees
+        ? {
+              current_page: employees.current_page || 1,
+              last_page: employees.last_page || 1,
+              per_page: employees.per_page || 10,
+              total: employees.total || safeEmployees.length,
+              links: employees.links || [],
+          }
+        : null;
+
+    const [isLoading, setIsLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState(initialFilters?.search || '');
+    const [selectedDepartments, setSelectedDepartments] = useState(
+        Array.isArray(initialFilters?.department_ids)
+            ? initialFilters.department_ids.map((id) => String(id))
+            : [],
+    );
+
+    const filtersRef = useRef({
+        search: initialFilters?.search || '',
+        department_ids: Array.isArray(initialFilters?.department_ids)
+            ? initialFilters.department_ids.map((id) => String(id))
+            : [],
+        page: 1,
+    });
+
+    useEffect(() => {
+        const next = {
+            search: initialFilters?.search || '',
+            department_ids: Array.isArray(initialFilters?.department_ids)
+                ? initialFilters.department_ids.map((id) => String(id))
+                : [],
+            page: 1,
+        };
+        filtersRef.current = next;
+        setSearchTerm(next.search);
+        setSelectedDepartments(next.department_ids);
+    }, [initialFilters?.department_ids, initialFilters?.search]);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        setIsLoading(true);
+
+        const payload = {};
+        if (nextFilters.search?.trim()) {
+            payload.search = nextFilters.search.trim();
+        }
+        if (Array.isArray(nextFilters.department_ids) && nextFilters.department_ids.length > 0) {
+            payload.department_ids = nextFilters.department_ids;
+        }
+        if (Number(nextFilters.page) > 1) {
+            payload.page = Number(nextFilters.page);
+        }
+
+        router.get(route('employees.attendances.dashboard'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            onFinish: () => setIsLoading(false),
+            onError: () => setIsLoading(false),
+        });
+    }, []);
+
+    const debouncedSubmit = useMemo(() => debounce((next) => submitFilters(next), 300), [submitFilters]);
+
+    useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    const updateFilters = React.useCallback(
+        (partial, { immediate = false } = {}) => {
+            const nextFilters = {
+                ...filtersRef.current,
+                ...partial,
+            };
+
+            if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+                nextFilters.page = 1;
+            }
+
+            filtersRef.current = nextFilters;
+
+            if (Object.prototype.hasOwnProperty.call(partial, 'search')) {
+                setSearchTerm(nextFilters.search);
+            }
+
+            if (Object.prototype.hasOwnProperty.call(partial, 'department_ids')) {
+                setSelectedDepartments(nextFilters.department_ids);
+            }
+
+            if (immediate) {
+                debouncedSubmit.cancel();
+                submitFilters(nextFilters);
+                return;
+            }
+
+            debouncedSubmit(nextFilters);
+        },
+        [debouncedSubmit, submitFilters],
+    );
+
+    const resetFilters = React.useCallback(() => {
+        debouncedSubmit.cancel();
+        const nextFilters = {
+            search: '',
+            department_ids: [],
+            page: 1,
+        };
+        filtersRef.current = nextFilters;
+        setSearchTerm('');
+        setSelectedDepartments([]);
+        submitFilters(nextFilters);
+    }, [debouncedSubmit, submitFilters]);
+
+    const summaryCards = [
+        {
+            label: 'Total Employees',
+            value: stats?.total_employees ?? 0,
+            caption: `${departments?.length || 0} departments tracked`,
+            icon: <Groups2RoundedIcon />,
+            tone: 'dark',
+        },
+        {
+            label: 'Present Today',
+            value: stats?.total_present ?? 0,
+            caption: 'Marked present',
+            icon: <FactCheckRoundedIcon />,
+            tone: 'light',
+        },
+        {
+            label: 'Absent Today',
+            value: stats?.total_absent ?? 0,
+            caption: 'Not checked in',
+            icon: <ChecklistRoundedIcon />,
+            tone: 'muted',
+        },
+        {
+            label: 'Late Today',
+            value: stats?.total_late ?? 0,
+            caption: 'Late attendance entries',
+            icon: <EventAvailableRoundedIcon />,
+            tone: 'light',
+        },
+    ];
+
+    return (
+        <AppPage
+            title="Attendance Dashboard"
+            subtitle="Track leave workflows, attendance coverage, and employee readiness from one aligned workspace."
+            actions={(
+                <Button
+                    variant="contained"
+                    startIcon={<AddRoundedIcon />}
+                    onClick={() => router.visit(route('employees.leaves.application.create'))}
+                    sx={{ textTransform: 'none', borderRadius: 999 }}
+                >
+                    New Application
+                </Button>
+            )}
+        >
+            <Grid container spacing={2.5} sx={{ mb: 1 }}>
+                {summaryCards.map((card) => (
+                    <Grid item xs={12} sm={6} xl={3} key={card.label}>
+                        <StatCard compact {...card} />
+                    </Grid>
+                ))}
+            </Grid>
+
+            <SurfaceCard
+                title="Attendance Shortcuts"
+                subtitle="Jump into the most-used leave and attendance workflows."
+            >
+                <Grid container spacing={2}>
+                    {quickLinks.map((link) => (
+                        <Grid item xs={12} sm={6} xl={3} key={link.label}>
+                            <Button
+                                fullWidth
+                                variant="outlined"
+                                startIcon={link.icon}
+                                onClick={() => router.visit(link.href)}
+                                sx={{
+                                    justifyContent: 'flex-start',
+                                    borderRadius: 3,
+                                    px: 2,
+                                    py: 1.4,
+                                    textTransform: 'none',
+                                    borderColor: 'rgba(10,61,98,0.18)',
+                                }}
+                            >
+                                <Stack alignItems="flex-start" spacing={0.15}>
+                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                        {link.label}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {link.caption}
+                                    </Typography>
+                                </Stack>
+                            </Button>
+                        </Grid>
+                    ))}
+                </Grid>
+            </SurfaceCard>
+
+            <SurfaceCard
+                title="Live Filters"
+                subtitle="Filter employees instantly by name, employee ID, email, designation, or department."
+            >
+                <FilterToolbar onReset={resetFilters}>
+                    <Grid container spacing={1.25}>
+                        <Grid item xs={12} md={6}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                placeholder="Search employee, email, ID, or designation"
+                                value={searchTerm}
+                                onChange={(event) => updateFilters({ search: event.target.value })}
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                            <Autocomplete
+                                multiple
+                                options={departments}
+                                value={departments.filter((department) => selectedDepartments.includes(String(department.id)))}
+                                getOptionLabel={(option) => option?.name || ''}
+                                isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                                onChange={(_, values) =>
+                                    updateFilters({
+                                        department_ids: values.map((value) => String(value.id)),
+                                    })
+                                }
+                                renderInput={(params) => <TextField {...params} size="small" label="Departments" />}
+                            />
+                        </Grid>
+                    </Grid>
+                </FilterToolbar>
+            </SurfaceCard>
+
+            <SurfaceCard
+                title="Employee Attendance Register"
+                subtitle="Review active employees and move into edit workflows without losing your filters."
+            >
+                <AdminDataTable
+                    columns={columns}
+                    rows={safeEmployees}
+                    loading={isLoading}
+                    emptyMessage="No employee records are available for the selected attendance filters."
+                    pagination={pagination}
+                    tableMinWidth={1120}
+                    stickyLastColumn
+                    renderRow={(employee) => {
+                        const status = resolveEmployeeStatus(employee);
+
+                        return (
+                            <TableRow key={employee.id} hover>
+                                <TableCell>{employee?.employee_id || 'N/A'}</TableCell>
+                                <TableCell>{employee?.name || 'Unnamed employee'}</TableCell>
+                                <TableCell>{employee?.department?.name || 'Unassigned'}</TableCell>
+                                <TableCell>{employee?.designation || 'Not set'}</TableCell>
+                                <TableCell>{employee?.joining_date || 'N/A'}</TableCell>
+                                <TableCell>{employee?.email || 'No email'}</TableCell>
+                                <TableCell>
+                                    <Chip
+                                        size="small"
+                                        label={status.label}
+                                        color={status.color}
+                                        variant={status.color === 'default' ? 'outlined' : 'filled'}
+                                        sx={{ fontWeight: 700 }}
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                        <Tooltip title="Edit employee">
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => router.visit(route('employees.edit', employee.id))}
+                                                aria-label={`Edit ${employee?.name || 'employee'}`}
+                                            >
+                                                <ModeEditOutlineRoundedIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                </TableCell>
+                            </TableRow>
+                        );
+                    }}
+                />
+            </SurfaceCard>
+        </AppPage>
+    );
+}

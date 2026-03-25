@@ -7,6 +7,7 @@ import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import { FaEdit } from 'react-icons/fa';
+import debounce from 'lodash.debounce';
 // import { DemoContainer } from "@mui/x-date-pickers/internals/demo";
 // import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 // import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -16,6 +17,7 @@ const ManageAttendance = () => {
     // const [open, setOpen] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [date, setDate] = useState(dayjs());
+    const [selectedStatus, setSelectedStatus] = useState('');
 
     const [attendances, setAttendances] = useState([]);
     const [leavecategories, setLeaveCategories] = useState([]);
@@ -53,6 +55,7 @@ const ManageAttendance = () => {
                     limit,
                     date: date.format('YYYY-MM-DD'),
                     search: searchQuery,
+                    status: selectedStatus,
                     branch_id: filters.branch_id?.id,
                     designation_id: filters.designation_id?.id,
                     department_id: filters.department_id?.id,
@@ -74,7 +77,21 @@ const ManageAttendance = () => {
 
     useEffect(() => {
         getAttendances(currentPage);
-    }, [currentPage, limit, date, filters]);
+    }, [currentPage, limit, date, filters, selectedStatus]);
+
+    const debouncedSearch = React.useMemo(
+        () =>
+            debounce(() => {
+                setCurrentPage(1);
+                getAttendances(1);
+            }, 300),
+        [limit, date, filters, selectedStatus, searchQuery]
+    );
+
+    useEffect(() => {
+        debouncedSearch();
+        return () => debouncedSearch.cancel();
+    }, [searchQuery, debouncedSearch]);
 
     const getLeaveCatgories = async () => {
         try {
@@ -115,13 +132,9 @@ const ManageAttendance = () => {
         fetchFiltersData();
     }, []);
 
-    const handleSearch = () => {
-        setCurrentPage(1);
-        getAttendances(1);
-    };
-
     const handleClearSearch = () => {
         setSearchQuery('');
+        setSelectedStatus('');
         setFilters({
             branch_id: null,
             designation_id: null,
@@ -156,12 +169,6 @@ const ManageAttendance = () => {
         } finally {
             setApplyLoading(false);
             setConfirmModalOpen(false);
-        }
-    };
-
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter') {
-            handleSearch();
         }
     };
 
@@ -236,7 +243,6 @@ const ManageAttendance = () => {
                                     placeholder="Search by name or ID..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyPress={handleKeyPress}
                                     sx={{
                                         width: 250,
                                         '& .MuiOutlinedInput-root': {
@@ -284,6 +290,24 @@ const ManageAttendance = () => {
                                         }}
                                     />
                                 </LocalizationProvider>
+                                <Select
+                                    size="small"
+                                    displayEmpty
+                                    value={selectedStatus}
+                                    onChange={(e) => setSelectedStatus(e.target.value)}
+                                    renderValue={(selected) => {
+                                        if (!selected) return <span style={{ color: '#aaa' }}>Attendance Status</span>;
+                                        return selected;
+                                    }}
+                                    sx={{ width: 220, borderRadius: '16px' }}
+                                >
+                                    <MenuItem value="">All</MenuItem>
+                                    <MenuItem value="present">Present</MenuItem>
+                                    <MenuItem value="absent">Absent</MenuItem>
+                                    <MenuItem value="late">Late</MenuItem>
+                                    <MenuItem value="leave">Leave</MenuItem>
+                                    <MenuItem value="weekend">Weekend</MenuItem>
+                                </Select>
                                 {/* Filters */}
                                 {/* Need Autocomplete for Branch, Designation, Dept, SubDept */}
                                 {/* Since we don't have Autocomplete imported in the original file, we need to import it or use Select */}
@@ -372,21 +396,6 @@ const ManageAttendance = () => {
                                     ))}
                                 </Select>
 
-                                <Button
-                                    variant="contained"
-                                    startIcon={<Search />}
-                                    onClick={handleSearch}
-                                    sx={{
-                                        backgroundColor: '#063455',
-                                        color: 'white',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        px: 4,
-                                        '&:hover': { backgroundColor: '#063455' },
-                                    }}
-                                >
-                                    Search
-                                </Button>
                                 <Button
                                     variant="outlined"
                                     onClick={handleClearSearch}

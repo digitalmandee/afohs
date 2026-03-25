@@ -4,6 +4,7 @@ import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typograph
 import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -166,12 +167,14 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                 ))}
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="From" type="date" value={localFilters.from} onChange={(e) => updateFilters({ from: e.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="To" type="date" value={localFilters.to} onChange={(e) => updateFilters({ to: e.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
+                        <DateRangeFilterFields
+                            startValue={localFilters.from}
+                            endValue={localFilters.to}
+                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
+                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
+                            startGrid={{ xs: 12, md: 2 }}
+                            endGrid={{ xs: 12, md: 2 }}
+                        />
                     </Grid>
                 </FilterToolbar>
             </SurfaceCard>

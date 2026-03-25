@@ -18,6 +18,7 @@ class AttendanceController extends Controller
         $limit = $request->query('limit') ?? 10;
         $date = $request->query('date', now()->format('Y-m-d'));
         $search = $request->query('search', '');
+        $status = $request->query('status', '');
         $branchId = $request->query('branch_id');
         $designationId = $request->query('designation_id');
         $departmentId = $request->query('department_id');
@@ -76,6 +77,10 @@ class AttendanceController extends Controller
             if ($subdepartmentId)
                 $query->where('subdepartment_id', $subdepartmentId);
         });
+
+        if ($status && $status !== 'all') {
+            $attendanceQuery->where('status', $status);
+        }
 
         $attendance = $attendanceQuery->paginate($limit);
 

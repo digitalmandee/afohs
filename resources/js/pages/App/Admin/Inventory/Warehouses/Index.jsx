@@ -24,6 +24,8 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { AdminIconAction, AdminPillAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
+import { DeleteOutline, VisibilityOutlined } from '@mui/icons-material';
 
 export default function Index({ warehouses, assignmentWarehouses: allAssignmentWarehouses = [], filters, tenants = [], categories = [], locationSummary = {} }) {
     const list = warehouses?.data || [];
@@ -346,9 +348,11 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                     </Stack>
                                 </TableCell>
                                 <TableCell align="right">
-                                    <Button size="small" color="error" variant="outlined" onClick={() => router.delete(route('inventory.warehouse-assignments.destroy', assignment.id))}>
-                                        Remove
-                                    </Button>
+                                    <AdminRowActionGroup justify="flex-end">
+                                        <AdminIconAction title="Remove Assignment" color="error" onClick={() => router.delete(route('inventory.warehouse-assignments.destroy', assignment.id))}>
+                                            <DeleteOutline fontSize="small" />
+                                        </AdminIconAction>
+                                    </AdminRowActionGroup>
                                 </TableCell>
                             </TableRow>
                         )}
@@ -486,17 +490,15 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                 </TableCell>
                                 <TableCell>{warehouse.address || '-'}</TableCell>
                                 <TableCell align="right">
-                                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                        <Button size="small" variant="outlined" onClick={() => setLocationWarehouse(warehouse)}>
-                                            Add Location
-                                        </Button>
-                                        <Button size="small" variant="outlined" onClick={() => router.visit(route('inventory.warehouses.show', warehouse.id))}>
-                                            View
-                                        </Button>
-                                        <Button size="small" color="error" variant="outlined" onClick={() => router.delete(route('inventory.warehouses.destroy', warehouse.id))}>
-                                            Delete
-                                        </Button>
-                                    </Stack>
+                                    <AdminRowActionGroup justify="flex-end">
+                                        <AdminPillAction label="Add Location" onClick={() => setLocationWarehouse(warehouse)} />
+                                        <AdminIconAction title="View Warehouse" onClick={() => router.visit(route('inventory.warehouses.show', warehouse.id))}>
+                                            <VisibilityOutlined fontSize="small" />
+                                        </AdminIconAction>
+                                        <AdminIconAction title="Delete Warehouse" color="error" onClick={() => router.delete(route('inventory.warehouses.destroy', warehouse.id))}>
+                                            <DeleteOutline fontSize="small" />
+                                        </AdminIconAction>
+                                    </AdminRowActionGroup>
                                 </TableCell>
                             </TableRow>
                         )}

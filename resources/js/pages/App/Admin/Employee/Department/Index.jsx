@@ -1,13 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { MdArrowBackIos } from 'react-icons/md';
 import { Button, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, CircularProgress, Pagination, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Snackbar, Alert, Box, Switch, MenuItem } from '@mui/material';
 import axios from 'axios';
-import { ArrowBack } from '@mui/icons-material';
-import { Search, FilterAlt, Visibility, Delete } from '@mui/icons-material';
+import { Delete } from '@mui/icons-material';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { enqueueSnackbar } from 'notistack';
 import { FaEdit, FaTrash } from 'react-icons/fa';
+import debounce from 'lodash.debounce';
 
 const Management = () => {
     const { props } = usePage();
@@ -28,14 +27,39 @@ const Management = () => {
     const [searchQuery, setSearchQuery] = useState(filters?.search || '');
     const [filterBranchId, setFilterBranchId] = useState(filters?.branch_id || '');
 
-    const handleSearch = (e) => {
-        if (e.key === 'Enter') {
-            applyFilters();
-        }
+    const submitFilters = React.useCallback((nextSearch, nextBranchId) => {
+        router.get(route('employees.departments'), {
+            search: nextSearch || undefined,
+            branch_id: nextBranchId || undefined,
+        }, { preserveState: true, preserveScroll: true, replace: true });
+    }, []);
+
+    const debouncedSubmit = useMemo(() => debounce((nextSearch, nextBranchId) => submitFilters(nextSearch, nextBranchId), 300), [submitFilters]);
+
+    useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    useEffect(() => {
+        const normalized = searchQuery.trim();
+        debouncedSubmit(normalized, filterBranchId);
+    }, [searchQuery, filterBranchId, debouncedSubmit]);
+
+    const resetFilters = () => {
+        debouncedSubmit.cancel();
+        setSearchQuery('');
+        setFilterBranchId('');
+        submitFilters('', '');
     };
 
-    const applyFilters = () => {
-        router.get(route('employees.departments'), { search: searchQuery, branch_id: filterBranchId }, { preserveState: true });
+    const handlePageChange = (event, page) => {
+        router.get(
+            route('employees.departments'),
+            {
+                page,
+                search: searchQuery.trim() || undefined,
+                branch_id: filterBranchId || undefined,
+            },
+            { preserveState: true, preserveScroll: true, replace: true }
+        );
     };
 
     const handleOpen = (department = null) => {
@@ -192,25 +216,13 @@ const Management = () => {
                             label="Search Departments"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={handleSearch}
-                            InputProps={{
-                                endAdornment: (
-                                    <IconButton onClick={applyFilters}>
-                                        <Search />
-                                    </IconButton>
-                                ),
-                            }}
                         />
                         <TextField
                             select
                             size="small"
                             label="Filter by Company"
                             value={filterBranchId}
-                            onChange={(e) => {
-                                setFilterBranchId(e.target.value);
-                                // Optional: auto-apply on change
-                                router.get(route('employees.departments'), { search: searchQuery, branch_id: e.target.value }, { preserveState: true });
-                            }}
+                            onChange={(e) => setFilterBranchId(e.target.value)}
                             sx={{ minWidth: 200 }}
                         >
                             <MenuItem value="">All Companies</MenuItem>
@@ -221,6 +233,9 @@ const Management = () => {
                                     </MenuItem>
                                 ))}
                         </TextField>
+                        <Button variant="outlined" onClick={resetFilters} sx={{ borderRadius: '16px', textTransform: 'none' }}>
+                            Reset
+                        </Button>
                     </Box>
 
                     <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Manage all primary departments within the club</Typography>
@@ -268,7 +283,7 @@ const Management = () => {
 
                     {/* Pagination */}
                     <div className="d-flex justify-content-end mt-4">
-                        <Pagination count={departments.last_page} page={departments.current_page} onChange={(e, page) => router.get(route('employees.departments'), { page })} />
+                        <Pagination count={departments.last_page} page={departments.current_page} onChange={handlePageChange} />
                     </div>
                 </div>
             </div>

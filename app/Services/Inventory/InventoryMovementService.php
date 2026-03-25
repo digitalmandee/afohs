@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Models\InventoryDocument;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
+use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -12,9 +13,15 @@ class InventoryMovementService
 {
     public function record(array $attributes): InventoryTransaction
     {
+        $inventoryItemId = $attributes['inventory_item_id'] ?? null;
+        $productId = $attributes['product_id'] ?? null;
+        if (!$productId && $inventoryItemId) {
+            $productId = $this->resolveLedgerProductId((int) $inventoryItemId);
+        }
+
         $transaction = InventoryTransaction::create([
-            'product_id' => $attributes['product_id'] ?? null,
-            'inventory_item_id' => $attributes['inventory_item_id'],
+            'product_id' => $productId,
+            'inventory_item_id' => $inventoryItemId,
             'tenant_id' => $attributes['tenant_id'] ?? null,
             'warehouse_id' => $attributes['warehouse_id'],
             'warehouse_location_id' => $attributes['warehouse_location_id'] ?? null,
@@ -33,10 +40,66 @@ class InventoryMovementService
 
         $delta = (float) ($transaction->qty_in ?? 0) - (float) ($transaction->qty_out ?? 0);
         if (abs($delta) > 0.0001) {
-            InventoryItem::query()->whereKey($transaction->inventory_item_id)->increment('current_stock', $delta);
+            if ($inventoryItemId) {
+                InventoryItem::query()->whereKey($inventoryItemId)->increment('current_stock', $delta);
+            }
+
+            if ($productId) {
+                Product::query()->whereKey($productId)->increment('current_stock', $delta);
+            }
         }
 
         return $transaction;
+    }
+
+    protected function resolveLedgerProductId(int $inventoryItemId): ?int
+    {
+        $inventoryItem = InventoryItem::query()->find($inventoryItemId);
+        if (!$inventoryItem) {
+            return null;
+        }
+
+        if ($inventoryItem->legacy_product_id) {
+            return (int) $inventoryItem->legacy_product_id;
+        }
+
+        $bridgeCode = sprintf('INV-BRIDGE-%d', $inventoryItem->id);
+        $bridgeProduct = Product::withTrashed()->where('menu_code', $bridgeCode)->first();
+
+        if (!$bridgeProduct) {
+            $bridgeProduct = Product::create([
+                'name' => $inventoryItem->name . ' [Inventory Bridge]',
+                'menu_code' => $bridgeCode,
+                'description' => 'Internal compatibility bridge for inventory item ledger posting.',
+                'category_id' => null,
+                'manufacturer_id' => null,
+                'base_price' => (float) ($inventoryItem->default_unit_cost ?? 0),
+                'cost_of_goods_sold' => (float) ($inventoryItem->default_unit_cost ?? 0),
+                'current_stock' => (int) round((float) ($inventoryItem->current_stock ?? 0)),
+                'manage_stock' => false,
+                'minimal_stock' => 0,
+                'notify_when_out_of_stock' => false,
+                'available_order_types' => [],
+                'is_salable' => false,
+                'is_purchasable' => false,
+                'is_returnable' => false,
+                'is_taxable' => false,
+                'item_type' => 'raw_material',
+                'unit_id' => $inventoryItem->unit_id,
+                'status' => 'inactive',
+                'tenant_id' => $inventoryItem->tenant_id,
+                'created_by' => $inventoryItem->created_by,
+                'updated_by' => $inventoryItem->updated_by,
+            ]);
+        } elseif (method_exists($bridgeProduct, 'trashed') && $bridgeProduct->trashed()) {
+            $bridgeProduct->restore();
+        }
+
+        $inventoryItem->forceFill([
+            'legacy_product_id' => $bridgeProduct->id,
+        ])->save();
+
+        return (int) $bridgeProduct->id;
     }
 
     public function availableQuantity(int $inventoryItemId, int $warehouseId, ?int $locationId = null): float
@@ -65,7 +128,7 @@ class InventoryMovementService
 
             $this->record([
                 'product_id' => $payload['product_id'] ?? null,
-                'inventory_item_id' => $payload['inventory_item_id'],
+                'inventory_item_id' => $payload['inventory_item_id'] ?? null,
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'warehouse_id' => $payload['warehouse_id'],
                 'warehouse_location_id' => $payload['warehouse_location_id'] ?? null,
@@ -93,8 +156,9 @@ class InventoryMovementService
             $quantity = (float) $payload['quantity'];
 
             if ($direction === 'out') {
-                $available = $this->availableQuantity(
-                    (int) $payload['inventory_item_id'],
+                $available = $this->resolveAvailableQuantity(
+                    $payload['inventory_item_id'] ?? null,
+                    $payload['product_id'] ?? null,
                     (int) $payload['warehouse_id'],
                     $payload['warehouse_location_id'] ?? null,
                 );
@@ -119,7 +183,7 @@ class InventoryMovementService
 
             $this->record([
                 'product_id' => $payload['product_id'] ?? null,
-                'inventory_item_id' => $payload['inventory_item_id'],
+                'inventory_item_id' => $payload['inventory_item_id'] ?? null,
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'warehouse_id' => $payload['warehouse_id'],
                 'warehouse_location_id' => $payload['warehouse_location_id'] ?? null,
@@ -154,8 +218,9 @@ class InventoryMovementService
         return DB::transaction(function () use ($payload) {
             $quantity = (float) $payload['quantity'];
 
-            $available = $this->availableQuantity(
-                (int) $payload['inventory_item_id'],
+            $available = $this->resolveAvailableQuantity(
+                $payload['inventory_item_id'] ?? null,
+                $payload['product_id'] ?? null,
                 (int) $payload['source_warehouse_id'],
                 $payload['source_warehouse_location_id'] ?? null,
             );
@@ -179,7 +244,7 @@ class InventoryMovementService
 
             $base = [
                 'product_id' => $payload['product_id'] ?? null,
-                'inventory_item_id' => $payload['inventory_item_id'],
+                'inventory_item_id' => $payload['inventory_item_id'] ?? null,
                 'tenant_id' => $payload['tenant_id'] ?? null,
                 'transaction_date' => $payload['transaction_date'],
                 'unit_cost' => $payload['unit_cost'] ?? 0,
@@ -232,5 +297,24 @@ class InventoryMovementService
         };
 
         return sprintf('%s-%s-%04d', $prefix, now()->format('Ymd'), random_int(1, 9999));
+    }
+
+    protected function resolveAvailableQuantity(?int $inventoryItemId, ?int $productId, int $warehouseId, ?int $locationId = null): float
+    {
+        $query = InventoryTransaction::query()
+            ->where('warehouse_id', $warehouseId)
+            ->when($locationId, fn ($builder) => $builder->where('warehouse_location_id', $locationId));
+
+        if ($inventoryItemId) {
+            $query->where('inventory_item_id', $inventoryItemId);
+        } elseif ($productId) {
+            $query->where('product_id', $productId);
+        } else {
+            return 0.0;
+        }
+
+        return (float) $query
+            ->selectRaw('COALESCE(SUM(qty_in - qty_out), 0) as balance')
+            ->value('balance');
     }
 }

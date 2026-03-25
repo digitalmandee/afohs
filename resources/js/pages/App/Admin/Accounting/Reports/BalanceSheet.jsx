@@ -6,6 +6,8 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
+import { AccountBalanceOutlined } from '@mui/icons-material';
 import { downloadReportCsv, downloadReportPdf, formatReportAmount, openReportPrint, sanitizeFilters } from './reportOutput';
 
 function SectionTable({ title, rows }) {
@@ -27,9 +29,11 @@ function SectionTable({ title, rows }) {
                         <TableCell>{row.name}</TableCell>
                         <TableCell align="right">{formatReportAmount(row.balance)}</TableCell>
                         <TableCell align="right">
-                            <Button size="small" variant="outlined" onClick={() => row.ledger_url && router.get(row.ledger_url)} disabled={!row.ledger_url}>
-                                Ledger
-                            </Button>
+                            <AdminRowActionGroup justify="flex-end">
+                                <AdminIconAction title={row.ledger_url ? 'Open Ledger' : 'Ledger unavailable'} onClick={() => row.ledger_url && router.get(row.ledger_url)} disabled={!row.ledger_url}>
+                                    <AccountBalanceOutlined fontSize="small" />
+                                </AdminIconAction>
+                            </AdminRowActionGroup>
                         </TableCell>
                     </TableRow>
                 )}

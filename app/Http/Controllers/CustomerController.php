@@ -13,11 +13,33 @@ use Inertia\Inertia;
 
 class CustomerController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $customerData = Customer::orderBy('created_at', 'desc')->paginate(10);
+        $filters = $request->only(['search', 'guest_type_id']);
 
-        return Inertia::render('App/Admin/Customers/Index', compact('customerData'));
+        $query = Customer::with('guestType:id,name')->orderByDesc('created_at');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($customerQuery) use ($search) {
+                $customerQuery
+                    ->where('customer_no', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhere('contact', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('member_name', 'like', "%{$search}%")
+                    ->orWhere('member_no', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('guest_type_id')) {
+            $query->where('guest_type_id', $request->guest_type_id);
+        }
+
+        $customerData = $query->paginate(15)->withQueryString();
+        $guestTypes = GuestType::where('status', 1)->orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('App/Admin/Customers/Index', compact('customerData', 'filters', 'guestTypes'));
     }
 
     public function create()
@@ -34,6 +56,15 @@ class CustomerController extends Controller
             'customer' => $customer,
             'guestTypes' => GuestType::where('status', 1)->get(),
             'isEdit' => true,
+        ]);
+    }
+
+    public function show($id)
+    {
+        $customer = Customer::with('guestType:id,name')->findOrFail($id);
+
+        return Inertia::render('App/Admin/Customers/Show', [
+            'customer' => $customer,
         ]);
     }
 
@@ -60,10 +91,10 @@ class CustomerController extends Controller
 
     public function destroy($id)
     {
-        $eventVenue = Customer::findOrFail($id);
-        $eventVenue->delete();
+        $customer = Customer::findOrFail($id);
+        $customer->delete();
 
-        return response()->json(['message' => 'Event Venue deleted successfully.']);
+        return response()->json(['message' => 'Guest deleted successfully.']);
     }
 
     // Delete an Customer

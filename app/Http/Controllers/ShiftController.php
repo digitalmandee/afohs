@@ -11,11 +11,27 @@ class ShiftController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $shifts = Shift::latest()->paginate(10);
+        $search = trim((string) $request->query('search', ''));
+
+        $shifts = Shift::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $normalizedSearch = strtolower($search);
+
+                $query->where(function ($inner) use ($search, $normalizedSearch) {
+                    $inner
+                        ->whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($search) . '%'])
+                        ->orWhereRaw("LOWER(CONCAT(COALESCE(start_time, ''), ' ', COALESCE(end_time, ''))) LIKE ?", ['%' . $normalizedSearch . '%']);
+                });
+            })
+            ->latest()
+            ->paginate(10)
+            ->withQueryString();
+
         return Inertia::render('App/Admin/Employee/Shift/Index', [
-            'shifts' => $shifts
+            'shifts' => $shifts,
+            'filters' => $request->only(['search']),
         ]);
     }
 

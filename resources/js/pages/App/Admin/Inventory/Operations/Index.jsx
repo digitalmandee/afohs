@@ -39,7 +39,7 @@ const createInitialFilters = (filters, ledger) => ({
     tenant_id: filters?.tenant_id || '',
     warehouse_id: filters?.warehouse_id || '',
     warehouse_location_id: filters?.warehouse_location_id || '',
-    product_id: filters?.product_id || '',
+    inventory_item_id: filters?.inventory_item_id || '',
     type: filters?.type || '',
     from: filters?.from || '',
     to: filters?.to || '',
@@ -54,7 +54,7 @@ export default function Index({
     tenants = [],
     warehouses = [],
     warehouseLocations = [],
-    products = [],
+    inventoryItems = [],
     typeOptions = [],
 }) {
     const rows = ledger?.data || [];
@@ -66,7 +66,7 @@ export default function Index({
         tenant_id: '',
         warehouse_id: '',
         warehouse_location_id: '',
-        product_id: '',
+        inventory_item_id: '',
         transaction_date: new Date().toISOString().slice(0, 10),
         quantity: '',
         unit_cost: '',
@@ -77,7 +77,7 @@ export default function Index({
         tenant_id: '',
         warehouse_id: '',
         warehouse_location_id: '',
-        product_id: '',
+        inventory_item_id: '',
         transaction_date: new Date().toISOString().slice(0, 10),
         direction: 'in',
         quantity: '',
@@ -91,7 +91,7 @@ export default function Index({
         source_warehouse_location_id: '',
         destination_warehouse_id: '',
         destination_warehouse_location_id: '',
-        product_id: '',
+        inventory_item_id: '',
         transaction_date: new Date().toISOString().slice(0, 10),
         quantity: '',
         unit_cost: '',
@@ -102,7 +102,7 @@ export default function Index({
         tenant_id: '',
         warehouse_id: '',
         warehouse_location_id: '',
-        product_id: '',
+        inventory_item_id: '',
         transaction_date: new Date().toISOString().slice(0, 10),
         quantity: '',
         unit_cost: '',
@@ -115,7 +115,7 @@ export default function Index({
         if (nextFilters.tenant_id) payload.tenant_id = nextFilters.tenant_id;
         if (nextFilters.warehouse_id) payload.warehouse_id = nextFilters.warehouse_id;
         if (nextFilters.warehouse_location_id) payload.warehouse_location_id = nextFilters.warehouse_location_id;
-        if (nextFilters.product_id) payload.product_id = nextFilters.product_id;
+        if (nextFilters.inventory_item_id) payload.inventory_item_id = nextFilters.inventory_item_id;
         if (nextFilters.type) payload.type = nextFilters.type;
         if (nextFilters.from) payload.from = nextFilters.from;
         if (nextFilters.to) payload.to = nextFilters.to;
@@ -139,7 +139,7 @@ export default function Index({
     }, [
         filters?.from,
         filters?.per_page,
-        filters?.product_id,
+        filters?.inventory_item_id,
         filters?.search,
         filters?.tenant_id,
         filters?.to,
@@ -205,7 +205,7 @@ export default function Index({
 
     const columns = [
         { key: 'date', label: 'Date', minWidth: 110 },
-        { key: 'product', label: 'Inventory Item', minWidth: 220 },
+        { key: 'inventory_item', label: 'Inventory Item', minWidth: 220 },
         { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
         { key: 'warehouse', label: 'Warehouse', minWidth: 180 },
         { key: 'location', label: 'Location', minWidth: 160 },
@@ -364,13 +364,13 @@ export default function Index({
                                         <TextField
                                             select
                                             label="Inventory Item"
-                                            value={localFilters.product_id}
-                                            onChange={(event) => updateFilters({ product_id: event.target.value }, { immediate: true })}
+                                            value={localFilters.inventory_item_id}
+                                            onChange={(event) => updateFilters({ inventory_item_id: event.target.value }, { immediate: true })}
                                             fullWidth
                                         >
                                             <MenuItem value="">All inventory items</MenuItem>
-                                            {products.map((product) => (
-                                                <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>
+                                            {inventoryItems.map((inventoryItem) => (
+                                                <MenuItem key={inventoryItem.id} value={inventoryItem.id}>{inventoryItem.menu_code || inventoryItem.id} · {inventoryItem.name}</MenuItem>
                                             ))}
                                         </TextField>
                                     </Grid>
@@ -428,10 +428,10 @@ export default function Index({
                                                 <TableCell>
                                                     <Stack spacing={0.35}>
                                                         <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>
-                                                            {row.product?.name || 'Inventory Item'}
+                                                            {row.inventory_item?.name || 'Inventory Item'}
                                                         </Typography>
                                                         <Typography variant="body2" color="text.secondary">
-                                                            {row.product?.menu_code || `#${row.product_id}`}
+                                                            {row.inventory_item?.menu_code || `#${row.inventory_item_id}`}
                                                         </Typography>
                                                     </Stack>
                                                 </TableCell>
@@ -487,8 +487,8 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Inventory Item" value={openingForm.data.product_id} onChange={(event) => openingForm.setData('product_id', event.target.value)} error={!!openingForm.errors.product_id} helperText={openingForm.errors.product_id} fullWidth>
-                                {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
+                            <TextField select label="Inventory Item" value={openingForm.data.inventory_item_id} onChange={(event) => openingForm.setData('inventory_item_id', event.target.value)} error={!!openingForm.errors.inventory_item_id} helperText={openingForm.errors.inventory_item_id} fullWidth>
+                                {inventoryItems.map((inventoryItem) => <MenuItem key={inventoryItem.id} value={inventoryItem.id}>{inventoryItem.menu_code || inventoryItem.id} · {inventoryItem.name}</MenuItem>)}
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={4}>
@@ -542,8 +542,8 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Inventory Item" value={adjustmentForm.data.product_id} onChange={(event) => adjustmentForm.setData('product_id', event.target.value)} error={!!adjustmentForm.errors.product_id} helperText={adjustmentForm.errors.product_id} fullWidth>
-                                {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
+                            <TextField select label="Inventory Item" value={adjustmentForm.data.inventory_item_id} onChange={(event) => adjustmentForm.setData('inventory_item_id', event.target.value)} error={!!adjustmentForm.errors.inventory_item_id} helperText={adjustmentForm.errors.inventory_item_id} fullWidth>
+                                {inventoryItems.map((inventoryItem) => <MenuItem key={inventoryItem.id} value={inventoryItem.id}>{inventoryItem.menu_code || inventoryItem.id} · {inventoryItem.name}</MenuItem>)}
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={3}>
@@ -591,8 +591,8 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                            <TextField select label="Inventory Item" value={issueForm.data.product_id} onChange={(event) => issueForm.setData('product_id', event.target.value)} error={!!issueForm.errors.product_id} helperText={issueForm.errors.product_id} fullWidth>
-                                {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
+                            <TextField select label="Inventory Item" value={issueForm.data.inventory_item_id} onChange={(event) => issueForm.setData('inventory_item_id', event.target.value)} error={!!issueForm.errors.inventory_item_id} helperText={issueForm.errors.inventory_item_id} fullWidth>
+                                {inventoryItems.map((inventoryItem) => <MenuItem key={inventoryItem.id} value={inventoryItem.id}>{inventoryItem.menu_code || inventoryItem.id} · {inventoryItem.name}</MenuItem>)}
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={4}>
@@ -626,8 +626,8 @@ export default function Index({
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={4}>
-                            <TextField select label="Inventory Item" value={transferForm.data.product_id} onChange={(event) => transferForm.setData('product_id', event.target.value)} error={!!transferForm.errors.product_id} helperText={transferForm.errors.product_id} fullWidth>
-                                {products.map((product) => <MenuItem key={product.id} value={product.id}>{product.menu_code || product.id} · {product.name}</MenuItem>)}
+                            <TextField select label="Inventory Item" value={transferForm.data.inventory_item_id} onChange={(event) => transferForm.setData('inventory_item_id', event.target.value)} error={!!transferForm.errors.inventory_item_id} helperText={transferForm.errors.inventory_item_id} fullWidth>
+                                {inventoryItems.map((inventoryItem) => <MenuItem key={inventoryItem.id} value={inventoryItem.id}>{inventoryItem.menu_code || inventoryItem.id} · {inventoryItem.name}</MenuItem>)}
                             </TextField>
                         </Grid>
                         <Grid item xs={12} md={4}>

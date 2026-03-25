@@ -2,19 +2,20 @@
 
 namespace Tests\Feature;
 
+use App\Models\InventoryItem;
 use App\Models\Product;
 use Tests\TestCase;
 
 class ProductScopeSqlTest extends TestCase
 {
-    public function test_procurement_eligible_scope_contains_raw_material_purchasable_stock_managed_predicates(): void
+    public function test_inventory_item_procurement_scope_contains_purchasable_stock_managed_predicates(): void
     {
-        $sql = Product::query()->procurementEligible()->toSql();
+        $sql = InventoryItem::query()->procurementEligible()->toSql();
 
-        $this->assertStringContainsString('"item_type" = ?', $sql);
-        $this->assertStringContainsString('"is_purchasable" = ?', $sql);
         $this->assertStringContainsString('"manage_stock" = ?', $sql);
+        $this->assertStringContainsString('"is_purchasable" = ?', $sql);
         $this->assertStringContainsString('"status" = ?', $sql);
+        $this->assertStringNotContainsString('"item_type" = ?', $sql);
     }
 
     public function test_pos_menu_scope_contains_finished_item_salable_and_active_predicates(): void

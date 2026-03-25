@@ -39,7 +39,7 @@ class KotPrintDispatcher
                     'reason' => 'missing_kitchen_mapping',
                     'message' => 'Kitchen mapping is missing for one or more order items.',
                 ];
-                $this->logRecord($order, $batchId, null, null, null, $isRetry ? 'retried' : 'failed', 'missing_kitchen_mapping', $triggeredBy, $requestId);
+                $this->logRecord($order, $batchId, null, null, null, null, $isRetry ? 'retried' : 'failed', 'missing_kitchen_mapping', $triggeredBy, $requestId);
                 continue;
             }
 
@@ -50,7 +50,7 @@ class KotPrintDispatcher
                     'reason' => 'missing_printer_config',
                     'message' => "Printer is not configured for kitchen #{$kitchenId}.",
                 ];
-                $this->logRecord($order, $batchId, $kitchenId, null, null, $isRetry ? 'retried' : 'failed', 'missing_printer_config', $triggeredBy, $requestId);
+                $this->logRecord($order, $batchId, $kitchenId, null, null, null, $isRetry ? 'retried' : 'failed', 'missing_printer_config', $triggeredBy, $requestId);
                 continue;
             }
 
@@ -59,6 +59,7 @@ class KotPrintDispatcher
                 'order_id' => (int) $order->id,
                 'restaurant_id' => (int) ($order->tenant_id ?: 0) ?: null,
                 'kitchen_id' => $kitchenId,
+                'printer_profile_id' => $printer['printer_profile_id'] ?? null,
                 'document_type' => 'kot',
                 'status' => $isRetry ? 'retried' : 'queued',
                 'queue_name' => 'printing',
@@ -69,12 +70,16 @@ class KotPrintDispatcher
                 'meta' => [
                     'request_id' => $requestId,
                     'kitchen_name' => $printer['target_name'] ?? null,
+                    'printer_source' => $printer['printer_source'] ?? 'network_scan',
+                    'printer_name' => $printer['printer_name'] ?? null,
+                    'printer_connector' => $printer['printer_connector'] ?? null,
                     'line_count' => is_countable($items) ? count($items) : 0,
                 ],
             ]);
 
             PrintOrderJob::dispatch(
                 orderId: (int) $order->id,
+                restaurantId: (int) ($order->tenant_id ?: 0) ?: null,
                 kitchenId: $kitchenId,
                 items: array_values($items),
                 printLogId: (int) $log->id,
@@ -110,6 +115,7 @@ class KotPrintDispatcher
         Order $order,
         string $batchId,
         ?int $kitchenId,
+        ?int $printerProfileId,
         ?string $ip,
         ?int $port,
         string $status,
@@ -122,6 +128,7 @@ class KotPrintDispatcher
             'order_id' => (int) $order->id,
             'restaurant_id' => (int) ($order->tenant_id ?: 0) ?: null,
             'kitchen_id' => $kitchenId,
+            'printer_profile_id' => $printerProfileId,
             'document_type' => 'kot',
             'status' => $status,
             'queue_name' => 'printing',

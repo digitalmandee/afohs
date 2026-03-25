@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Typography, Button, Box, Dialog, IconButton, TextField, MenuItem, FormControlLabel, Checkbox, Autocomplete, CircularProgress, Chip } from '@mui/material';
 import { Close as CloseIcon, Search } from '@mui/icons-material';
 import { router, usePage } from '@inertiajs/react';
+import debounce from 'lodash.debounce';
 
 const CorporateFamilyFilter = () => {
     const props = usePage().props;
@@ -29,6 +30,9 @@ const CorporateFamilyFilter = () => {
     };
 
     const handleResetFilters = () => {
+        debouncedApply.cancel();
+        hasMountedRef.current = true;
+        isSyncingFromPropsRef.current = true;
         const reset = {
             sort: 'asc',
             sortBy: 'id',
@@ -50,11 +54,27 @@ const CorporateFamilyFilter = () => {
     };
 
     const handleApplyFilters = () => {
+        debouncedApply.cancel();
         router.get(route('corporate-membership.family-members'), filters, {
             preserveState: true,
             preserveScroll: true,
+            replace: true,
         });
     };
+
+    const debouncedApply = useMemo(
+        () =>
+            debounce((nextFilters) => {
+                router.get(route('corporate-membership.family-members'), nextFilters, {
+                    preserveState: true,
+                    preserveScroll: true,
+                    replace: true,
+                });
+            }, 350),
+        [],
+    );
+    const hasMountedRef = useRef(false);
+    const isSyncingFromPropsRef = useRef(false);
 
     const [open, setOpen] = useState(false);
     const [options, setOptions] = useState([]);
@@ -72,6 +92,42 @@ const CorporateFamilyFilter = () => {
 
         return () => clearTimeout(timer);
     }, [filters.name, open]);
+
+    useEffect(() => () => debouncedApply.cancel(), [debouncedApply]);
+
+    useEffect(() => {
+        isSyncingFromPropsRef.current = true;
+        setFilters({
+            sort: props.filters?.sort || 'asc',
+            sortBy: props.filters?.sortBy || 'id',
+            membership_no: props.filters?.membership_no || '',
+            name: props.filters?.name || '',
+            cnic: props.filters?.cnic || '',
+            contact: props.filters?.contact || '',
+            status: props.filters?.status || 'all',
+            member_category: props.filters?.member_category || 'all',
+            parent_name: props.filters?.parent_name || '',
+            relation: props.filters?.relation || 'all',
+            card_status: props.filters?.card_status || 'all',
+            min_age: props.filters?.min_age || '',
+            max_age: props.filters?.max_age || '',
+            age_over_25: props.filters?.age_over_25 || false,
+        });
+    }, [props.filters]);
+
+    useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return;
+        }
+
+        if (isSyncingFromPropsRef.current) {
+            isSyncingFromPropsRef.current = false;
+            return;
+        }
+
+        debouncedApply(filters);
+    }, [debouncedApply, filters]);
 
     const fetchMembers = async (query) => {
         setLoading(true);

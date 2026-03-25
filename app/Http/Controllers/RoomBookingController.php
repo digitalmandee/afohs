@@ -64,7 +64,7 @@ class RoomBookingController extends Controller
     public function index(Request $request)
     {
         // ✅ Collect filters
-        $filters = $request->only(['room_type', 'booking_status', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'search', 'customer_type', 'room_ids']);
+        $filters = $request->only(['room_type', 'booking_status', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'search', 'search_id', 'membership_no', 'customer_type', 'room_ids']);
 
         // ✅ Base query with relations
         $query = RoomBooking::with([
@@ -132,7 +132,7 @@ class RoomBookingController extends Controller
 
     public function checkInIndex(Request $request)
     {
-        $filters = $request->only(['search', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
+        $filters = $request->only(['search', 'search_id', 'membership_no', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
 
         $query = RoomBooking::with([
             'room:id,name,room_type_id',
@@ -180,7 +180,7 @@ class RoomBookingController extends Controller
     // CheckOut Rooms
     public function checkOutIndex(Request $request)
     {
-        $filters = $request->only(['search', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
+        $filters = $request->only(['search', 'search_id', 'membership_no', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
 
         $query = RoomBooking::with([
             'room:id,name,room_type_id',
@@ -1351,7 +1351,7 @@ class RoomBookingController extends Controller
 
     public function cancelled(Request $request)
     {
-        $filters = $request->only(['search', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
+        $filters = $request->only(['search', 'search_id', 'membership_no', 'room_type', 'booking_date_from', 'booking_date_to', 'check_in_from', 'check_in_to', 'check_out_from', 'check_out_to', 'customer_type', 'room_ids']);
 
         $query = RoomBooking::with([
             'customer:id,name,email,contact',

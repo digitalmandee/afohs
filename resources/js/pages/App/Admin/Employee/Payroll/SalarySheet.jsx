@@ -8,9 +8,11 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import { useSnackbar } from 'notistack';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
 
 export default function SalarySheet() {
-    const { auth } = usePage().props;
     const { enqueueSnackbar } = useSnackbar();
 
     // Filters
@@ -31,6 +33,23 @@ export default function SalarySheet() {
     const [designations, setDesignations] = useState([]);
     const [locations, setLocations] = useState([]);
     const [employeeTypes, setEmployeeTypes] = useState([]);
+
+    const samplePayslips = [
+        {
+            id: 'sample-1',
+            employee_id_number: 'EMP-SAMPLE-01',
+            employee_name: 'Sample Employee',
+            department: 'Administration',
+            designation: 'Officer',
+            employee: { national_id: '00000-0000000-0' },
+            basic_salary: 50000,
+            gross_salary: 57000,
+            net_salary: 54000,
+            allowances: [],
+            deductions: [],
+            is_sample: true,
+        },
+    ];
 
     // Fetch Data
     const fetchData = () => {
@@ -168,20 +187,26 @@ export default function SalarySheet() {
         window.open(route('payroll.salary-sheet.template'), '_blank');
     };
 
+    const resetFilters = () => {
+        setMonth(dayjs());
+        setEmployeeType('all');
+        setDesignation('all');
+        setLocation('all');
+    };
+
     return (
         <>
             {/* <Head title="Salary Sheet" /> */}
-            <div style={{ backgroundColor: '#f5f5f5', height: '100vh' }}>
-                <LocalizationProvider dateAdapter={AdapterDayjs}>
-                    <Box sx={{ p: 2 }}>
-                        <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-                            <Typography sx={{ fontWeight: 700, fontSize: '30px', color: '#063455' }}>
-                                Salary Sheet Editor
-                            </Typography>
-                            <IconButton onClick={() => setHelpOpen(true)} color="primary">
-                                <Help />
-                            </IconButton>
-                        </Box>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <AppPage
+                    title="Salary Sheet Editor"
+                    subtitle="Edit payroll rows inside a consistent shell while preserving the spreadsheet-style salary workflow."
+                    actions={(
+                        <IconButton onClick={() => setHelpOpen(true)} color="primary">
+                            <Help />
+                        </IconButton>
+                    )}
+                >
 
                         {/* Help Dialog */}
                         <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="md" fullWidth>
@@ -237,9 +262,19 @@ export default function SalarySheet() {
                         </Dialog>
 
                         {/* Filters */}
-                        <Card sx={{ mb: 3, pt: 2, boxShadow: 'none', bgcolor: 'transparent' }}>
-                            {/* <CardContent> */}
-                            <Grid container spacing={2} alignItems="center">
+                        <SurfaceCard
+                            title="Payroll Filters"
+                            subtitle="Adjust the month and employee scope, then refresh the editable salary grid."
+                        >
+                            <FilterToolbar
+                                onReset={resetFilters}
+                                actions={(
+                                    <Button variant="contained" onClick={fetchData} startIcon={<Refresh />} sx={{ textTransform: 'none', borderRadius: '16px' }}>
+                                        Fetch Data
+                                    </Button>
+                                )}
+                            >
+                                <Grid container spacing={2} alignItems="center">
                                 <Grid item xs={12} md={3}>
                                     <DatePicker
                                         label="Select Month"
@@ -420,18 +455,16 @@ export default function SalarySheet() {
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={3}>
-                                    {/* Add other filters as needed */}
-                                    <Button variant="contained" onClick={fetchData} startIcon={<Refresh />} sx={{ textTransform: 'none', borderRadius: '16px', }}>
-                                        Fetch Data
-                                    </Button>
                                 </Grid>
-                            </Grid>
-                            {/* </CardContent> */}
-                        </Card>
+                            </FilterToolbar>
+                        </SurfaceCard>
 
                         {/* Actions */}
-                        <Box sx={{ mb: 2, display: 'flex', gap: 2, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <SurfaceCard
+                            title="Sheet Actions"
+                            subtitle="Export, import, save, and post from the same standardized payroll workspace."
+                        >
+                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                             <Typography variant="caption" color="textSecondary" sx={{ mr: 2 }}>
                                 To import: Download template or export current sheet, modify values, and re-import.
                             </Typography>
@@ -452,10 +485,15 @@ export default function SalarySheet() {
                                 {loading ? 'Saving...' : 'Save Changes'}
                             </Button>
                         </Box>
+                        </SurfaceCard>
 
                         {loading && <LinearProgress sx={{ mb: 2 }} />}
 
                         {/* Grid */}
+                        <SurfaceCard
+                            title="Editable Salary Grid"
+                            subtitle="This page intentionally keeps a spreadsheet-style grid because payroll allowances and deductions use dynamic editable columns."
+                        >
                         <TableContainer component={Paper} sx={{ overflowX: 'auto', borderRadius: '12px' }}>
                             <Table>
                                 <TableHead>
@@ -486,7 +524,7 @@ export default function SalarySheet() {
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                    {payslips.map((row) => (
+                                    {(payslips.length > 0 ? payslips : samplePayslips).map((row) => (
                                         <TableRow key={row.id}>
                                             <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'white', zIndex: 2 }}>{row.employee_id_number}</TableCell>
                                             <TableCell sx={{ position: 'sticky', left: 50, bgcolor: 'white', zIndex: 2 }}>
@@ -506,7 +544,7 @@ export default function SalarySheet() {
                                                 const allowance = row.allowances.find((a) => a.allowance_type_id === h.id);
                                                 return (
                                                     <TableCell key={h.id} sx={{ bgcolor: '#e3f2fd' }} p={0}>
-                                                        <TextField size="small" variant="standard" inputProps={{ style: { textAlign: 'center' } }} value={allowance ? allowance.amount : 0} onChange={(e) => handleValueChange(row.id, 'allowance', h.id, e.target.value)} InputProps={{ disableUnderline: true }} fullWidth />
+                                                        <TextField size="small" variant="standard" inputProps={{ style: { textAlign: 'center' } }} disabled={!!row.is_sample} value={allowance ? allowance.amount : 0} onChange={(e) => handleValueChange(row.id, 'allowance', h.id, e.target.value)} InputProps={{ disableUnderline: true }} fullWidth />
                                                     </TableCell>
                                                 );
                                             })}
@@ -518,7 +556,7 @@ export default function SalarySheet() {
                                                 const deduction = row.deductions.find((d) => d.deduction_type_id === h.id);
                                                 return (
                                                     <TableCell key={h.id} sx={{ bgcolor: '#ffebee' }} p={0}>
-                                                        <TextField size="small" variant="standard" inputProps={{ style: { textAlign: 'center' } }} value={deduction ? deduction.amount : 0} onChange={(e) => handleValueChange(row.id, 'deduction', h.id, e.target.value)} InputProps={{ disableUnderline: true }} fullWidth />
+                                                        <TextField size="small" variant="standard" inputProps={{ style: { textAlign: 'center' } }} disabled={!!row.is_sample} value={deduction ? deduction.amount : 0} onChange={(e) => handleValueChange(row.id, 'deduction', h.id, e.target.value)} InputProps={{ disableUnderline: true }} fullWidth />
                                                     </TableCell>
                                                 );
                                             })}
@@ -529,16 +567,16 @@ export default function SalarySheet() {
                                     {payslips.length === 0 && !loading && (
                                         <TableRow>
                                             <TableCell colSpan={10} align="center">
-                                                No data found or generate payslips first.
+                                                Showing sample rows until real payslips are generated for the selected month.
                                             </TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>
                             </Table>
                         </TableContainer>
-                    </Box>
-                </LocalizationProvider>
-            </div>
+                        </SurfaceCard>
+                </AppPage>
+            </LocalizationProvider>
         </>
     );
 }

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, Box, TextField, MenuItem, Collapse, Autocomplete, CircularProgress, Typography, Chip } from '@mui/material';
 import { router, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { Search, FilterAlt, Delete } from '@mui/icons-material';
+import debounce from 'lodash.debounce';
 
 const AppliedMemberFilter = () => {
     const props = usePage().props;
@@ -23,6 +24,9 @@ const AppliedMemberFilter = () => {
     };
 
     const handleResetFilters = () => {
+        debouncedApply.cancel();
+        hasMountedRef.current = true;
+        isSyncingFromPropsRef.current = true;
         const reset = {
             name: '',
             email: '',
@@ -32,15 +36,35 @@ const AppliedMemberFilter = () => {
         };
         setFilters(reset);
 
-        router.get(route('applied-member.index'));
+        router.get(route('applied-member.index'), {}, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
     };
 
     const handleApplyFilters = () => {
+        debouncedApply.cancel();
         router.get(route('applied-member.index'), filters, {
             preserveState: true,
             preserveScroll: true,
+            replace: true,
         });
     };
+
+    const debouncedApply = useMemo(
+        () =>
+            debounce((nextFilters) => {
+                router.get(route('applied-member.index'), nextFilters, {
+                    preserveState: true,
+                    preserveScroll: true,
+                    replace: true,
+                });
+            }, 350),
+        [],
+    );
+    const hasMountedRef = useRef(false);
+    const isSyncingFromPropsRef = useRef(false);
 
     const [open, setOpen] = useState(false);
     const [options, setOptions] = useState([]);
@@ -58,6 +82,33 @@ const AppliedMemberFilter = () => {
 
         return () => clearTimeout(timer);
     }, [filters.name, open]);
+
+    useEffect(() => () => debouncedApply.cancel(), [debouncedApply]);
+
+    useEffect(() => {
+        isSyncingFromPropsRef.current = true;
+        setFilters({
+            name: props.filters?.name || '',
+            email: props.filters?.email || '',
+            phone_number: props.filters?.phone_number || '',
+            cnic: props.filters?.cnic || '',
+            status: props.filters?.status || 'all',
+        });
+    }, [props.filters]);
+
+    useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return;
+        }
+
+        if (isSyncingFromPropsRef.current) {
+            isSyncingFromPropsRef.current = false;
+            return;
+        }
+
+        debouncedApply(filters);
+    }, [debouncedApply, filters]);
 
     const fetchMembers = async (query) => {
         setLoading(true);
