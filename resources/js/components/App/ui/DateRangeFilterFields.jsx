@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
 function DateField({ label, value, onChange, fullWidth = true }) {
     return (
@@ -15,10 +16,12 @@ function DateField({ label, value, onChange, fullWidth = true }) {
                 onChange={(nextValue) => onChange(nextValue ? nextValue.format('YYYY-MM-DD') : '')}
                 slotProps={{
                     textField: {
-                        size: 'small',
+                        ...compactDateTextFieldProps,
                         fullWidth,
                     },
+                    actionBar: compactDateActionBar,
                 }}
+                sx={compactDateFieldSx}
             />
         </LocalizationProvider>
     );

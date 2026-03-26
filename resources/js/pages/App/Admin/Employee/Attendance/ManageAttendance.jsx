@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { ArrowBack, Search } from '@mui/icons-material';
-import { Button, TextField, Checkbox, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Select, MenuItem, Snackbar, Alert, Box, Typography, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Tooltip } from '@mui/material';
+import { Button, TextField, Checkbox, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Select, MenuItem, Snackbar, Alert, Box, Typography, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Tooltip, Grid, Autocomplete } from '@mui/material';
 import axios from 'axios';
 import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import { FaEdit } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
+import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
+import FilterToolbar from '@/components/App/ui/FilterToolbar';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 // import { DemoContainer } from "@mui/x-date-pickers/internals/demo";
 // import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 // import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -221,217 +225,160 @@ const ManageAttendance = () => {
 
     return (
         <>
-            {/* <SideNav open={open} setOpen={setOpen} /> */}
-            <div
-                style={{
-                    minHeight: '100vh',
-                    backgroundColor: '#f5f5f5',
-                }}
-            >
-                <Box sx={{ px: 2, py: 2 }}>
-                    <div style={{ paddingTop: '1rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography style={{ fontWeight: '700', color: '#063455', fontSize: '30px' }}>Manage Attendance</Typography>
-                        </div>
-                        <Typography sx={{ color: '#063455', fontSize: '15px', fontWeight: '600' }}>Manage employee profiles, roles, and employment status</Typography>
-
-                        <Box sx={{ mb: 3, mt: '2rem' }}>
-                            {/* Search Input & Filters */}
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
-                                <TextField
-                                    size="small"
-                                    placeholder="Search by name or ID..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    sx={{
-                                        width: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                        },
-                                    }}
-                                />
-                                {/* <TextField
-                                    label="Select Date"
-                                    type="date"
-                                    size="small"
-                                    value={date.format('YYYY-MM-DD')}
-                                    onChange={(e) => setDate(dayjs(e.target.value))}
-                                    InputLabelProps={{
-                                        shrink: true,
-                                    }}
-                                    sx={{
-                                        width: 250,
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                        },
-                                        '& .MuiOutlinedInput-notchedOutline': {
-                                            borderRadius: '16px',
-                                        },
-                                    }}
-                                /> */}
-                                <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <EmployeeHrPageShell
+                    title="Manage Attendance"
+                    subtitle="Review attendance, apply standard shifts, and update employee attendance statuses."
+                >
+                    <Box sx={{ mb: 2 }}>
+                        <FilterToolbar
+                            onReset={handleClearSearch}
+                            actions={(
+                                <Button
+                                    variant="contained"
+                                    onClick={() => setConfirmModalOpen(true)}
+                                    disabled={applyLoading}
+                                    sx={{ minHeight: 40, backgroundColor: '#063455' }}
+                                >
+                                    {applyLoading ? 'Applying…' : 'Apply Standard Attendance'}
+                                </Button>
+                            )}
+                        >
+                            <Grid container spacing={1.25}>
+                                <Grid item xs={12} md={3}>
+                                    <TextField
+                                        size="small"
+                                        placeholder="Search by name or ID..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        fullWidth
+                                        InputProps={{
+                                            startAdornment: <Search color="action" sx={{ mr: 0.75 }} />,
+                                        }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} md={2.25}>
                                     <DatePicker
                                         label="Select Date"
                                         value={date}
                                         onChange={(newValue) => setDate(newValue)}
                                         slotProps={{
-                                            textField: {
-                                                size: 'small',
-                                                fullWidth: true,
-                                                onClick: (e) => e.target.closest('.MuiFormControl-root').querySelector('button')?.click(),
-                                            },
-                                            actionBar: { actions: ['clear', 'today', 'cancel', 'accept'] },
+                                            textField: compactDateTextFieldProps,
+                                            actionBar: compactDateActionBar,
                                         }}
-                                        sx={{
-                                            width: '250px',
-                                            '& .MuiInputBase-root, & .MuiOutlinedInput-root, & fieldset': {
-                                                borderRadius: '16px !important',
-                                            },
-                                        }}
+                                        sx={compactDateFieldSx}
                                     />
-                                </LocalizationProvider>
-                                <Select
-                                    size="small"
-                                    displayEmpty
-                                    value={selectedStatus}
-                                    onChange={(e) => setSelectedStatus(e.target.value)}
-                                    renderValue={(selected) => {
-                                        if (!selected) return <span style={{ color: '#aaa' }}>Attendance Status</span>;
-                                        return selected;
-                                    }}
-                                    sx={{ width: 220, borderRadius: '16px' }}
-                                >
-                                    <MenuItem value="">All</MenuItem>
-                                    <MenuItem value="present">Present</MenuItem>
-                                    <MenuItem value="absent">Absent</MenuItem>
-                                    <MenuItem value="late">Late</MenuItem>
-                                    <MenuItem value="leave">Leave</MenuItem>
-                                    <MenuItem value="weekend">Weekend</MenuItem>
-                                </Select>
-                                {/* Filters */}
-                                {/* Need Autocomplete for Branch, Designation, Dept, SubDept */}
-                                {/* Since we don't have Autocomplete imported in the original file, we need to import it or use Select */}
-                                {/* I'll assume Autocomplete is imported or I should add it. It was not imported in original file.
-                                    I will add import Autocomplete from '@mui/material/Autocomplete'; at the top in a separate tool call if needed or just use Select for simplicity?
-                                    Actually, user requested Autocomplete in Create.jsx. Here Select or Autocomplete is fine.
-                                    I'll use Autocomplete but I need to make sure it's imported.
-                                    The original imports: `import { Button, TextField, Checkbox, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Select, MenuItem, Snackbar, Alert, Box, Typography } from '@mui/material';`
-                                    I need to add Autocomplete to imports.
-                                */}
+                                </Grid>
+                                <Grid item xs={12} md={2}>
+                                    <Select
+                                        size="small"
+                                        fullWidth
+                                        displayEmpty
+                                        value={selectedStatus}
+                                        onChange={(e) => setSelectedStatus(e.target.value)}
+                                        renderValue={(selected) => {
+                                            if (!selected) return <span style={{ color: '#aaa' }}>Attendance Status</span>;
+                                            return selected;
+                                        }}
+                                    >
+                                        <MenuItem value="">All</MenuItem>
+                                        <MenuItem value="present">Present</MenuItem>
+                                        <MenuItem value="absent">Absent</MenuItem>
+                                        <MenuItem value="late">Late</MenuItem>
+                                        <MenuItem value="leave">Leave</MenuItem>
+                                        <MenuItem value="weekend">Weekend</MenuItem>
+                                    </Select>
+                                </Grid>
+                                <Grid item xs={12} md={2.25}>
+                                    <Select
+                                        size="small"
+                                        fullWidth
+                                        displayEmpty
+                                        value={filters.branch_id || ''}
+                                        onChange={(e) => setFilters({ ...filters, branch_id: e.target.value })}
+                                        renderValue={(selected) => {
+                                            if (!selected) return <span style={{ color: '#aaa' }}>Company</span>;
+                                            return selected.name;
+                                        }}
+                                    >
+                                        <MenuItem value="">None</MenuItem>
+                                        {branches.map((b) => (
+                                            <MenuItem key={b.id} value={b}>
+                                                {b.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </Grid>
+                                <Grid item xs={12} md={2.5}>
+                                    <Select
+                                        size="small"
+                                        fullWidth
+                                        displayEmpty
+                                        value={filters.designation_id || ''}
+                                        onChange={(e) => setFilters({ ...filters, designation_id: e.target.value })}
+                                        renderValue={(selected) => {
+                                            if (!selected) return <span style={{ color: '#aaa' }}>Designation</span>;
+                                            return selected.name;
+                                        }}
+                                    >
+                                        <MenuItem value="">None</MenuItem>
+                                        {designations.map((designation) => (
+                                            <MenuItem key={designation.id} value={designation}>
+                                                {designation.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </Grid>
+                                <Grid item xs={12} md={3}>
+                                    <Select
+                                        size="small"
+                                        fullWidth
+                                        displayEmpty
+                                        value={filters.department_id || ''}
+                                        onChange={(e) => setFilters({ ...filters, department_id: e.target.value, subdepartment_id: null })}
+                                        renderValue={(selected) => {
+                                            if (!selected) return <span style={{ color: '#aaa' }}>Department</span>;
+                                            return selected.name;
+                                        }}
+                                    >
+                                        <MenuItem value="">None</MenuItem>
+                                        {departments.map((department) => (
+                                            <MenuItem key={department.id} value={department}>
+                                                {department.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </Grid>
+                                <Grid item xs={12} md={3}>
+                                    <Select
+                                        size="small"
+                                        fullWidth
+                                        displayEmpty
+                                        value={filters.subdepartment_id || ''}
+                                        onChange={(e) => setFilters({ ...filters, subdepartment_id: e.target.value })}
+                                        renderValue={(selected) => {
+                                            if (!selected) return <span style={{ color: '#aaa' }}>Subdepartment</span>;
+                                            return selected.name;
+                                        }}
+                                        disabled={!filters.department_id}
+                                    >
+                                        <MenuItem value="">None</MenuItem>
+                                        {subdepartments.map((subdepartment) => (
+                                            <MenuItem key={subdepartment.id} value={subdepartment}>
+                                                {subdepartment.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </Grid>
+                            </Grid>
+                        </FilterToolbar>
+                    </Box>
 
-                                <Select
-                                    size="small"
-                                    displayEmpty
-                                    value={filters.branch_id || ''}
-                                    onChange={(e) => setFilters({ ...filters, branch_id: e.target.value })}
-                                    renderValue={(selected) => {
-                                        if (!selected) return <span style={{ color: '#aaa' }}>Company</span>;
-                                        return selected.name;
-                                    }}
-                                    sx={{ width: 250, borderRadius: '16px' }}
-                                >
-                                    <MenuItem value="">None</MenuItem>
-                                    {branches.map((b) => (
-                                        <MenuItem key={b.id} value={b}>
-                                            {b.name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-
-                                <Select
-                                    size="small"
-                                    displayEmpty
-                                    value={filters.designation_id || ''}
-                                    onChange={(e) => setFilters({ ...filters, designation_id: e.target.value })}
-                                    renderValue={(selected) => {
-                                        if (!selected) return <span style={{ color: '#aaa' }}>Designation</span>;
-                                        return selected.name;
-                                    }}
-                                    sx={{ width: 250, borderRadius: '16px' }}
-                                >
-                                    <MenuItem value="">None</MenuItem>
-                                    {designations.map((d) => (
-                                        <MenuItem key={d.id} value={d}>
-                                            {d.name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-
-                                <Select
-                                    size="small"
-                                    displayEmpty
-                                    value={filters.department_id || ''}
-                                    onChange={(e) => setFilters({ ...filters, department_id: e.target.value, subdepartment_id: null })}
-                                    renderValue={(selected) => {
-                                        if (!selected) return <span style={{ color: '#aaa' }}>Department</span>;
-                                        return selected.name;
-                                    }}
-                                    sx={{ width: 250, borderRadius: '16px' }}
-                                >
-                                    <MenuItem value="">None</MenuItem>
-                                    {departments.map((d) => (
-                                        <MenuItem key={d.id} value={d}>
-                                            {d.name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-
-                                <Select
-                                    size="small"
-                                    displayEmpty
-                                    value={filters.subdepartment_id || ''}
-                                    onChange={(e) => setFilters({ ...filters, subdepartment_id: e.target.value })}
-                                    renderValue={(selected) => {
-                                        if (!selected) return <span style={{ color: '#aaa' }}>Subdepartment</span>;
-                                        return selected.name;
-                                    }}
-                                    disabled={!filters.department_id}
-                                    sx={{ width: 250, borderRadius: '16px' }}
-                                >
-                                    <MenuItem value="">None</MenuItem>
-                                    {subdepartments.map((d) => (
-                                        <MenuItem key={d.id} value={d}>
-                                            {d.name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-
-                                <Button
-                                    variant="outlined"
-                                    onClick={handleClearSearch}
-                                    sx={{
-                                        color: '#063455',
-                                        borderColor: '#063455',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        px: 4,
-                                        '&:hover': { borderColor: '#052d45' },
-                                    }}
-                                >
-                                    Reset
-                                </Button>
-
-                                {/* <Box sx={{ flexGrow: 1 }} /> */}
-
-                                <Button
-                                    variant="contained"
-                                    color="success"
-                                    onClick={() => setConfirmModalOpen(true)}
-                                    disabled={applyLoading}
-                                    sx={{
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        fontWeight: 600,
-                                    }}
-                                >
-                                    {applyLoading ? <CircularProgress size={20} sx={{ color: 'white', mr: 1 }} /> : null}
-                                    Apply Standard Attendance (All)
-                                </Button>
-                            </Box>
-                        </Box>
-
-                        <Box>
-                            <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto' }}>
+                    <SurfaceCard
+                        title="Attendance Register"
+                        subtitle="Attendance rows stay visible while filters update and shift defaults can be applied."
+                    >
+                        <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto', boxShadow: 'none' }}>
                                 <Table>
                                     <TableHead style={{ backgroundColor: '#063455' }}>
                                         <TableRow>
@@ -542,16 +489,14 @@ const ManageAttendance = () => {
                                         )}
                                     </TableBody>
                                 </Table>
-                            </TableContainer>
+                        </TableContainer>
 
-                            {/* Pagination */}
-                            <Box sx={{ display: 'flex', justifyContent: 'end', mt: 3 }}>
-                                <Pagination count={totalPages} page={currentPage} onChange={(e, page) => setCurrentPage(page)} shape="rounded" />
-                            </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'end', mt: 2 }}>
+                            <Pagination count={totalPages} page={currentPage} onChange={(e, page) => setCurrentPage(page)} shape="rounded" />
                         </Box>
-                    </div>
-                </Box>
-            </div>
+                    </SurfaceCard>
+                </EmployeeHrPageShell>
+            </LocalizationProvider>
 
             <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar}>
                 <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">

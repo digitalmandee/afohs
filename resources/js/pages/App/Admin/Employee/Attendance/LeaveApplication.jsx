@@ -5,14 +5,14 @@ import { Search, Add } from '@mui/icons-material';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Pagination, IconButton, TextField, Box, Typography, Tooltip } from '@mui/material';
 import axios from 'axios';
 import dayjs from 'dayjs';
-import { DateCalendar, LocalizationProvider, PickersDay } from '@mui/x-date-pickers';
+import { DateCalendar, DatePicker, LocalizationProvider, PickersDay } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { styled } from '@mui/material/styles';
 import { FaEdit } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import EmployeeHrPageShell from '@/components/App/Admin/EmployeeHrPageShell';
+import { compactCalendarSx, compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
 const LeaveApplication = () => {
     // const [open, setOpen] = useState(true);
@@ -132,12 +132,6 @@ const LeaveApplication = () => {
         return map;
     }, [applications]);
 
-    const RoundedTextField = styled(TextField)({
-        '& .MuiOutlinedInput-root': {
-            borderRadius: '16px',
-        },
-    });
-
     return (
         <EmployeeHrPageShell
             title="Leave Applications"
@@ -162,79 +156,72 @@ const LeaveApplication = () => {
                         <Grid container spacing={2}>
                             <Grid item xs={12} lg={8}>
                                 <FilterToolbar onReset={handleClearAllFilters}>
-                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <TextField
-                                    variant="outlined"
-                                    placeholder="Search by employee name or ID..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    size="small"
-                                    InputProps={{
-                                        startAdornment: (
-                                            <InputAdornment position="start">
-                                                <Search color="action" />
-                                            </InputAdornment>
-                                        ),
-                                    }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                        },
-                                    }}
-                                />
-                                <TextField
-                                    label="Select Date"
-                                    type="date"
-                                    size="small"
-                                    value={date ? dayjs(date).format('YYYY-MM-DD') : ''}
-                                    onChange={(e) => setDate(e.target.value || null)}
-                                    InputLabelProps={{
-                                        shrink: true,
-                                    }}
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                        },
-                                        '& .MuiOutlinedInput-notchedOutline': {
-                                            borderRadius: '16px',
-                                        },
-                                    }}
-                                />
-                                <FormControl size="small" sx={{ minWidth: 180 }}>
-                                    <InputLabel>Status</InputLabel>
-                                    <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value)} sx={{ borderRadius: '16px' }}>
-                                        <MenuItem value="">All Statuses</MenuItem>
-                                        <MenuItem value="approved">Approved</MenuItem>
-                                        <MenuItem value="pending">Pending</MenuItem>
-                                        <MenuItem value="rejected">Rejected</MenuItem>
-                                    </Select>
-                                </FormControl>
-                                <Button
-                                    variant="outlined"
-                                    onClick={handleClearSearch}
-                                    sx={{
-                                        color: '#063455',
-                                        borderColor: '#063455',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        px: 3,
-                                        '&:hover': {
-                                            borderColor: '#052d45',
-                                            // backgroundColor: 'rgba(6, 52, 85, 0.04)',
-                                        },
-                                    }}
-                                >
-                                    Reset
-                                </Button>
-                                </Box>
+                                <Grid container spacing={1.25}>
+                                    <Grid item xs={12} md={5}>
+                                        <TextField
+                                            variant="outlined"
+                                            placeholder="Search by employee name or ID..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            size="small"
+                                            InputProps={{
+                                                startAdornment: (
+                                                    <InputAdornment position="start">
+                                                        <Search color="action" />
+                                                    </InputAdornment>
+                                                ),
+                                            }}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} md={3}>
+                                        <DatePicker
+                                            label="Select Date"
+                                            format="DD/MM/YYYY"
+                                            value={date ? dayjs(date) : null}
+                                            onChange={(newValue) => setDate(newValue ? newValue.format('YYYY-MM-DD') : null)}
+                                            slotProps={{
+                                                textField: compactDateTextFieldProps,
+                                                actionBar: compactDateActionBar,
+                                            }}
+                                            sx={compactDateFieldSx}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} md={2.5}>
+                                        <FormControl size="small" fullWidth>
+                                            <InputLabel>Status</InputLabel>
+                                            <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value)}>
+                                                <MenuItem value="">All Statuses</MenuItem>
+                                                <MenuItem value="approved">Approved</MenuItem>
+                                                <MenuItem value="pending">Pending</MenuItem>
+                                                <MenuItem value="rejected">Rejected</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                    <Grid item xs={12} md={1.5}>
+                                        <Button
+                                            fullWidth
+                                            variant="outlined"
+                                            onClick={handleClearSearch}
+                                            sx={{
+                                                color: '#063455',
+                                                borderColor: '#063455',
+                                                minHeight: 42,
+                                                px: 2,
+                                            }}
+                                        >
+                                            Clear
+                                        </Button>
+                                    </Grid>
+                                </Grid>
                                 </FilterToolbar>
                             </Grid>
                             <Grid item xs={12} lg={4}>
-                                <SurfaceCard title="Leave Calendar" subtitle="Approved and pending dates are highlighted for quick review." cardSx={{ height: '100%' }}>
+                                <SurfaceCard title="Leave Calendar" subtitle="Quick monthly view for approved and pending dates." cardSx={{ height: '100%' }}>
                                     <LocalizationProvider dateAdapter={AdapterDayjs}>
                                         <DateCalendar
                                             value={date ? dayjs(date) : dayjs()}
                                             onChange={(newValue) => setDate(newValue ? newValue.format('YYYY-MM-DD') : null)}
+                                            sx={compactCalendarSx}
                                             slots={{
                                                 day: (dayProps) => {
                                                     const key = dayProps.day.format('YYYY-MM-DD');
@@ -245,12 +232,12 @@ const LeaveApplication = () => {
                                                             : tone === 'pending'
                                                               ? { bgcolor: 'rgba(245,158,11,0.18)', '&:hover, &.Mui-selected': { bgcolor: 'rgba(245,158,11,0.32)' } }
                                                               : {};
-                                                    return <PickersDay {...dayProps} sx={{ borderRadius: '12px', ...toneSx }} />;
+                                                    return <PickersDay {...dayProps} sx={{ borderRadius: '10px', fontWeight: 600, ...toneSx }} />;
                                                 },
                                             }}
                                         />
                                     </LocalizationProvider>
-                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
                                         <Chip size="small" label="Approved" sx={{ bgcolor: 'rgba(34,197,94,0.18)' }} />
                                         <Chip size="small" label="Pending" sx={{ bgcolor: 'rgba(245,158,11,0.18)' }} />
                                     </Box>

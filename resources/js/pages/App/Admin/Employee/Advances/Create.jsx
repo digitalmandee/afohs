@@ -9,6 +9,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
 const formatCurrency = (amount) => `Rs ${parseFloat(amount || 0).toLocaleString()}`;
 
@@ -94,9 +95,10 @@ const Create = ({ employees = [] }) => {
                                         onChange={(newValue) => handleChange('advance_date', newValue ? newValue.format('YYYY-MM-DD') : '')}
                                         format="DD/MM/YYYY"
                                         slotProps={{
-                                            textField: { fullWidth: true, error: !!errors.advance_date, helperText: errors.advance_date, InputLabelProps: { shrink: true } },
-                                            actionBar: { actions: ['clear', 'today', 'cancel', 'accept'] },
+                                            textField: { ...compactDateTextFieldProps, error: !!errors.advance_date, helperText: errors.advance_date, InputLabelProps: { shrink: true } },
+                                            actionBar: compactDateActionBar,
                                         }}
+                                        sx={compactDateFieldSx}
                                     />
                                 </Grid>
                                 <Grid item xs={12} sm={6}>
@@ -112,9 +114,10 @@ const Create = ({ employees = [] }) => {
                                         onChange={(newValue) => handleChange('deduction_start_date', newValue ? newValue.format('YYYY-MM-DD') : '')}
                                         format="DD/MM/YYYY"
                                         slotProps={{
-                                            textField: { fullWidth: true, helperText: 'Leave empty for next payroll', InputLabelProps: { shrink: true } },
-                                            actionBar: { actions: ['clear', 'today', 'cancel', 'accept'] },
+                                            textField: { ...compactDateTextFieldProps, helperText: 'Leave empty for next payroll', InputLabelProps: { shrink: true } },
+                                            actionBar: compactDateActionBar,
                                         }}
+                                        sx={compactDateFieldSx}
                                     />
                                 </Grid>
                                 <Grid item xs={12} sm={4}>

@@ -22,6 +22,7 @@ import './echo';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 const renderAdminLayout = (page) => <Layout>{page}</Layout>;
+const profiledPageCache = new Map();
 
 function NavigationRuntime({ children }) {
   useRenderProfiler('InertiaAppRoot');
@@ -67,6 +68,14 @@ function NavigationRuntime({ children }) {
 }
 
 function withPageProfiler(Page, name) {
+  const cacheKey = name;
+  const cached = profiledPageCache.get(cacheKey);
+
+  if (cached?.__page === Page) {
+    cached.layout = Page.layout;
+    return cached;
+  }
+
   const ProfiledPage = function ProfiledPage(pageProps) {
     useRenderProfiler(`Page:${name}`, () => ({
       page: name,
@@ -88,7 +97,9 @@ function withPageProfiler(Page, name) {
     return <Page {...pageProps} />;
   };
 
+  ProfiledPage.__page = Page;
   ProfiledPage.layout = Page.layout;
+  profiledPageCache.set(cacheKey, ProfiledPage);
   return ProfiledPage;
 }
 

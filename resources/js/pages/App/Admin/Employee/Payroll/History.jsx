@@ -23,6 +23,7 @@ import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
 const columns = [
     { key: 'period_name', label: 'Period', minWidth: 160 },
@@ -275,8 +276,9 @@ export default function History() {
                                         label="From Date"
                                         value={fromDate}
                                         onChange={(value) => setFromDate(value)}
-                                        slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                                        slotProps={{ textField: compactDateTextFieldProps, actionBar: compactDateActionBar }}
                                         format="DD/MM/YYYY"
+                                        sx={compactDateFieldSx}
                                     />
                                 </Grid>
                                 <Grid item xs={12} md={4}>
@@ -284,8 +286,9 @@ export default function History() {
                                         label="To Date"
                                         value={toDate}
                                         onChange={(value) => setToDate(value)}
-                                        slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                                        slotProps={{ textField: compactDateTextFieldProps, actionBar: compactDateActionBar }}
                                         format="DD/MM/YYYY"
+                                        sx={compactDateFieldSx}
                                     />
                                 </Grid>
                             </Grid>

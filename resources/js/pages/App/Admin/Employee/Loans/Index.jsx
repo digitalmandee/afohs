@@ -10,6 +10,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import debounce from 'lodash.debounce';
+import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
 const formatCurrency = (amount) => `Rs ${parseFloat(amount || 0).toLocaleString()}`;
 
@@ -151,7 +152,7 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                     </Grid>
 
                     {/* Filters */}
-                    <Card sx={{ mb: 3, pt: 5, borderRadius: '12px', bgcolor: 'transparent', boxShadow: 'none' }}>
+                    <Card sx={{ mb: 3, p: 2, borderRadius: '12px', bgcolor: '#ffffff', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.04)' }}>
                         {/* <CardContent> */}
                         <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} sm={2.5}>
@@ -163,7 +164,7 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
-                                        borderRadius: '16px',
+                                        borderRadius: '12px',
                                     },
                                 }}
                             />
@@ -200,13 +201,12 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                             },
                                         },
                                     }}
-                                    renderInput={(params) => <TextField {...params} label="Employee" size="small"
+                                        renderInput={(params) => <TextField {...params} label="Employee" size="small"
                                         sx={{
                                             '& .MuiOutlinedInput-root': {
-                                                borderRadius: '16px',
-
+                                                borderRadius: '12px',
                                                 '& fieldset': {
-                                                    borderRadius: '16px',
+                                                    borderRadius: '12px',
                                                 },
                                             },
                                         }} />}
@@ -216,10 +216,10 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                 <FormControl fullWidth size="small"
                                     sx={{
                                         '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
+                                            borderRadius: '12px',
 
                                             '& fieldset': {
-                                                borderRadius: '16px',
+                                                borderRadius: '12px',
                                             },
                                         },
                                     }}>
@@ -230,7 +230,7 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                         MenuProps={{
                                             PaperProps: {
                                                 sx: {
-                                                    borderRadius: '16px',
+                                                    borderRadius: '12px',
                                                     maxHeight: '300px',
                                                     overflowY: 'auto', 
                                                 },
@@ -238,7 +238,7 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                             MenuListProps: {
                                                 sx: {
                                                     '& .MuiMenuItem-root': {
-                                                        borderRadius: '16px',
+                                                        borderRadius: '12px',
                                                         mx: '8px',
                                                         my:'1px'
                                                         // transition: 'all 0.2s ease',
@@ -273,18 +273,10 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                     value={dateFrom ? dayjs(dateFrom) : null}
                                     onChange={(newValue) => setDateFrom(newValue ? newValue.format('YYYY-MM-DD') : '')}
                                     slotProps={{
-                                        textField: {
-                                            size: 'small',
-                                            fullWidth: true,
-                                            onClick: (e) => e.target.closest('.MuiFormControl-root').querySelector('button')?.click(),
-                                        },
-                                        actionBar: { actions: ['clear', 'today', 'cancel', 'accept'] },
+                                        textField: compactDateTextFieldProps,
+                                        actionBar: compactDateActionBar,
                                     }}
-                                    sx={{
-                                        '& .MuiInputBase-root, & .MuiOutlinedInput-root, & fieldset': {
-                                            borderRadius: '16px !important',
-                                        },
-                                    }}
+                                    sx={compactDateFieldSx}
                                 />
                             </Grid>
                             <Grid item xs={12} sm={2}>
@@ -293,18 +285,10 @@ const Index = ({ loans, employees = [], stats = {}, filters = {} }) => {
                                     value={dateTo ? dayjs(dateTo) : null}
                                     onChange={(newValue) => setDateTo(newValue ? newValue.format('YYYY-MM-DD') : '')}
                                     slotProps={{
-                                        textField: {
-                                            size: 'small',
-                                            fullWidth: true,
-                                            onClick: (e) => e.target.closest('.MuiFormControl-root').querySelector('button')?.click(),
-                                        },
-                                        actionBar: { actions: ['clear', 'today', 'cancel', 'accept'] },
+                                        textField: compactDateTextFieldProps,
+                                        actionBar: compactDateActionBar,
                                     }}
-                                    sx={{
-                                        '& .MuiInputBase-root, & .MuiOutlinedInput-root, & fieldset': {
-                                            borderRadius: '16px !important',
-                                        },
-                                    }}
+                                    sx={compactDateFieldSx}
                                 />
                             </Grid>
                             <Grid item xs={12} sm={2.5} sx={{ display: 'flex', gap: 1 }}>

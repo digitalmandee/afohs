@@ -142,6 +142,14 @@ const normalizePath = (fullPath) => {
     }
 };
 
+const prefetchSidebarPath = (path) => {
+    if (!path) {
+        return;
+    }
+
+    router.prefetch(path, {}, { cacheFor: 30000 });
+};
+
 const POS_MENU_CACHE = new Map();
 
 const isItemActive = (itemPath, currentPath) => {
@@ -328,6 +336,10 @@ export default function SideNav({ open, setOpen }) {
         });
     }, [url]);
 
+    const prepareItemVisit = React.useCallback((item) => {
+        prefetchSidebarPath(item?.path);
+    }, []);
+
     React.useEffect(() => {
         const handleKeyDown = (event) => {
             if (event.key === 'F12') {
@@ -357,7 +369,10 @@ export default function SideNav({ open, setOpen }) {
                     <ListItemButton
                         component={disabled ? 'button' : Link}
                         href={disabled ? undefined : item.path}
+                        prefetch={disabled ? undefined : ['hover', 'click']}
                         onClick={disabled ? undefined : () => traceNavigation(item)}
+                        onMouseEnter={disabled ? undefined : () => prepareItemVisit(item)}
+                        onFocus={disabled ? undefined : () => prepareItemVisit(item)}
                         disabled={disabled}
                         sx={{
                             minHeight: 48,
@@ -554,6 +569,9 @@ export default function SideNav({ open, setOpen }) {
                                             });
                                             router.visit(newOrderPath);
                                         }}
+                                        onMouseEnter={() => prefetchSidebarPath(safeRouteForContext('order.new', url))}
+                                        onFocus={() => prefetchSidebarPath(safeRouteForContext('order.new', url))}
+                                        onMouseDown={() => prefetchSidebarPath(safeRouteForContext('order.new', url))}
                                         sx={{
                                             minWidth: 0,
                                             minHeight: 42,

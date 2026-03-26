@@ -102,6 +102,14 @@ const isItemActive = (item, url) => {
 
 const findFirstActiveModule = (items, url) => items.find((item) => isItemActive(item, url)) || items[0] || null;
 
+const prefetchSidebarPath = (path) => {
+    if (!path) {
+        return;
+    }
+
+    router.prefetch(path, {}, { cacheFor: 30000 });
+};
+
 const buildPanelSections = (item) => {
     if (!item?.children?.length) {
         return [];
@@ -493,11 +501,14 @@ const getTopLevelMenu = (permissionSignature, permissions) => {
     return items;
 };
 
-const RailItem = React.memo(function RailItem({ item, active, open, expanded, onClick }) {
+const RailItem = React.memo(function RailItem({ item, active, open, expanded, onClick, onMouseEnter, onFocus, onMouseDown }) {
     return (
         <Tooltip title={open ? '' : item.text} placement="right">
             <ListItemButton
                 onClick={onClick}
+                onMouseEnter={onMouseEnter}
+                onFocus={onFocus}
+                onMouseDown={onMouseDown}
                 sx={{
                     width: open ? '100%' : 48,
                     minHeight: 48,
@@ -606,6 +617,7 @@ const PanelSection = React.memo(function PanelSection({ section, activePath, rem
                                 key={entry.text}
                                 component={Link}
                                 href={entry.path}
+                                prefetch={['hover', 'click']}
                                 onClick={() => onEntryClick(entry)}
                                 sx={{
                                     minHeight: 36,
@@ -682,7 +694,7 @@ export default function SideNav({ open, setOpen }) {
         });
     }, [url]);
 
-    const handlePrimaryAction = (item) => {
+const handlePrimaryAction = (item) => {
         if (item.text === 'Logout') {
             traceNavigation(item, 'admin_sidebar_logout');
             router.post(route('logout'));
@@ -702,6 +714,14 @@ export default function SideNav({ open, setOpen }) {
             router.visit(item.path);
         }
     };
+
+    const prepareItemVisit = React.useCallback((item) => {
+        if (item?.children?.length || item?.text === 'Logout') {
+            return;
+        }
+
+        prefetchSidebarPath(item?.path);
+    }, []);
 
     return (
         <Box sx={{ display: 'flex' }}>
@@ -847,6 +867,9 @@ export default function SideNav({ open, setOpen }) {
                                                         open={open}
                                                         active={itemActive || expandedModule?.text === item.text}
                                                         expanded={expanded}
+                                                        onMouseEnter={() => prepareItemVisit(item)}
+                                                        onFocus={() => prepareItemVisit(item)}
+                                                        onMouseDown={() => prepareItemVisit(item)}
                                                         onClick={() => {
                                                             if (!open) {
                                                                 setOpen(true);
@@ -899,6 +922,9 @@ export default function SideNav({ open, setOpen }) {
                                             open={open}
                                             active={itemActive || expandedModule?.text === item.text}
                                             expanded={expanded}
+                                            onMouseEnter={() => prepareItemVisit(item)}
+                                            onFocus={() => prepareItemVisit(item)}
+                                            onMouseDown={() => prepareItemVisit(item)}
                                             onClick={() => {
                                                 if (!open && item.children?.length) {
                                                     setOpen(true);
