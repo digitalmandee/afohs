@@ -22,6 +22,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 use Inertia\Inertia;
@@ -37,8 +38,12 @@ class FinancialController extends Controller
     public function index(Request $request)
     {
         $perPage = $this->resolvePerPage($request, 10);
+        $checkpoint = 'boot';
+        $dashboardWarning = null;
 
         try {
+            $checkpoint = 'schema_checks';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             if (!Schema::hasTable('financial_invoices')) {
                 return $this->renderDashboardFallback($request, $perPage, 'Finance invoices are not available yet. Please verify the financial tables and migrations.');
             }
@@ -49,6 +54,8 @@ class FinancialController extends Controller
             $hasAccountingQueue = Schema::hasTable('accounting_event_queues');
             $hasJournalEntries = Schema::hasTable('journal_entries');
 
+            $checkpoint = 'member_counts';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $totalMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->count() : 0;
             $activeMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->where('status', 'active')->count() : 0;
             $expiredMembers = Schema::hasTable('members') ? Member::whereNull('parent_id')->where('status', 'expired')->count() : 0;
@@ -58,6 +65,8 @@ class FinancialController extends Controller
 
             $totalTransactions = FinancialInvoice::count();
 
+            $checkpoint = 'revenue_by_type';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $revenueByType = collect();
             if ($hasTransactionsTable && $hasInvoiceItemsTable && $hasTransactionTypesTable) {
                 $revenueByType = DB::table('transactions')
@@ -74,6 +83,8 @@ class FinancialController extends Controller
             $maintenanceFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_MAINTENANCE] ?? 0;
             $subscriptionFeeRevenue = $revenueByType[AppConstants::TRANSACTION_TYPE_ID_SUBSCRIPTION] ?? 0;
 
+            $checkpoint = 'reinstating_fee_lookup';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $reinstatingTypeId = $hasTransactionTypesTable
                 ? TransactionType::where('name', 'Reinstating Fee')->value('id')
                 : null;
@@ -90,12 +101,16 @@ class FinancialController extends Controller
 
             $totalMembershipRevenue = $membershipFeeRevenue + $maintenanceFeeRevenue + $subscriptionFeeRevenue + $reinstatingFeeRevenue;
 
+            $checkpoint = 'booking_and_food_revenue';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $roomRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'room_booking')->sum('total_price');
             $eventRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'event_booking')->sum('total_price');
             $totalBookingRevenue = $roomRevenue + $eventRevenue;
             $foodRevenue = FinancialInvoice::where('status', 'paid')->where('invoice_type', 'food_order')->sum('total_price');
             $totalRevenue = $hasTransactionsTable ? DB::table('transactions')->where('type', 'credit')->sum('amount') : 0;
 
+            $checkpoint = 'recent_transactions_query';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $recentTransactions = FinancialInvoice::with([
                 'member:id,full_name,membership_no,mobile_number_a',
                 'corporateMember:id,full_name,membership_no',
@@ -107,63 +122,95 @@ class FinancialController extends Controller
                 ->paginate($perPage)
                 ->withQueryString();
 
-            $recentTransactions->setCollection($this->decorateInvoices($recentTransactions->getCollection()));
+            $checkpoint = 'recent_transactions_decorate';
+            $this->logFinanceDashboardStage($checkpoint, $request);
+            try {
+                $recentTransactions->setCollection($this->decorateInvoices($recentTransactions->getCollection()));
+            } catch (Throwable $exception) {
+                report($exception);
+                $this->logFinanceDashboardException($exception, $request, $checkpoint, [
+                    'context' => 'recent_transactions',
+                ]);
 
+                $recentTransactions = $this->makeEmptyFinancePaginator($request, $perPage);
+                $dashboardWarning = 'Recent finance transactions could not be loaded. Summary metrics remain available while the transaction feed is reviewed.';
+            }
+
+            $checkpoint = 'invoice_status_summary';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             $byStatus = FinancialInvoice::query()
                 ->select('status', DB::raw('COUNT(*) as total'))
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $journalLinkedIds = $hasJournalEntries
-                ? JournalEntry::query()
-                    ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
-                    ->pluck('module_id')
-                    ->filter()
-                    ->map(fn ($id) => (int) $id)
-                    ->unique()
-                    ->values()
-                : collect();
+            $checkpoint = 'accounting_linkage_summary';
+            $this->logFinanceDashboardStage($checkpoint, $request);
+            try {
+                $journalLinkedIds = $hasJournalEntries
+                    ? JournalEntry::query()
+                        ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                        ->pluck('module_id')
+                        ->filter()
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values()
+                    : collect();
 
-            $postedEventIds = $hasAccountingQueue
-                ? AccountingEventQueue::query()
-                    ->where('source_type', FinancialInvoice::class)
-                    ->where('status', 'posted')
-                    ->pluck('source_id')
-                    ->filter()
-                    ->map(fn ($id) => (int) $id)
-                    ->unique()
-                    ->values()
-                : collect();
+                $postedEventIds = $hasAccountingQueue
+                    ? AccountingEventQueue::query()
+                        ->where('source_type', FinancialInvoice::class)
+                        ->where('status', 'posted')
+                        ->pluck('source_id')
+                        ->filter()
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values()
+                    : collect();
 
-            $failedEventIds = $hasAccountingQueue
-                ? AccountingEventQueue::query()
-                    ->where('source_type', FinancialInvoice::class)
-                    ->where('status', 'failed')
-                    ->pluck('source_id')
-                    ->filter()
-                    ->map(fn ($id) => (int) $id)
-                    ->unique()
-                    ->values()
-                : collect();
+                $failedEventIds = $hasAccountingQueue
+                    ? AccountingEventQueue::query()
+                        ->where('source_type', FinancialInvoice::class)
+                        ->where('status', 'failed')
+                        ->pluck('source_id')
+                        ->filter()
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values()
+                    : collect();
 
-            $pendingEventIds = $hasAccountingQueue
-                ? AccountingEventQueue::query()
-                    ->where('source_type', FinancialInvoice::class)
-                    ->where('status', 'pending')
-                    ->pluck('source_id')
-                    ->filter()
-                    ->map(fn ($id) => (int) $id)
-                    ->unique()
-                    ->values()
-                : collect();
+                $pendingEventIds = $hasAccountingQueue
+                    ? AccountingEventQueue::query()
+                        ->where('source_type', FinancialInvoice::class)
+                        ->where('status', 'pending')
+                        ->pluck('source_id')
+                        ->filter()
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values()
+                    : collect();
 
-            $linkedInvoiceIds = $journalLinkedIds->merge($postedEventIds)->unique()->values();
-            $inFlightInvoiceIds = $failedEventIds->merge($pendingEventIds)->unique()->values();
-            $unlinkedCount = max(0, $totalTransactions - $linkedInvoiceIds->count() - $inFlightInvoiceIds->count());
-            $coveragePercent = $totalTransactions > 0
-                ? round(($linkedInvoiceIds->count() / $totalTransactions) * 100, 1)
-                : 0;
+                $linkedInvoiceIds = $journalLinkedIds->merge($postedEventIds)->unique()->values();
+                $inFlightInvoiceIds = $failedEventIds->merge($pendingEventIds)->unique()->values();
+                $unlinkedCount = max(0, $totalTransactions - $linkedInvoiceIds->count() - $inFlightInvoiceIds->count());
+                $coveragePercent = $totalTransactions > 0
+                    ? round(($linkedInvoiceIds->count() / $totalTransactions) * 100, 1)
+                    : 0;
+            } catch (Throwable $exception) {
+                report($exception);
+                $this->logFinanceDashboardException($exception, $request, $checkpoint, [
+                    'context' => 'accounting_linkage',
+                ]);
 
+                $linkedInvoiceIds = collect();
+                $failedEventIds = collect();
+                $pendingEventIds = collect();
+                $unlinkedCount = 0;
+                $coveragePercent = 0;
+                $dashboardWarning = $dashboardWarning ?: 'Finance accounting linkage details are temporarily unavailable. Dashboard totals remain available while the linkage source is reviewed.';
+            }
+
+            $checkpoint = 'dashboard_render';
+            $this->logFinanceDashboardStage($checkpoint, $request);
             return Inertia::render('App/Admin/Finance/Dashboard', [
                 'statistics' => [
                     'total_members' => $totalMembers,
@@ -195,10 +242,11 @@ class FinancialController extends Controller
                 ],
                 'recent_transactions' => $recentTransactions,
                 'transaction_filters' => $request->only(['per_page']),
-                'error' => null,
+                'error' => $dashboardWarning,
             ]);
         } catch (Throwable $exception) {
             report($exception);
+            $this->logFinanceDashboardException($exception, $request, $checkpoint);
 
             return $this->renderDashboardFallback(
                 $request,
@@ -631,6 +679,36 @@ class FinancialController extends Controller
             'tenants' => collect(),
             'error' => $error,
         ]);
+    }
+
+    private function makeEmptyFinancePaginator(Request $request, int $perPage): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage, 1, [
+            'path' => $request->url(),
+            'query' => $request->query(),
+        ]);
+    }
+
+    private function logFinanceDashboardStage(string $stage, Request $request): void
+    {
+        Log::debug('finance.dashboard.stage', [
+            'stage' => $stage,
+            'url' => $request->fullUrl(),
+            'user_id' => Auth::id(),
+        ]);
+    }
+
+    private function logFinanceDashboardException(Throwable $exception, Request $request, string $checkpoint, array $context = []): void
+    {
+        Log::error('finance.dashboard.exception', array_merge([
+            'checkpoint' => $checkpoint,
+            'url' => $request->fullUrl(),
+            'user_id' => Auth::id(),
+            'exception_class' => $exception::class,
+            'message' => $exception->getMessage(),
+            'file' => $exception->getFile(),
+            'line' => $exception->getLine(),
+        ], $context));
     }
 
     // Get Member Invoices - Accepts either member_id or invoice_id
