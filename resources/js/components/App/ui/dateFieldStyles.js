@@ -42,37 +42,44 @@ export const compactDateActionBar = {
 
 export const compactCalendarSx = {
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 296,
     mx: 'auto',
     '& .MuiPickersCalendarHeader-root': {
         mt: 0,
-        mb: 0.5,
-        px: 0.5,
+        mb: 0.25,
+        px: 0.25,
+        minHeight: 36,
     },
     '& .MuiPickersCalendarHeader-label': {
-        fontSize: '1rem',
+        fontSize: '0.96rem',
         fontWeight: 700,
         color: '#1f2937',
     },
+    '& .MuiPickersArrowSwitcher-root .MuiIconButton-root': {
+        padding: 0.5,
+    },
+    '& .MuiPickersArrowSwitcher-root .MuiSvgIcon-root': {
+        fontSize: '1.1rem',
+    },
     '& .MuiDayCalendar-header': {
         justifyContent: 'space-between',
-        mx: 0.5,
+        mx: 0.25,
     },
     '& .MuiDayCalendar-weekContainer': {
         justifyContent: 'space-between',
-        mx: 0.5,
+        mx: 0.25,
     },
     '& .MuiDayCalendar-weekDayLabel': {
-        width: 34,
-        fontSize: '0.76rem',
+        width: 32,
+        fontSize: '0.72rem',
         color: '#8a94a6',
     },
     '& .MuiPickersDay-root': {
-        width: 34,
-        height: 34,
+        width: 32,
+        height: 32,
         margin: '0 1px',
-        fontSize: '0.9rem',
-        borderRadius: '10px',
+        fontSize: '0.84rem',
+        borderRadius: '9px',
         fontWeight: 600,
     },
 };

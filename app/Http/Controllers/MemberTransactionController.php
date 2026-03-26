@@ -1020,7 +1020,7 @@ class MemberTransactionController extends Controller
             ->get()
             ->groupBy('source_id');
         $journals = JournalEntry::query()
-            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice'])
+            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice'])
             ->whereIn('module_id', $invoiceIds)
             ->get()
             ->groupBy('module_id');

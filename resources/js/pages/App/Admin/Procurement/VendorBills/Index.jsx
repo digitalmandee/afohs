@@ -19,7 +19,7 @@ import {
 } from '@mui/material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
-import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
+import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
@@ -219,14 +219,14 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
                                 ))}
                             </TextField>
                         </Grid>
-                        <DateRangeFilterFields
-                            startValue={localFilters.from}
-                            endValue={localFilters.to}
-                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
-                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
-                            startGrid={{ xs: 12, md: 2 }}
-                            endGrid={{ xs: 12, md: 2 }}
-                        />
+                        <Grid item xs={12} md={3}>
+                            <CompactDateRangePicker
+                                from={localFilters.from}
+                                to={localFilters.to}
+                                onChange={({ from, to }) => updateFilters({ from, to }, { immediate: true })}
+                                label="Bill Date Range"
+                            />
+                        </Grid>
                     </Grid>
                 </FilterToolbar>
             </SurfaceCard>

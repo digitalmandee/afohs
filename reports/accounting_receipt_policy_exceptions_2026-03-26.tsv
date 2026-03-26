@@ -1,0 +1,2 @@
+source_family	source_id	source_date	source_amount	reason_code	reason_text	recommended_action
+maintenance_receipts	33418	2026-02-12	1500.00	deleted_receipt	Receipt is soft deleted and include-deleted mode is disabled.	Keep blocked unless business approves deleted-receipt posting policy.

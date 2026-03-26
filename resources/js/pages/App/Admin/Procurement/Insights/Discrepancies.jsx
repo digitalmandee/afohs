@@ -4,6 +4,7 @@ import { Alert, Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Ty
 import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -113,11 +114,13 @@ export default function Discrepancies({ rows, summary = {}, vendors = [], filter
                                 <MenuItem value="matched">Matched</MenuItem>
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={1.5}>
-                            <TextField label="From" type="date" value={localFilters.from} onChange={(event) => updateFilters({ from: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
-                        </Grid>
-                        <Grid item xs={12} md={1.5}>
-                            <TextField label="To" type="date" value={localFilters.to} onChange={(event) => updateFilters({ to: event.target.value }, { immediate: true })} InputLabelProps={{ shrink: true }} fullWidth />
+                        <Grid item xs={12} md={2.5}>
+                            <CompactDateRangePicker
+                                from={localFilters.from}
+                                to={localFilters.to}
+                                onChange={({ from, to }) => updateFilters({ from, to }, { immediate: true })}
+                                label="Received Date Range"
+                            />
                         </Grid>
                         <Grid item xs={12} md={1}>
                             <TextField select label="Matched" value={localFilters.show_matched} onChange={(event) => updateFilters({ show_matched: Number(event.target.value) }, { immediate: true })} fullWidth>

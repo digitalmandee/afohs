@@ -8,13 +8,15 @@ use App\Models\FinancialInvoice;
 use App\Models\JournalEntry;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use App\Services\Accounting\PostingService;
+use App\Services\Accounting\Support\FinancePostingClassifier;
 use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialInvoicePostingAdapter implements PostingAdapter
 {
     public function __construct(
         private readonly PostingService $postingService,
-        private readonly RestaurantContextResolver $restaurantContextResolver
+        private readonly RestaurantContextResolver $restaurantContextResolver,
+        private readonly FinancePostingClassifier $financePostingClassifier
     )
     {
     }
@@ -31,10 +33,7 @@ class FinancialInvoicePostingAdapter implements PostingAdapter
             throw new \RuntimeException('Financial invoice not found for posting.');
         }
 
-        $ruleCode = $this->resolveRuleCode($invoice);
-        if (!$ruleCode) {
-            return null;
-        }
+        $ruleCode = $this->financePostingClassifier->classifyInvoice($invoice);
 
         $rule = AccountingRule::where('code', $ruleCode)->where('is_active', true)->first();
 
@@ -51,8 +50,8 @@ class FinancialInvoicePostingAdapter implements PostingAdapter
         }
 
         $amount = (float) ($invoice->total_price ?? $invoice->amount ?? 0);
-        if ($amount <= 0) {
-            throw new \RuntimeException('Invoice amount is zero; posting aborted.');
+        if ($amount < 0) {
+            throw new \RuntimeException('Invoice amount is negative; posting aborted.');
         }
 
         $lines = [];
@@ -87,33 +86,5 @@ class FinancialInvoicePostingAdapter implements PostingAdapter
         ])->save();
 
         return $entry;
-    }
-
-    private function resolveRuleCode(FinancialInvoice $invoice): ?string
-    {
-        $type = strtolower((string) ($invoice->invoice_type ?? ''));
-        $isSubscription = !empty($invoice->subscription_type_id) || !empty($invoice->subscription_category_id) || $type === 'subscription';
-        $isMembership = $type === 'membership';
-        $isPosSale = in_array($type, ['food_order', 'pos_sale'], true);
-        $isRoomSale = $type === 'room_booking';
-        $isEventSale = $type === 'event_booking';
-
-        if ($isSubscription) {
-            return 'subscription_invoice';
-        }
-        if ($isMembership) {
-            return 'membership_invoice';
-        }
-        if ($isPosSale) {
-            return 'pos_invoice';
-        }
-        if ($isRoomSale) {
-            return 'room_invoice';
-        }
-        if ($isEventSale) {
-            return 'event_invoice';
-        }
-
-        return null;
     }
 }

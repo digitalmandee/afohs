@@ -30,6 +30,24 @@ class StandardPostingRuleBootstrapService
                 ],
             ],
             [
+                'code' => 'maintenance_invoice',
+                'label' => 'Maintenance Invoice',
+                'name' => 'Maintenance Invoice',
+                'lines' => [
+                    ['resolver' => 'accounts_receivable', 'side' => 'debit', 'ratio' => 1, 'use_payment_account' => false],
+                    ['resolver' => 'maintenance_revenue', 'side' => 'credit', 'ratio' => 1, 'use_payment_account' => false],
+                ],
+            ],
+            [
+                'code' => 'maintenance_receipt',
+                'label' => 'Maintenance Receipt',
+                'name' => 'Maintenance Receipt',
+                'lines' => [
+                    ['resolver' => 'payment_account', 'side' => 'debit', 'ratio' => 1, 'use_payment_account' => true],
+                    ['resolver' => 'accounts_receivable', 'side' => 'credit', 'ratio' => 1, 'use_payment_account' => false],
+                ],
+            ],
+            [
                 'code' => 'subscription_invoice',
                 'label' => 'Subscription Invoice',
                 'name' => 'Subscription Invoice',
@@ -147,7 +165,7 @@ class StandardPostingRuleBootstrapService
                 return $this->hydrateDefinition($definition, 'ready', 'All required posting accounts are available.', $accountMap);
             }
 
-            $provisionable = collect($missingResolvers)->every(fn (string $resolver) => in_array($resolver, ['pos_revenue', 'inventory_asset', 'grni'], true));
+            $provisionable = collect($missingResolvers)->every(fn (string $resolver) => in_array($resolver, ['maintenance_revenue', 'subscription_revenue', 'pos_revenue', 'inventory_asset', 'grni'], true));
             if ($canProvisionSupportAccounts && $provisionable) {
                 return $this->hydrateDefinition(
                     $definition,
@@ -178,12 +196,7 @@ class StandardPostingRuleBootstrapService
             $blockedRules = [];
 
             foreach ($analysis as $definition) {
-                if ($definition['status'] === 'mapped') {
-                    $skippedRules[] = $definition['code'];
-                    continue;
-                }
-
-                if (!in_array($definition['status'], ['ready'], true)) {
+                if (!in_array($definition['status'], ['mapped', 'ready'], true)) {
                     $blockedRules[] = [
                         'code' => $definition['code'],
                         'reason' => $definition['detail'],
@@ -191,11 +204,9 @@ class StandardPostingRuleBootstrapService
                     continue;
                 }
 
-                AccountingRule::create([
-                    'code' => $definition['code'],
+                $attributes = [
                     'name' => $definition['name'],
                     'is_active' => true,
-                    'created_by' => $userId,
                     'updated_by' => $userId,
                     'lines' => collect($definition['lines'])->map(function (array $line) {
                         return [
@@ -205,7 +216,23 @@ class StandardPostingRuleBootstrapService
                             'use_payment_account' => $line['use_payment_account'],
                         ];
                     })->all(),
-                ]);
+                ];
+
+                $rule = AccountingRule::query()->firstWhere('code', $definition['code']);
+
+                if ($rule) {
+                    $rule->fill($attributes);
+                    if ($rule->isDirty()) {
+                        $rule->save();
+                    }
+                    $skippedRules[] = $definition['code'];
+                    continue;
+                }
+
+                AccountingRule::create(array_merge($attributes, [
+                    'code' => $definition['code'],
+                    'created_by' => $userId,
+                ]));
 
                 $createdRules[] = $definition['code'];
             }
@@ -276,6 +303,9 @@ class StandardPostingRuleBootstrapService
                 $map['membership_revenue'] = $account;
             }
             if ($code === '81-01-10-00-01' || $name === 'monthly maintenance fee') {
+                $map['maintenance_revenue'] = $account;
+            }
+            if ($code === '81-01-13-00-01' || $name === 'subscription revenue') {
                 $map['subscription_revenue'] = $account;
             }
             if ($code === '81-01-09-00-01' || $name === 'room booking') {
@@ -316,6 +346,20 @@ class StandardPostingRuleBootstrapService
     private function supportAccountChains(): array
     {
         return [
+            'maintenance_revenue' => [
+                ['full_code' => '81', 'segments' => ['81'], 'name' => 'Income Group 81', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81'],
+                ['full_code' => '81-01', 'segments' => ['81', '01'], 'name' => 'Income Group 81-01', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81_01'],
+                ['full_code' => '81-01-10', 'segments' => ['81', '01', '10'], 'name' => 'Monthly Maintenance Fee', 'type' => 'income', 'is_postable' => false, 'system_key' => 'maintenance_fee_header'],
+                ['full_code' => '81-01-10-00', 'segments' => ['81', '01', '10', '00'], 'name' => 'Monthly Maintenance Fee Group', 'type' => 'income', 'is_postable' => false, 'system_key' => 'maintenance_fee_group'],
+                ['full_code' => '81-01-10-00-01', 'segments' => ['81', '01', '10', '00', '01'], 'name' => 'Monthly Maintenance Fee', 'type' => 'income', 'is_postable' => true, 'system_key' => 'maintenance_revenue'],
+            ],
+            'subscription_revenue' => [
+                ['full_code' => '81', 'segments' => ['81'], 'name' => 'Income Group 81', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81'],
+                ['full_code' => '81-01', 'segments' => ['81', '01'], 'name' => 'Income Group 81-01', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81_01'],
+                ['full_code' => '81-01-13', 'segments' => ['81', '01', '13'], 'name' => 'Subscription Revenue', 'type' => 'income', 'is_postable' => false, 'system_key' => 'subscription_revenue_header'],
+                ['full_code' => '81-01-13-00', 'segments' => ['81', '01', '13', '00'], 'name' => 'Subscription Revenue Group', 'type' => 'income', 'is_postable' => false, 'system_key' => 'subscription_revenue_group'],
+                ['full_code' => '81-01-13-00-01', 'segments' => ['81', '01', '13', '00', '01'], 'name' => 'Subscription Revenue', 'type' => 'income', 'is_postable' => true, 'system_key' => 'subscription_revenue'],
+            ],
             'pos_revenue' => [
                 ['full_code' => '81', 'segments' => ['81'], 'name' => 'Income Group 81', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81'],
                 ['full_code' => '81-01', 'segments' => ['81', '01'], 'name' => 'Income Group 81-01', 'type' => 'income', 'is_postable' => false, 'system_key' => 'income_root_81_01'],
@@ -389,6 +433,7 @@ class StandardPostingRuleBootstrapService
             'accounts_receivable' => 'Accounts Receivable',
             'accounts_payable' => 'Accounts Payable',
             'membership_revenue' => 'Membership Fee Revenue',
+            'maintenance_revenue' => 'Maintenance Revenue',
             'subscription_revenue' => 'Subscription Revenue',
             'room_revenue' => 'Room Revenue',
             'event_revenue' => 'Event Revenue',

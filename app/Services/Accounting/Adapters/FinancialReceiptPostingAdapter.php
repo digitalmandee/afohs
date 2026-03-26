@@ -4,18 +4,20 @@ namespace App\Services\Accounting\Adapters;
 
 use App\Models\AccountingEventQueue;
 use App\Models\AccountingRule;
-use App\Models\FinancialInvoice;
 use App\Models\FinancialReceipt;
 use App\Models\JournalEntry;
+use App\Models\PaymentAccount;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use App\Services\Accounting\PostingService;
+use App\Services\Accounting\Support\FinancePostingClassifier;
 use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialReceiptPostingAdapter implements PostingAdapter
 {
     public function __construct(
         private readonly PostingService $postingService,
-        private readonly RestaurantContextResolver $restaurantContextResolver
+        private readonly RestaurantContextResolver $restaurantContextResolver,
+        private readonly FinancePostingClassifier $financePostingClassifier
     )
     {
     }
@@ -37,33 +39,7 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
             throw new \RuntimeException('Receipt amount is zero; posting aborted.');
         }
 
-        $invoiceTypes = $receipt->links
-            ->pluck('invoice')
-            ->filter()
-            ->map(function ($invoice) {
-                $type = strtolower((string) ($invoice->invoice_type ?? ''));
-                $subscription = !empty($invoice->subscription_type_id) || !empty($invoice->subscription_category_id) || $type === 'subscription';
-
-                if ($subscription) {
-                    return 'subscription';
-                }
-
-                return $type ?: 'generic';
-            })
-            ->values();
-
-        $ruleCode = 'receipt_generic';
-        if ($invoiceTypes->contains('food_order')) {
-            $ruleCode = 'pos_receipt';
-        } elseif ($invoiceTypes->contains('room_booking')) {
-            $ruleCode = 'room_receipt';
-        } elseif ($invoiceTypes->contains('event_booking')) {
-            $ruleCode = 'event_receipt';
-        } elseif ($invoiceTypes->contains('subscription')) {
-            $ruleCode = 'subscription_receipt';
-        } elseif ($invoiceTypes->contains('membership')) {
-            $ruleCode = 'membership_receipt';
-        }
+        $ruleCode = $this->financePostingClassifier->classifyReceipt($receipt);
 
         $existingEntry = JournalEntry::whereIn('module_type', ['financial_receipt', $ruleCode])
             ->where('module_id', $receipt->id)
@@ -84,14 +60,16 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
             ->pluck('member_id')
             ->first();
 
+        $paymentAccount = $this->resolveValidPaymentAccount($receipt);
+
         $lines = [];
         foreach ((array) $rule->lines as $line) {
             $lineAmount = $amount * (float) ($line['ratio'] ?? 1);
             $side = $line['side'] ?? 'debit';
             $accountId = $line['account_id'] ?? null;
 
-            if (!empty($line['use_payment_account']) && !empty($receipt->paymentAccount?->coa_account_id)) {
-                $accountId = $receipt->paymentAccount->coa_account_id;
+            if (!empty($line['use_payment_account'])) {
+                $accountId = $paymentAccount->coa_account_id;
             }
 
             $lines[] = [
@@ -122,5 +100,33 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
         ])->save();
 
         return $entry;
+    }
+
+    private function resolveValidPaymentAccount(FinancialReceipt $receipt): PaymentAccount
+    {
+        if (empty($receipt->payment_account_id)) {
+            throw new \RuntimeException("Financial receipt #{$receipt->id} is missing a payment account mapping.");
+        }
+
+        $paymentAccount = $receipt->paymentAccount;
+        if (!$paymentAccount || $paymentAccount->trashed()) {
+            throw new \RuntimeException("Financial receipt #{$receipt->id} references an invalid or deleted payment account.");
+        }
+
+        $status = strtolower(trim((string) ($paymentAccount->status ?? 'active')));
+        if ($status !== '' && $status !== 'active') {
+            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is not active for accounting posting.");
+        }
+
+        $coaAccount = $paymentAccount->coaAccount;
+        if (!$coaAccount) {
+            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is missing a mapped chart of account.");
+        }
+
+        if (!$coaAccount->is_active || !$coaAccount->is_postable) {
+            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is mapped to an inactive or non-postable chart of account.");
+        }
+
+        return $paymentAccount;
     }
 }

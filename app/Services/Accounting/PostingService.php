@@ -4,10 +4,18 @@ namespace App\Services\Accounting;
 
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Models\User;
+use App\Services\Accounting\Support\AccountingPeriodGate;
 use Illuminate\Support\Facades\DB;
 
 class PostingService
 {
+    public function __construct(
+        private readonly AccountingPeriodGate $accountingPeriodGate
+    )
+    {
+    }
+
     public function post(
         string $moduleType,
         int $moduleId,
@@ -18,7 +26,11 @@ class PostingService
         ?int $tenantId = null
     ): JournalEntry
     {
+        $createdBy = $this->resolveCreatedBy($createdBy);
+
         return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId) {
+            $periodId = $this->accountingPeriodGate->resolveOpenPeriodId($entryDate);
+
             $entry = JournalEntry::create([
                 'entry_no' => $this->generateEntryNo(),
                 'entry_date' => $entryDate,
@@ -27,6 +39,7 @@ class PostingService
                 'module_type' => $moduleType,
                 'module_id' => $moduleId,
                 'tenant_id' => $tenantId,
+                'period_id' => $periodId,
                 'created_by' => $createdBy,
                 'posted_by' => $createdBy,
                 'posted_at' => now(),
@@ -52,6 +65,15 @@ class PostingService
 
             return $entry;
         });
+    }
+
+    private function resolveCreatedBy(?int $createdBy): ?int
+    {
+        if (!$createdBy) {
+            return null;
+        }
+
+        return User::query()->whereKey($createdBy)->exists() ? $createdBy : null;
     }
 
     private function generateEntryNo(): string

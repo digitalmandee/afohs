@@ -4,7 +4,7 @@ import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typograph
 import debounce from 'lodash.debounce';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
-import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
+import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -167,14 +167,14 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                 ))}
                             </TextField>
                         </Grid>
-                        <DateRangeFilterFields
-                            startValue={localFilters.from}
-                            endValue={localFilters.to}
-                            onStartChange={(value) => updateFilters({ from: value }, { immediate: true })}
-                            onEndChange={(value) => updateFilters({ to: value }, { immediate: true })}
-                            startGrid={{ xs: 12, md: 2 }}
-                            endGrid={{ xs: 12, md: 2 }}
-                        />
+                        <Grid item xs={12} md={3}>
+                            <CompactDateRangePicker
+                                from={localFilters.from}
+                                to={localFilters.to}
+                                onChange={({ from, to }) => updateFilters({ from, to }, { immediate: true })}
+                                label="Receipt Date Range"
+                            />
+                        </Grid>
                     </Grid>
                 </FilterToolbar>
             </SurfaceCard>

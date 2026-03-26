@@ -148,7 +148,7 @@ class FinancialController extends Controller
             try {
                 $journalLinkedIds = $hasJournalEntries
                     ? JournalEntry::query()
-                        ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                        ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
                         ->pluck('module_id')
                         ->filter()
                         ->map(fn ($id) => (int) $id)
@@ -547,7 +547,7 @@ class FinancialController extends Controller
 
         $journals = Schema::hasTable('journal_entries')
             ? JournalEntry::query()
-                ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
                 ->whereIn('module_id', $invoiceIds)
                 ->get()
                 ->groupBy('module_id')

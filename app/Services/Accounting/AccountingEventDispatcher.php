@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\AccountingEventQueue;
 use App\Models\AccountingPostingLog;
 use App\Models\JournalEntry;
+use App\Models\User;
 use App\Services\Accounting\Adapters\FinancialInvoicePostingAdapter;
 use App\Services\Accounting\Adapters\FinancialReceiptPostingAdapter;
 use App\Services\Accounting\Adapters\GoodsReceiptPostingAdapter;
@@ -47,6 +48,7 @@ class AccountingEventDispatcher
     ): AccountingEventQueue
     {
         $idempotencyKey = "{$eventType}|{$sourceType}|{$sourceId}";
+        $createdBy = $this->resolveCreatedBy($createdBy);
 
         $event = AccountingEventQueue::firstOrCreate(
             ['idempotency_key' => $idempotencyKey],
@@ -68,6 +70,15 @@ class AccountingEventDispatcher
         return $event->fresh();
     }
 
+    private function resolveCreatedBy(?int $createdBy): ?int
+    {
+        if (!$createdBy) {
+            return null;
+        }
+
+        return User::query()->whereKey($createdBy)->exists() ? $createdBy : null;
+    }
+
     public function process(AccountingEventQueue $event): AccountingEventQueue
     {
         $event->update([
@@ -81,7 +92,7 @@ class AccountingEventDispatcher
                 $adapter = $this->resolveAdapter($event);
                 if (!$adapter) {
                     $event->update([
-                        'status' => 'skipped',
+                        'status' => 'failed',
                         'processed_at' => now(),
                         'error_message' => 'No posting adapter mapped for this event.',
                     ]);
@@ -93,7 +104,7 @@ class AccountingEventDispatcher
                         'source_id' => $event->source_id,
                         'restaurant_id' => $event->restaurant_id,
                         'posting_rule_id' => $event->posting_rule_id,
-                        'status' => 'skipped',
+                        'status' => 'failed',
                         'message' => 'No posting adapter mapped for this event.',
                         'payload' => $event->payload,
                     ]);
@@ -102,9 +113,12 @@ class AccountingEventDispatcher
                 }
 
                 $entry = $adapter->post($event);
+                if (!$entry) {
+                    throw new \RuntimeException('Posting adapter did not return a journal entry.');
+                }
 
                 $event->update([
-                    'status' => $entry ? 'posted' : 'skipped',
+                    'status' => 'posted',
                     'journal_entry_id' => $entry?->id,
                     'processed_at' => now(),
                     'error_message' => null,
@@ -117,9 +131,9 @@ class AccountingEventDispatcher
                     'source_id' => $event->source_id,
                     'restaurant_id' => $event->restaurant_id,
                     'posting_rule_id' => $event->posting_rule_id,
-                    'status' => $entry ? 'posted' : 'skipped',
+                    'status' => 'posted',
                     'journal_entry_id' => $entry?->id,
-                    'message' => $entry ? 'Posted successfully.' : 'Event skipped by adapter rules.',
+                    'message' => 'Posted successfully.',
                     'payload' => $event->payload,
                 ]);
 

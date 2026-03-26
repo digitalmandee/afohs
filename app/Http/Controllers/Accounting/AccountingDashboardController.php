@@ -71,6 +71,8 @@ class AccountingDashboardController extends Controller
         $expectedRuleCodes = [
             'membership_invoice',
             'membership_receipt',
+            'maintenance_invoice',
+            'maintenance_receipt',
             'subscription_invoice',
             'subscription_receipt',
             'pos_invoice',

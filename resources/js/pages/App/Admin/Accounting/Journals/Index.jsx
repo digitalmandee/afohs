@@ -9,12 +9,15 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  IconButton,
+  Menu,
   MenuItem,
   TableCell,
   TableRow,
   TextField,
   Typography,
 } from '@mui/material';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import debounce from 'lodash.debounce';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
@@ -40,11 +43,11 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
     { key: 'entry_date', label: 'Date' },
     { key: 'source', label: 'Source', sx: { minWidth: 180 } },
     { key: 'restaurant', label: 'Restaurant', sx: { minWidth: 160 } },
-    { key: 'status', label: 'Status' },
     { key: 'description', label: 'Description', sx: { minWidth: 300 } },
     { key: 'debit', label: 'Debit', align: 'right' },
     { key: 'credit', label: 'Credit', align: 'right' },
-    { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 220 } },
+    { key: 'status', label: 'Status', sx: { minWidth: 132 } },
+    { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 88 } },
   ];
   const [localFilters, setLocalFilters] = React.useState({
     search: filters?.search || '',
@@ -151,6 +154,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
   const [openRecurring, setOpenRecurring] = React.useState(false);
   const [openTemplatesHub, setOpenTemplatesHub] = React.useState(false);
   const [openPolicy, setOpenPolicy] = React.useState(false);
+  const [actionMenu, setActionMenu] = React.useState({ anchorEl: null, entryId: null });
   const [selectedTemplateId, setSelectedTemplateId] = React.useState('');
   const { data: applyData, setData: setApplyData, post: postApply, processing: applying, reset: resetApply } = useForm({
     entry_date: '',
@@ -217,6 +221,19 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
     e.preventDefault();
     postPolicy(route('accounting.journals.policy.save'));
   };
+
+  const openActionMenu = React.useCallback((event, entryId) => {
+    setActionMenu({ anchorEl: event.currentTarget, entryId });
+  }, []);
+
+  const closeActionMenu = React.useCallback(() => {
+    setActionMenu({ anchorEl: null, entryId: null });
+  }, []);
+
+  const runMenuAction = React.useCallback((callback) => {
+    closeActionMenu();
+    callback();
+  }, [closeActionMenu]);
 
   return (
     <AppPage
@@ -299,7 +316,7 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
             loading={loading}
             pagination={entries}
             emptyMessage="No entries found."
-            tableMinWidth={1040}
+            tableMinWidth={980}
             renderRow={(entry) => (
               <TableRow
                 key={entry.id}
@@ -317,6 +334,9 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                   <Chip size="small" label={entry.source_label || 'General'} variant="outlined" />
                 </TableCell>
                 <TableCell>{entry.restaurant_name || '-'}</TableCell>
+                <TableCell>{entry.description || '-'}</TableCell>
+                <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
                 <TableCell>
                   <Chip
                     label={entry.status}
@@ -325,25 +345,45 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                     variant="outlined"
                   />
                 </TableCell>
-                <TableCell>{entry.description || '-'}</TableCell>
-                <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
-                <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
                 <TableCell align="right">
-                  <Box sx={{ display: 'inline-flex', gap: 0.75, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <Button size="small" variant="outlined" component={Link} href={route('accounting.journals.show', entry.id)}>
+                  <IconButton
+                    size="small"
+                    onClick={(event) => openActionMenu(event, entry.id)}
+                    aria-label={`Open actions for ${entry.entry_no}`}
+                  >
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
+                  <Menu
+                    anchorEl={actionMenu.anchorEl}
+                    open={actionMenu.entryId === entry.id}
+                    onClose={closeActionMenu}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  >
+                    <MenuItem onClick={() => runMenuAction(() => router.visit(route('accounting.journals.show', entry.id)))}>
                       Open
-                    </Button>
+                    </MenuItem>
                     {entry.document_url ? (
-                      <Button size="small" variant="outlined" onClick={() => router.visit(entry.document_url)}>Open Source</Button>
+                      <MenuItem onClick={() => runMenuAction(() => router.visit(entry.document_url))}>
+                        Open Source
+                      </MenuItem>
                     ) : null}
                     {entry.status === 'draft' && (
-                      <>
-                        <Button size="small" variant="outlined" onClick={() => router.visit(route('accounting.journals.edit', entry.id))}>Edit</Button>
-                        <Button size="small" variant="outlined" onClick={() => router.post(route('accounting.journals.submit', entry.id))}>Submit</Button>
-                        <Button size="small" color="success" variant="outlined" onClick={() => router.post(route('accounting.journals.approve', entry.id))}>Approve/Post</Button>
-                      </>
+                      <MenuItem onClick={() => runMenuAction(() => router.visit(route('accounting.journals.edit', entry.id)))}>
+                        Edit
+                      </MenuItem>
                     )}
-                  </Box>
+                    {entry.status === 'draft' && (
+                      <MenuItem onClick={() => runMenuAction(() => router.post(route('accounting.journals.submit', entry.id)))}>
+                        Submit
+                      </MenuItem>
+                    )}
+                    {entry.status === 'draft' && (
+                      <MenuItem onClick={() => runMenuAction(() => router.post(route('accounting.journals.approve', entry.id)))}>
+                        Approve/Post
+                      </MenuItem>
+                    )}
+                  </Menu>
                 </TableCell>
               </TableRow>
             )}

@@ -5,7 +5,7 @@ import debounce from 'lodash.debounce';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
-import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
+import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
@@ -153,12 +153,12 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={2}><StatCard label="Orders" value={summary.count || 0} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Value" value={Number(summary.total_value || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={2}><StatCard label="Draft" value={summary.draft || 0} /></Grid>
-                <Grid item xs={12} md={2}><StatCard label="Approved" value={summary.approved || 0} /></Grid>
-                <Grid item xs={12} md={2}><StatCard label="Received" value={summary.received || 0} /></Grid>
-                <Grid item xs={12} md={1}><StatCard label="Cancelled" value={summary.cancelled || 0} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Orders" value={summary.count || 0} accent /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Total Value" value={Number(summary.total_value || 0).toFixed(2)} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Draft" value={summary.draft || 0} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Approved" value={summary.approved || 0} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Received" value={summary.received || 0} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Cancelled" value={summary.cancelled || 0} /></Grid>
             </Grid>
 
             <SurfaceCard
@@ -241,14 +241,14 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                     ))}
                                 </TextField>
                             </Grid>
-                            <DateRangeFilterFields
-                                startValue={localFilters.from}
-                                endValue={localFilters.to}
-                                onStartChange={(value) => updateFilter('from', value, { immediate: true })}
-                                onEndChange={(value) => updateFilter('to', value, { immediate: true })}
-                                startGrid={{ xs: 12, md: 1.5 }}
-                                endGrid={{ xs: 12, md: 1.5 }}
-                            />
+                            <Grid item xs={12} md={3}>
+                                <CompactDateRangePicker
+                                    from={localFilters.from}
+                                    to={localFilters.to}
+                                    onChange={({ from, to }) => updateFilters({ from, to }, { immediate: true })}
+                                    label="Order Date Range"
+                                />
+                            </Grid>
                         </Grid>
                     </Box>
                 </FilterToolbar>

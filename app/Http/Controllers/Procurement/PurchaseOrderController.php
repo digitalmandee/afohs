@@ -187,6 +187,11 @@ class PurchaseOrderController extends Controller
             ->pluck('id')
             ->map(fn ($id) => (int) $id);
 
+        $inventoryItems = InventoryItem::query()
+            ->whereIn('id', $submittedItemIds)
+            ->get(['id', 'legacy_product_id'])
+            ->keyBy('id');
+
         $invalidIds = $submittedItemIds->diff($eligibleIds)->values();
         if ($invalidIds->isNotEmpty()) {
             $ineligibleErrors = [];
@@ -234,8 +239,10 @@ class PurchaseOrderController extends Controller
             foreach ($data['items'] as $item) {
                 $lineTotal = $item['qty_ordered'] * $item['unit_cost'];
                 $subTotal += $lineTotal;
+                $inventoryItem = $inventoryItems->get((int) $item['inventory_item_id']);
+
                 $order->items()->create([
-                    'product_id' => null,
+                    'product_id' => $inventoryItem?->legacy_product_id,
                     'inventory_item_id' => $item['inventory_item_id'],
                     'qty_ordered' => $item['qty_ordered'],
                     'unit_cost' => $item['unit_cost'],
@@ -268,10 +275,13 @@ class PurchaseOrderController extends Controller
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'item_count' => is_array($data['items'] ?? null) ? count($data['items']) : 0,
                 'error' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
 
             return redirect()->back()->withInput()->withErrors([
-                'error' => 'Failed to create purchase order. Please review inputs and try again.',
+                'error' => str_contains(strtolower($e->getMessage()), 'product_id')
+                    ? 'Failed to create purchase order because one or more inventory items are missing legacy product linkage. The purchase order item schema is being used in mixed compatibility mode.'
+                    : 'Failed to create purchase order. Please review inputs and try again.',
             ]);
         }
     }

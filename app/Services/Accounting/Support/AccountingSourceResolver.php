@@ -12,6 +12,7 @@ use App\Models\Tenant;
 use App\Models\VendorBill;
 use App\Models\VendorPayment;
 use Illuminate\Support\Facades\Route;
+use RuntimeException;
 
 class AccountingSourceResolver
 {
@@ -162,7 +163,7 @@ class AccountingSourceResolver
         $entry->loadMissing('tenant');
         $moduleType = (string) ($entry->module_type ?? '');
 
-        if (in_array($moduleType, ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'], true)) {
+        if (in_array($moduleType, ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'], true)) {
             $invoice = FinancialInvoice::query()
                 ->with(['invoiceable', 'member:id,full_name,membership_no', 'corporateMember:id,full_name,membership_no', 'customer:id,name,customer_no'])
                 ->find($entry->module_id);
@@ -172,7 +173,7 @@ class AccountingSourceResolver
             }
         }
 
-        if ($moduleType === 'financial_receipt') {
+        if (in_array($moduleType, ['financial_receipt', 'membership_receipt', 'maintenance_receipt', 'subscription_receipt', 'pos_receipt', 'room_receipt', 'event_receipt'], true)) {
             $receipt = FinancialReceipt::query()->with('links.invoice')->find($entry->module_id);
             if ($receipt) {
                 return $this->resolveForFinancialReceipt($receipt, null, $entry);
@@ -285,11 +286,18 @@ class AccountingSourceResolver
 
         return match ($moduleType) {
             'membership_invoice' => 'Membership Invoice',
+            'maintenance_invoice' => 'Maintenance Invoice',
             'subscription_invoice' => 'Subscription Invoice',
             'pos_invoice' => 'POS Sale',
             'room_invoice' => 'Room Booking Invoice',
             'event_invoice' => 'Event Booking Invoice',
             'financial_invoice' => 'Finance Invoice',
+            'membership_receipt' => 'Membership Receipt',
+            'maintenance_receipt' => 'Maintenance Receipt',
+            'subscription_receipt' => 'Subscription Receipt',
+            'pos_receipt' => 'POS Receipt',
+            'room_receipt' => 'Room Receipt',
+            'event_receipt' => 'Event Receipt',
             'financial_receipt' => 'Financial Receipt',
             'vendor_bill' => 'Vendor Bill',
             'vendor_payment' => 'Vendor Payment',
@@ -302,7 +310,14 @@ class AccountingSourceResolver
     {
         return match ((string) $moduleType) {
             'membership_invoice' => 'membership',
+            'maintenance_invoice' => 'membership',
             'subscription_invoice' => 'subscription',
+            'membership_receipt' => 'membership',
+            'maintenance_receipt' => 'membership',
+            'subscription_receipt' => 'subscription',
+            'pos_receipt' => 'pos',
+            'room_receipt' => 'room',
+            'event_receipt' => 'event',
             'pos_invoice' => 'pos',
             'room_invoice' => 'room',
             'event_invoice' => 'event',
@@ -313,26 +328,20 @@ class AccountingSourceResolver
 
     private function detectInvoiceModule(FinancialInvoice $invoice): string
     {
-        $type = strtolower((string) ($invoice->invoice_type ?? ''));
-        $feeType = strtolower((string) ($invoice->fee_type ?? ''));
-
-        if (!empty($invoice->subscription_type_id) || !empty($invoice->subscription_category_id) || $type === 'subscription' || $feeType === 'subscription_fee') {
-            return 'subscription';
-        }
-        if (in_array($type, ['membership', 'maintenance', 'reinstating'], true) || in_array($feeType, ['membership_fee', 'maintenance_fee', 'reinstating_fee'], true)) {
-            return 'membership';
-        }
-        if (in_array($type, ['food_order', 'pos_sale'], true)) {
-            return 'pos';
-        }
-        if ($type === 'room_booking') {
-            return 'room';
-        }
-        if ($type === 'event_booking') {
-            return 'event';
+        try {
+            $family = app(FinancePostingClassifier::class)->detectInvoiceFamily($invoice);
+        } catch (RuntimeException) {
+            return 'finance';
         }
 
-        return 'finance';
+        return match ($family) {
+            'subscription' => 'subscription',
+            'membership', 'maintenance' => 'membership',
+            'pos' => 'pos',
+            'room' => 'room',
+            'event' => 'event',
+            default => 'finance',
+        };
     }
 
     private function moduleLabel(string $module): string

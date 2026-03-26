@@ -30,11 +30,27 @@ export default function JournalForm({ data, setData, errors, accounts = [], subm
   const totalDebit = lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
   const totalCredit = lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
   const difference = totalDebit - totalCredit;
+  const displayAmount = (value) => (value === '' || value === null || value === undefined ? '' : value);
 
   const addLine = () => setData('lines', [...lines, emptyLine()]);
   const removeLine = (idx) => setData('lines', lines.filter((_, i) => i !== idx));
   const setLine = (idx, key, value) => {
     const next = lines.map((line, i) => (i === idx ? { ...line, [key]: value } : line));
+    setData('lines', next);
+  };
+  const setAmountLine = (idx, side, value) => {
+    const opposite = side === 'debit' ? 'credit' : 'debit';
+    const numericValue = Number(value || 0);
+    const next = lines.map((line, i) => (
+      i === idx
+        ? {
+            ...line,
+            [side]: value,
+            [opposite]: numericValue > 0 ? '' : line[opposite],
+          }
+        : line
+    ));
+
     setData('lines', next);
   };
 
@@ -125,14 +141,8 @@ export default function JournalForm({ data, setData, errors, accounts = [], subm
                       size="small"
                       type="number"
                       inputProps={{ min: 0, step: '0.01' }}
-                      value={line.debit || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setLine(idx, 'debit', value);
-                        if (Number(value || 0) > 0) {
-                          setLine(idx, 'credit', '');
-                        }
-                      }}
+                      value={displayAmount(line.debit)}
+                      onChange={(e) => setAmountLine(idx, 'debit', e.target.value)}
                     />
                   </TableCell>
                   <TableCell align="right">
@@ -140,14 +150,8 @@ export default function JournalForm({ data, setData, errors, accounts = [], subm
                       size="small"
                       type="number"
                       inputProps={{ min: 0, step: '0.01' }}
-                      value={line.credit || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setLine(idx, 'credit', value);
-                        if (Number(value || 0) > 0) {
-                          setLine(idx, 'debit', '');
-                        }
-                      }}
+                      value={displayAmount(line.credit)}
+                      onChange={(e) => setAmountLine(idx, 'credit', e.target.value)}
                     />
                   </TableCell>
                   <TableCell align="right">
@@ -183,4 +187,3 @@ export default function JournalForm({ data, setData, errors, accounts = [], subm
     </Box>
   );
 }
-

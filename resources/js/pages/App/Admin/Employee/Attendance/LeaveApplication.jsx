@@ -79,14 +79,6 @@ const LeaveApplication = () => {
         []
     );
 
-    const handleClearSearch = () => {
-        setSearchTerm('');
-        setStatus('');
-        setDate(null);
-        setCurrentPage(1);
-        fetchApplications(1, '', null, '');
-    };
-
     const handleClearAllFilters = () => {
         setSearchTerm('');
         setDate(null);
@@ -196,21 +188,6 @@ const LeaveApplication = () => {
                                                 <MenuItem value="rejected">Rejected</MenuItem>
                                             </Select>
                                         </FormControl>
-                                    </Grid>
-                                    <Grid item xs={12} md={1.5}>
-                                        <Button
-                                            fullWidth
-                                            variant="outlined"
-                                            onClick={handleClearSearch}
-                                            sx={{
-                                                color: '#063455',
-                                                borderColor: '#063455',
-                                                minHeight: 42,
-                                                px: 2,
-                                            }}
-                                        >
-                                            Clear
-                                        </Button>
                                     </Grid>
                                 </Grid>
                                 </FilterToolbar>

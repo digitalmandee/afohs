@@ -69,7 +69,7 @@ class AccountingOperationsController extends Controller
             ->get()
             ->groupBy('source_id');
         $journals = JournalEntry::query()
-            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+            ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
             ->whereIn('module_id', $invoiceIds)
             ->get()
             ->groupBy('module_id');
@@ -153,7 +153,7 @@ class AccountingOperationsController extends Controller
                 ->get()
                 ->groupBy('source_id');
             $journals = JournalEntry::query()
-                ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
+                ->whereIn('module_type', ['financial_invoice', 'membership_invoice', 'maintenance_invoice', 'subscription_invoice', 'pos_invoice', 'room_invoice', 'event_invoice'])
                 ->whereIn('module_id', $invoiceIds)
                 ->get()
                 ->groupBy('module_id');

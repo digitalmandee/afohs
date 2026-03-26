@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Accounting;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountingApprovalPolicy;
-use App\Models\AccountingPeriod;
 use App\Models\ApprovalAction;
 use App\Models\ApprovalWorkflow;
 use App\Models\ApprovalWorkflowStep;
@@ -16,6 +15,7 @@ use App\Models\JournalTemplate;
 use App\Services\JournalApprovalAutomationService;
 use App\Services\JournalApprovalNotificationService;
 use App\Services\JournalRecurringRunnerService;
+use App\Services\Accounting\Support\AccountingPeriodGate;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -28,6 +28,12 @@ use App\Services\Accounting\Support\AccountingSourceResolver;
 
 class JournalEntryController extends Controller
 {
+    public function __construct(
+        private readonly AccountingPeriodGate $accountingPeriodGate
+    )
+    {
+    }
+
     public function create()
     {
         return Inertia::render('App/Admin/Accounting/Journals/Create', $this->baseJournalFormData());
@@ -37,7 +43,7 @@ class JournalEntryController extends Controller
     {
         $data = $this->validateJournalPayload($request);
         $this->ensureBalanced($data['lines']);
-        $this->assertPeriodOpen($data['period_id'] ?? null);
+        $data['period_id'] = $this->assertPeriodOpen($data['entry_date'], $data['period_id'] ?? null);
 
         $entry = DB::transaction(function () use ($request, $data) {
             $entry = JournalEntry::create([
@@ -74,7 +80,7 @@ class JournalEntryController extends Controller
         $this->guardDraft($journalEntry);
         $data = $this->validateJournalPayload($request);
         $this->ensureBalanced($data['lines']);
-        $this->assertPeriodOpen($data['period_id'] ?? null);
+        $data['period_id'] = $this->assertPeriodOpen($data['entry_date'], $data['period_id'] ?? null);
 
         DB::transaction(function () use ($journalEntry, $data) {
             $journalEntry->update([
@@ -94,6 +100,10 @@ class JournalEntryController extends Controller
     {
         $this->guardDraft($journalEntry);
         $journalEntry->load('lines');
+        $resolvedPeriodId = $this->assertPeriodOpen(
+            optional($journalEntry->entry_date)->toDateString() ?? now()->toDateString(),
+            $journalEntry->period_id
+        );
         $this->ensureBalanced($journalEntry->lines->map(fn($line) => [
             'debit' => (float) $line->debit,
             'credit' => (float) $line->credit,
@@ -106,6 +116,7 @@ class JournalEntryController extends Controller
         if ($autoPostLimit > 0 && $amount <= $autoPostLimit) {
             $journalEntry->update([
                 'status' => 'posted',
+                'period_id' => $resolvedPeriodId,
                 'posted_by' => auth()->id(),
                 'posted_at' => now(),
             ]);
@@ -124,7 +135,10 @@ class JournalEntryController extends Controller
     public function approve(JournalEntry $journalEntry, Request $request)
     {
         $this->guardDraft($journalEntry);
-        $this->assertPeriodOpen($journalEntry->period_id);
+        $resolvedPeriodId = $this->assertPeriodOpen(
+            optional($journalEntry->entry_date)->toDateString() ?? now()->toDateString(),
+            $journalEntry->period_id
+        );
         $journalEntry->load('lines');
         $this->ensureBalanced($journalEntry->lines->map(fn($line) => [
             'debit' => (float) $line->debit,
@@ -143,7 +157,7 @@ class JournalEntryController extends Controller
 
         $this->ensureUserCanApproveStep($request, $journalEntry, $currentStep, $policy);
 
-        DB::transaction(function () use ($journalEntry, $request, $workflow, $currentStep, $steps) {
+        DB::transaction(function () use ($journalEntry, $request, $workflow, $currentStep, $steps, $resolvedPeriodId) {
             $this->recordApprovalAction(
                 $journalEntry->id,
                 'approved',
@@ -156,6 +170,7 @@ class JournalEntryController extends Controller
             if (!$remaining) {
                 $journalEntry->update([
                     'status' => 'posted',
+                    'period_id' => $resolvedPeriodId,
                     'posted_by' => $request->user()?->id,
                     'posted_at' => now(),
                 ]);
@@ -762,18 +777,9 @@ class JournalEntryController extends Controller
         }
     }
 
-    private function assertPeriodOpen(?int $periodId): void
+    private function assertPeriodOpen(string $entryDate, ?int $periodId): int
     {
-        if (!$periodId) {
-            return;
-        }
-
-        $period = AccountingPeriod::find($periodId);
-        if ($period && $period->status === 'closed') {
-            throw ValidationException::withMessages([
-                'period_id' => 'Selected accounting period is closed/locked.',
-            ]);
-        }
+        return $this->accountingPeriodGate->assertOpenForRequest($entryDate, $periodId);
     }
 
     private function getRecurringProfilesForIndex()
