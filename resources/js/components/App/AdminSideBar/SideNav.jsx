@@ -34,6 +34,7 @@ import { MdOutlinePointOfSale } from 'react-icons/md';
 import { TiBusinessCard } from 'react-icons/ti';
 import { FaRegAddressCard } from 'react-icons/fa';
 import { FaKitchenSet } from 'react-icons/fa6';
+import { beginNavigationTrace, useRenderProfiler } from '@/lib/navigationProfiler';
 
 const drawerWidthOpen = 248;
 const drawerWidthClosed = 76;
@@ -554,7 +555,7 @@ const RailItem = React.memo(function RailItem({ item, active, open, expanded, on
     );
 });
 
-const PanelSection = React.memo(function PanelSection({ section, activePath, rememberedKey, openGroups, setOpenGroups }) {
+const PanelSection = React.memo(function PanelSection({ section, activePath, rememberedKey, openGroups, setOpenGroups, onEntryClick }) {
     const hasActiveChild = section.items.some((child) => isItemActive(child, activePath));
     const isOpen = section.collapsible ? openGroups[rememberedKey] ?? hasActiveChild : true;
 
@@ -605,6 +606,7 @@ const PanelSection = React.memo(function PanelSection({ section, activePath, rem
                                 key={entry.text}
                                 component={Link}
                                 href={entry.path}
+                                onClick={() => onEntryClick(entry)}
                                 sx={{
                                     minHeight: 36,
                                     px: 1.25,
@@ -654,6 +656,11 @@ export default function SideNav({ open, setOpen }) {
     const { url, props } = usePage();
     const auth = props?.auth || {};
     const permissions = Array.isArray(auth.permissions) ? auth.permissions : [];
+    useRenderProfiler('AdminSideNav', () => ({
+        open,
+        url,
+        permissionCount: permissions.length,
+    }));
     const permissionSignature = React.useMemo(
         () => [...new Set(permissions.map((permission) => String(permission).trim()))].sort().join('|'),
         [permissions],
@@ -667,8 +674,17 @@ export default function SideNav({ open, setOpen }) {
     const expandedModule = menuItems.find((item) => item.text === expandedModuleKey) || null;
     const panelSections = buildPanelSections(expandedModule);
 
+    const traceNavigation = React.useCallback((item, source = 'admin_sidebar') => {
+        beginNavigationTrace(source, {
+            item: item?.text || 'unknown',
+            path: item?.path || '',
+            currentUrl: url,
+        });
+    }, [url]);
+
     const handlePrimaryAction = (item) => {
         if (item.text === 'Logout') {
+            traceNavigation(item, 'admin_sidebar_logout');
             router.post(route('logout'));
             return;
         }
@@ -682,6 +698,7 @@ export default function SideNav({ open, setOpen }) {
         }
 
         if (item.path) {
+            traceNavigation(item);
             router.visit(item.path);
         }
     };
@@ -845,16 +862,17 @@ export default function SideNav({ open, setOpen }) {
                                                     {expanded ? (
                                                         <Box sx={{ pl: 0.2, pr: 0, py: 0.45 }}>
                                                             {panelSections.map((section) => (
-                                                                <PanelSection
-                                                                    key={section.key}
-                                                                    section={section}
-                                                                    activePath={url}
-                                                                    rememberedKey={`${expandedModule.text}:${section.key}`}
-                                                                    openGroups={openGroups}
-                                                                    setOpenGroups={setOpenGroups}
-                                                                />
-                                                            ))}
-                                                        </Box>
+                                                                    <PanelSection
+                                                                        key={section.key}
+                                                                        section={section}
+                                                                        activePath={url}
+                                                                        rememberedKey={`${expandedModule.text}:${section.key}`}
+                                                                        openGroups={openGroups}
+                                                                        setOpenGroups={setOpenGroups}
+                                                                        onEntryClick={traceNavigation}
+                                                                    />
+                                                                ))}
+                                                            </Box>
                                                     ) : null}
                                                 </Box>
                                             );
@@ -901,6 +919,7 @@ export default function SideNav({ open, setOpen }) {
                                                         rememberedKey={`${expandedModule.text}:${section.key}`}
                                                         openGroups={openGroups}
                                                         setOpenGroups={setOpenGroups}
+                                                        onEntryClick={traceNavigation}
                                                     />
                                                 ))}
                                             </Box>

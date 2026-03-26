@@ -1,10 +1,17 @@
 import '../css/app.css';
-import { createInertiaApp } from '@inertiajs/react';
+import React from 'react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { SnackbarProvider } from 'notistack';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import Layout from './components/Layout';
+import {
+  finalizeNavigationTrace,
+  markNavigation,
+  scheduleNextPaint,
+  useRenderProfiler,
+} from './lib/navigationProfiler';
 import theme from '../theme'; // 👈 import your theme
 import '@fontsource/inter/300.css';
 import '@fontsource/inter/400.css';
@@ -15,6 +22,75 @@ import './echo';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 const renderAdminLayout = (page) => <Layout>{page}</Layout>;
+
+function NavigationRuntime({ children }) {
+  useRenderProfiler('InertiaAppRoot');
+
+  React.useEffect(() => {
+    const stopStart = router.on('start', (event) => {
+      markNavigation('inertia_visit_start', {
+        url: event.detail.visit.url?.toString?.() || String(event.detail.visit.url || ''),
+        method: event.detail.visit.method,
+      });
+    });
+
+    const stopSuccess = router.on('success', (event) => {
+      const pageUrl = event.detail.page?.url || '';
+      markNavigation('inertia_navigate_success', {
+        component: event.detail.page?.component,
+        url: pageUrl,
+      });
+    });
+
+    const stopFinish = router.on('finish', (event) => {
+      markNavigation('inertia_visit_finish', {
+        completed: event.detail.visit.completed,
+        interrupted: event.detail.visit.interrupted,
+      });
+    });
+
+    const stopError = router.on('error', (event) => {
+      markNavigation('inertia_visit_error', {
+        errors: Object.keys(event.detail.errors || {}),
+      });
+    });
+
+    return () => {
+      stopStart();
+      stopSuccess();
+      stopFinish();
+      stopError();
+    };
+  }, []);
+
+  return children;
+}
+
+function withPageProfiler(Page, name) {
+  const ProfiledPage = function ProfiledPage(pageProps) {
+    useRenderProfiler(`Page:${name}`, () => ({
+      page: name,
+      url: typeof window !== 'undefined' ? window.location.pathname : '',
+    }));
+
+    React.useEffect(() => {
+      markNavigation('page_effects_complete', {
+        page: name,
+      });
+      scheduleNextPaint('next_paint_ready', { page: name }, () => {
+        finalizeNavigationTrace({
+          page: name,
+          url: typeof window !== 'undefined' ? window.location.pathname : '',
+        });
+      });
+    }, []);
+
+    return <Page {...pageProps} />;
+  };
+
+  ProfiledPage.layout = Page.layout;
+  return ProfiledPage;
+}
 
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
@@ -68,11 +144,11 @@ createInertiaApp({
       // admin inventory routes so those pages cannot bypass the sidebar/topbar.
       if (isAdminInventoryPath) {
         Page.layout = renderAdminLayout;
-        return Page;
+        return withPageProfiler(Page, name);
       }
 
       Page.layout = Page.layout || renderAdminLayout;
-      return Page;
+      return withPageProfiler(Page, name);
     });
   },
 
@@ -106,7 +182,9 @@ createInertiaApp({
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <SnackbarProvider maxSnack={8}>
-          <App {...props} />
+          <NavigationRuntime>
+            <App {...props} />
+          </NavigationRuntime>
         </SnackbarProvider>
       </ThemeProvider>
     );

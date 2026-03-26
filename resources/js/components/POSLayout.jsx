@@ -5,10 +5,15 @@ import SideNav, {
     POS_DRAWER_WIDTH_OPEN,
     POS_TOPBAR_HEIGHT,
 } from '@/components/App/SideBar/SideNav';
+import { useRenderProfiler } from '@/lib/navigationProfiler';
 
 export default function POSLayout({ children }) {
     const [open, setOpen] = useState(true);
     const resolvedDrawerWidth = open ? POS_DRAWER_WIDTH_OPEN : POS_DRAWER_WIDTH_CLOSED;
+    useRenderProfiler('POSLayout', () => ({
+        open,
+        drawerWidth: resolvedDrawerWidth,
+    }));
 
     return (
         <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', bgcolor: '#f4f8fc' }}>

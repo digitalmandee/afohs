@@ -3,6 +3,7 @@ import SideNav from '@/components/App/AdminSideBar/SideNav';
 import { usePage } from '@inertiajs/react'; // For auth info
 import { useSnackbar } from 'notistack';
 import { Box } from '@mui/material';
+import { markNavigation, useRenderProfiler } from '@/lib/navigationProfiler';
 
 const drawerWidthOpen = 240;
 const drawerWidthClosed = 110;
@@ -10,6 +11,10 @@ const drawerWidthClosed = 110;
 export default function Layout({ children }) {
     const [open, setOpen] = useState(true);
     const { auth } = usePage().props;
+    useRenderProfiler('AdminLayout', () => ({
+        open,
+        userId: auth?.user?.id ?? null,
+    }));
 
     return (
         <Box className="app-shell" sx={{ display: 'flex', overflowX: 'clip' }}>
@@ -39,6 +44,7 @@ const NotificationSubscriber = React.memo(function NotificationSubscriber({ user
         if (!userId || !window.Echo) return undefined;
 
         const channelName = `App.Models.User.${userId}`;
+        markNavigation('layout_echo_subscribe', { channelName });
         const channel = window.Echo.private(channelName);
 
         channel.notification((notification) => {
@@ -49,6 +55,7 @@ const NotificationSubscriber = React.memo(function NotificationSubscriber({ user
         });
 
         return () => {
+            markNavigation('layout_echo_cleanup', { channelName });
             window.Echo.leave(channelName);
         };
     }, [enqueueSnackbar, userId]);

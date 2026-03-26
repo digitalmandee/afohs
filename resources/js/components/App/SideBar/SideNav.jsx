@@ -49,6 +49,7 @@ import LogoutScreen from './Logout';
 import NotificationsPanel from './Notification';
 import EmployeeProfileScreen from './Profile';
 import { isPosPath, safeRouteForContext } from '@/lib/utils';
+import { beginNavigationTrace, useRenderProfiler } from '@/lib/navigationProfiler';
 
 export const POS_DRAWER_WIDTH_OPEN = 248;
 export const POS_DRAWER_WIDTH_CLOSED = 76;
@@ -297,6 +298,12 @@ export default function SideNav({ open, setOpen }) {
     const auth = props?.auth || {};
     const role = auth.role || '';
     const permissions = Array.isArray(auth.permissions) ? auth.permissions : [];
+    useRenderProfiler('POSSideNav', () => ({
+        open,
+        url,
+        role,
+        permissionCount: permissions.length,
+    }));
     const posContext = isPosPath(url);
     const workspaceTitle = posContext ? 'POS Workspace' : 'Restaurant Workspace';
     const workspaceSubtitle = posContext ? 'Faster restaurant operations and cashier flow.' : 'Operational tools for service, kitchen, and restaurant staff.';
@@ -313,12 +320,25 @@ export default function SideNav({ open, setOpen }) {
         [menuContextKey, permissions, role],
     );
 
+    const traceNavigation = React.useCallback((item, source = 'pos_sidebar') => {
+        beginNavigationTrace(source, {
+            item: item?.text || 'unknown',
+            path: item?.path || '',
+            currentUrl: url,
+        });
+    }, [url]);
+
     React.useEffect(() => {
         const handleKeyDown = (event) => {
             if (event.key === 'F12') {
                 event.preventDefault();
                 const orderManagementPath = safeRouteForContext('order.management', url);
                 if (!orderManagementPath) return;
+                beginNavigationTrace('pos_keyboard_shortcut', {
+                    item: 'Orders',
+                    path: orderManagementPath,
+                    currentUrl: url,
+                });
                 router.visit(orderManagementPath);
             }
         };
@@ -337,6 +357,7 @@ export default function SideNav({ open, setOpen }) {
                     <ListItemButton
                         component={disabled ? 'button' : Link}
                         href={disabled ? undefined : item.path}
+                        onClick={disabled ? undefined : () => traceNavigation(item)}
                         disabled={disabled}
                         sx={{
                             minHeight: 48,
@@ -526,6 +547,11 @@ export default function SideNav({ open, setOpen }) {
                                         onClick={() => {
                                             const newOrderPath = safeRouteForContext('order.new', url);
                                             if (!newOrderPath) return;
+                                            beginNavigationTrace('pos_sidebar_cta', {
+                                                item: 'New Order',
+                                                path: newOrderPath,
+                                                currentUrl: url,
+                                            });
                                             router.visit(newOrderPath);
                                         }}
                                         sx={{
