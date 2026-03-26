@@ -14,6 +14,7 @@ import '@fontsource/inter/700.css';
 import './echo';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const renderAdminLayout = (page) => <Layout>{page}</Layout>;
 
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
@@ -66,11 +67,11 @@ createInertiaApp({
       // Shared inventory pages are reused in POS and Admin. Force the Admin shell on
       // admin inventory routes so those pages cannot bypass the sidebar/topbar.
       if (isAdminInventoryPath) {
-        Page.layout = (page) => <Layout>{page}</Layout>;
+        Page.layout = renderAdminLayout;
         return Page;
       }
 
-      Page.layout = Page.layout || ((page) => <Layout>{page}</Layout>);
+      Page.layout = Page.layout || renderAdminLayout;
       return Page;
     });
   },

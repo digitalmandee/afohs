@@ -10,35 +10,10 @@ const drawerWidthClosed = 110;
 export default function Layout({ children }) {
     const [open, setOpen] = useState(true);
     const { auth } = usePage().props;
-    const { enqueueSnackbar } = useSnackbar();
-
-    useEffect(() => {
-        if (auth?.user?.id) {
-            console.log(`Global Layout Subscribing to: App.Models.User.${auth.user.id}`);
-            window.Echo.private(`App.Models.User.${auth.user.id}`).notification((notification) => {
-                console.log('Global Notification received:', notification);
-                enqueueSnackbar(notification.title || 'New Notification', {
-                    variant: 'info',
-                    anchorOrigin: { vertical: 'top', horizontal: 'right' },
-                });
-            });
-        }
-
-        return () => {
-            if (auth?.user?.id) {
-                // We typically don't leave the channel here if other components (like Dashboard) might be using it,
-                // but Echo.leave cleans up the subscription.
-                // If we navigate away, Layout unmounts (or not? Inertia layouts persist).
-                // Actually, in Inertia with persistent layouts, this component might remain mounted.
-                // If it re-renders, useEffect cleanup runs.
-                // It's safer to leave. Dashboard re-subscribing should be fine.
-                window.Echo.leave(`App.Models.User.${auth.user.id}`);
-            }
-        };
-    }, [auth?.user?.id]);
 
     return (
         <Box className="app-shell" sx={{ display: 'flex', overflowX: 'clip' }}>
+            <NotificationSubscriber userId={auth?.user?.id} />
             <SideNav open={open} setOpen={setOpen} />
             <Box
                 className="app-content"
@@ -56,3 +31,27 @@ export default function Layout({ children }) {
         </Box>
     );
 }
+
+const NotificationSubscriber = React.memo(function NotificationSubscriber({ userId }) {
+    const { enqueueSnackbar } = useSnackbar();
+
+    useEffect(() => {
+        if (!userId || !window.Echo) return undefined;
+
+        const channelName = `App.Models.User.${userId}`;
+        const channel = window.Echo.private(channelName);
+
+        channel.notification((notification) => {
+            enqueueSnackbar(notification.title || 'New Notification', {
+                variant: 'info',
+                anchorOrigin: { vertical: 'top', horizontal: 'right' },
+            });
+        });
+
+        return () => {
+            window.Echo.leave(channelName);
+        };
+    }, [enqueueSnackbar, userId]);
+
+    return null;
+});

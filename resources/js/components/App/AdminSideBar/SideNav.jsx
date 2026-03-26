@@ -143,6 +143,8 @@ const groupMeta = {
     system: { label: 'System' },
 };
 
+const ADMIN_MENU_CACHE = new Map();
+
 const groupMenuItems = (items) =>
     groupOrder
         .map((groupKey) => ({
@@ -152,7 +154,7 @@ const groupMenuItems = (items) =>
         }))
         .filter((group) => group.items.length > 0);
 
-const topLevelMenu = (permissions) => {
+const buildTopLevelMenu = (permissions) => {
     const hasPermission = (itemPermission) => {
         if (!itemPermission) return true;
         const permissionList = Array.isArray(itemPermission) ? itemPermission : String(itemPermission).split('|');
@@ -480,7 +482,17 @@ const topLevelMenu = (permissions) => {
     ]);
 };
 
-function RailItem({ item, active, open, expanded, onClick }) {
+const getTopLevelMenu = (permissionSignature, permissions) => {
+    if (ADMIN_MENU_CACHE.has(permissionSignature)) {
+        return ADMIN_MENU_CACHE.get(permissionSignature);
+    }
+
+    const items = buildTopLevelMenu(permissions);
+    ADMIN_MENU_CACHE.set(permissionSignature, items);
+    return items;
+};
+
+const RailItem = React.memo(function RailItem({ item, active, open, expanded, onClick }) {
     return (
         <Tooltip title={open ? '' : item.text} placement="right">
             <ListItemButton
@@ -540,9 +552,9 @@ function RailItem({ item, active, open, expanded, onClick }) {
             </ListItemButton>
         </Tooltip>
     );
-}
+});
 
-function PanelSection({ section, activePath, rememberedKey, openGroups, setOpenGroups }) {
+const PanelSection = React.memo(function PanelSection({ section, activePath, rememberedKey, openGroups, setOpenGroups }) {
     const hasActiveChild = section.items.some((child) => isItemActive(child, activePath));
     const isOpen = section.collapsible ? openGroups[rememberedKey] ?? hasActiveChild : true;
 
@@ -636,13 +648,17 @@ function PanelSection({ section, activePath, rememberedKey, openGroups, setOpenG
             )}
         </Box>
     );
-}
+});
 
 export default function SideNav({ open, setOpen }) {
     const { url, props } = usePage();
     const auth = props?.auth || {};
     const permissions = Array.isArray(auth.permissions) ? auth.permissions : [];
-    const menuItems = React.useMemo(() => topLevelMenu(permissions), [permissions]);
+    const permissionSignature = React.useMemo(
+        () => [...new Set(permissions.map((permission) => String(permission).trim()))].sort().join('|'),
+        [permissions],
+    );
+    const menuItems = React.useMemo(() => getTopLevelMenu(permissionSignature, permissions), [permissionSignature]);
     const defaultModule = React.useMemo(() => findFirstActiveModule(menuItems, url), [menuItems, url]);
     const [expandedModuleKey, setExpandedModuleKey] = useRemember(defaultModule?.text || '', 'sidebarExpandedModuleV2');
     const [openGroups, setOpenGroups] = useRemember({}, 'sidebarPanelGroupsV2');

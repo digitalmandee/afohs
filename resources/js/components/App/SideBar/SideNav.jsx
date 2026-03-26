@@ -54,7 +54,7 @@ export const POS_DRAWER_WIDTH_OPEN = 248;
 export const POS_DRAWER_WIDTH_CLOSED = 76;
 export const POS_TOPBAR_HEIGHT = 88;
 
-function PosSidebarIcon({ children, active }) {
+const PosSidebarIcon = React.memo(function PosSidebarIcon({ children, active }) {
     return (
         <Box
             sx={{
@@ -78,7 +78,7 @@ function PosSidebarIcon({ children, active }) {
             {children}
         </Box>
     );
-}
+});
 
 const openedMixin = (theme) => ({
     width: POS_DRAWER_WIDTH_OPEN,
@@ -141,6 +141,8 @@ const normalizePath = (fullPath) => {
     }
 };
 
+const POS_MENU_CACHE = new Map();
+
 const isItemActive = (itemPath, currentPath) => {
     const normalizedItemPath = normalizePath(itemPath);
     const normalizedCurrentPath = normalizePath(currentPath);
@@ -151,45 +153,45 @@ const isItemActive = (itemPath, currentPath) => {
     return normalizedCurrentPath.startsWith(`${normalizedItemPath}/`);
 };
 
-const createMenuGroups = (url) => ([
+const buildMenuGroups = (pathname) => ([
     {
         label: 'Workspace',
         items: [
             {
                 text: 'Dashboard',
                 icon: <DashboardRoundedIcon />,
-                path: isPosPath(url) ? safeRouteForContext('pos.dashboard', url) : safeRouteForContext('tenant.dashboard', url),
+                path: isPosPath(pathname) ? safeRouteForContext('pos.dashboard', pathname) : safeRouteForContext('tenant.dashboard', pathname),
             },
             {
                 text: 'Orders',
                 icon: <ReceiptLongRoundedIcon />,
-                path: safeRouteForContext('order.management', url),
+                path: safeRouteForContext('order.management', pathname),
             },
             {
                 text: 'Order History',
                 icon: <HistoryRoundedIcon />,
-                path: safeRouteForContext('order.history', url),
+                path: safeRouteForContext('order.history', pathname),
             },
             {
                 text: 'Reservations',
                 icon: <EventSeatRoundedIcon />,
-                path: safeRouteForContext('reservations.index', url),
+                path: safeRouteForContext('reservations.index', pathname),
             },
             {
                 text: 'Tables',
                 icon: <TableRestaurantRoundedIcon />,
-                path: safeRouteForContext('table.management', url),
+                path: safeRouteForContext('table.management', pathname),
             },
             {
                 text: 'Kitchen',
                 icon: <KitchenRoundedIcon />,
-                path: safeRouteForContext('kitchen.index', url),
+                path: safeRouteForContext('kitchen.index', pathname),
                 permission: 'kitchen',
             },
             {
                 text: 'Transactions',
                 icon: <PaymentsRoundedIcon />,
-                path: safeRouteForContext('transaction.history', url),
+                path: safeRouteForContext('transaction.history', pathname),
             },
         ],
     },
@@ -199,37 +201,37 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Inventory Items',
                 icon: <InventoryRoundedIcon />,
-                path: safeRouteForContext('inventory.index', url),
+                path: safeRouteForContext('inventory.index', pathname),
             },
             {
                 text: 'Products & Menu',
                 icon: <RestaurantMenuRoundedIcon />,
-                path: safeRouteForContext('products.index', url),
+                path: safeRouteForContext('products.index', pathname),
             },
             {
                 text: 'Categories',
                 icon: <CategoryRoundedIcon />,
-                path: safeRouteForContext('inventory.category', url),
+                path: safeRouteForContext('inventory.category', pathname),
             },
             {
                 text: 'Sub Categories',
                 icon: <AccountTreeRoundedIcon />,
-                path: safeRouteForContext('sub-categories.index', url),
+                path: safeRouteForContext('sub-categories.index', pathname),
             },
             {
                 text: 'Ingredients',
                 icon: <Inventory2RoundedIcon />,
-                path: safeRouteForContext('ingredients.index', url),
+                path: safeRouteForContext('ingredients.index', pathname),
             },
             {
                 text: 'Units',
                 icon: <ScaleRoundedIcon />,
-                path: safeRouteForContext('units.index', url),
+                path: safeRouteForContext('units.index', pathname),
             },
             {
                 text: 'Manufacturers',
                 icon: <PrecisionManufacturingRoundedIcon />,
-                path: safeRouteForContext('manufacturers.index', url),
+                path: safeRouteForContext('manufacturers.index', pathname),
             },
         ],
     },
@@ -239,22 +241,22 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Cake Bookings',
                 icon: <CakeRoundedIcon />,
-                path: safeRouteForContext('cake-bookings.index', url),
+                path: safeRouteForContext('cake-bookings.index', pathname),
             },
             {
                 text: 'Cake Types',
                 icon: <CakeRoundedIcon />,
-                path: safeRouteForContext('cake-types.index', url),
+                path: safeRouteForContext('cake-types.index', pathname),
             },
             {
                 text: 'Guests',
                 icon: <GroupRoundedIcon />,
-                path: safeRouteForContext('customers.index', url),
+                path: safeRouteForContext('customers.index', pathname),
             },
             {
                 text: 'Printer Management',
                 icon: <PrintRoundedIcon />,
-                path: safeRouteForContext('printers.index', url, undefined, true, {
+                path: safeRouteForContext('printers.index', pathname, undefined, true, {
                     menu_source: 'pos_sidebar',
                     menu_item: 'Printer Management',
                 }),
@@ -262,7 +264,7 @@ const createMenuGroups = (url) => ([
             {
                 text: 'Settings',
                 icon: <SettingsRoundedIcon />,
-                path: safeRouteForContext('setting.index', url, undefined, true, {
+                path: safeRouteForContext('setting.index', pathname, undefined, true, {
                     menu_source: 'pos_sidebar',
                     menu_item: 'Settings',
                 }),
@@ -270,6 +272,17 @@ const createMenuGroups = (url) => ([
         ],
     },
 ]);
+
+const getMenuGroups = (contextKey) => {
+    if (POS_MENU_CACHE.has(contextKey)) {
+        return POS_MENU_CACHE.get(contextKey);
+    }
+
+    const pathname = contextKey === 'pos' ? '/pos' : '/';
+    const groups = buildMenuGroups(pathname);
+    POS_MENU_CACHE.set(contextKey, groups);
+    return groups;
+};
 
 const canAccessItem = (item, role, permissions) => {
     if (!item.permission) return true;
@@ -291,12 +304,13 @@ export default function SideNav({ open, setOpen }) {
     const [showProfile, setShowProfile] = React.useState(false);
     const [profileView, setProfileView] = React.useState('profile');
 
+    const menuContextKey = posContext ? 'pos' : 'default';
     const menuGroups = React.useMemo(
-        () => createMenuGroups(url).map((group) => ({
+        () => getMenuGroups(menuContextKey).map((group) => ({
             ...group,
             items: group.items.filter((item) => canAccessItem(item, role, permissions)),
         })).filter((group) => group.items.length > 0),
-        [permissions, role, url],
+        [menuContextKey, permissions, role],
     );
 
     React.useEffect(() => {
