@@ -23,11 +23,7 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import useFilterLoadingState from '@/hooks/useFilterLoadingState';
-
-const formatAmount = (value) => new Intl.NumberFormat('en-PK', {
-    style: 'currency',
-    currency: 'PKR',
-}).format(Number(value || 0)).replace('PKR', 'Rs');
+import { formatCurrency, formatCount } from '@/lib/formatting';
 
 export default function Approvals({ entries, filters = {}, approvalPolicy, summary = {} }) {
     const rows = entries?.data || [];
@@ -142,8 +138,8 @@ export default function Approvals({ entries, filters = {}, approvalPolicy, summa
             </Alert>
 
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={4}><StatCard label="Pending" value={summary?.pending || 0} accent /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Overdue" value={summary?.overdue || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Pending" value={formatCount(summary?.pending)} accent /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Overdue" value={formatCount(summary?.overdue)} tone="muted" /></Grid>
                 <Grid item xs={12} md={4}><StatCard label="Current Search" value={localFilters.search?.trim() || 'All journals'} tone="light" /></Grid>
             </Grid>
 
@@ -175,7 +171,7 @@ export default function Approvals({ entries, filters = {}, approvalPolicy, summa
                             <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
                             <TableCell>{entry.entry_date || '-'}</TableCell>
                             <TableCell>{entry.description || '-'}</TableCell>
-                            <TableCell align="right">{formatAmount(entry.amount)}</TableCell>
+                            <TableCell align="right">{formatCurrency(entry.amount)}</TableCell>
                             <TableCell>{entry.next_step ? `${entry.next_step.name} (${entry.next_step.role_name || 'any'})` : '-'}</TableCell>
                             <TableCell>
                                 {entry.age_hours !== null ? (

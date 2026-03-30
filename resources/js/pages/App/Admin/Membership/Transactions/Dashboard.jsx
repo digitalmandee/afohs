@@ -5,6 +5,7 @@ import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 const postingColor = {
     posted: 'success',
@@ -31,12 +32,12 @@ export default function TransactionDashboard({ statistics, recent_transactions, 
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={2.4}><StatCard label="Transactions" value={statistics?.total_transactions || 0} accent /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Total Revenue" value={Number(statistics?.total_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Membership Fees" value={Number(statistics?.membership_fee_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={2.4}><StatCard label="Maintenance Fees" value={Number(statistics?.maintenance_fee_revenue || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={1.2}><StatCard label="Failed" value={statistics?.failed_postings || 0} tone="muted" /></Grid>
-                <Grid item xs={12} md={1.2}><StatCard label="Pending" value={statistics?.pending_postings || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Transactions" value={formatCount(statistics?.total_transactions)} accent /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Total Revenue" value={formatAmount(statistics?.total_revenue)} tone="light" /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Membership Fees" value={formatAmount(statistics?.membership_fee_revenue)} tone="light" /></Grid>
+                <Grid item xs={12} md={2.4}><StatCard label="Maintenance Fees" value={formatAmount(statistics?.maintenance_fee_revenue)} tone="light" /></Grid>
+                <Grid item xs={12} md={1.2}><StatCard label="Failed" value={formatCount(statistics?.failed_postings)} tone="muted" /></Grid>
+                <Grid item xs={12} md={1.2}><StatCard label="Pending" value={formatCount(statistics?.pending_postings)} tone="light" /></Grid>
             </Grid>
 
             <SurfaceCard title="Recent Membership Transactions" subtitle="Recent invoice activity for membership-related charges with accounting status in place.">
@@ -70,8 +71,8 @@ export default function TransactionDashboard({ statistics, recent_transactions, 
                                 </Stack>
                             </TableCell>
                             <TableCell>{String(row.fee_type || '').replaceAll('_', ' ')}</TableCell>
-                            <TableCell align="right">{Number(row.total_price || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(row.balance || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(row.total_price)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(row.balance)}</TableCell>
                             <TableCell>
                                 <Chip size="small" variant="outlined" label={row.posting_status || '-'} color={postingColor[row.posting_status] || 'default'} />
                             </TableCell>

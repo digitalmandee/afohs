@@ -9,11 +9,7 @@ import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import DateRangeFilterFields from '@/components/App/ui/DateRangeFilterFields';
 import useFilterLoadingState from '@/hooks/useFilterLoadingState';
-
-const formatCurrency = (amount) => new Intl.NumberFormat('en-PK', {
-    style: 'currency',
-    currency: 'PKR',
-}).format(Number(amount || 0)).replace('PKR', 'Rs');
+import { formatCount, formatCurrency } from '@/lib/formatting';
 
 const statusColor = {
     active: 'success',
@@ -156,9 +152,9 @@ export default function VoucherDashboard({ vouchers, stats = {}, filters = {} })
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} sm={6} md={3}><StatCard label="Total Vouchers" value={stats.total_vouchers || 0} accent /></Grid>
-                <Grid item xs={12} sm={6} md={3}><StatCard label="Active" value={stats.active_vouchers || 0} tone="light" /></Grid>
-                <Grid item xs={12} sm={6} md={3}><StatCard label="Used" value={stats.used_vouchers || 0} tone="light" /></Grid>
+                <Grid item xs={12} sm={6} md={3}><StatCard label="Total Vouchers" value={formatCount(stats.total_vouchers)} accent /></Grid>
+                <Grid item xs={12} sm={6} md={3}><StatCard label="Active" value={formatCount(stats.active_vouchers)} tone="light" /></Grid>
+                <Grid item xs={12} sm={6} md={3}><StatCard label="Used" value={formatCount(stats.used_vouchers)} tone="light" /></Grid>
                 <Grid item xs={12} sm={6} md={3}><StatCard label="Total Value" value={formatCurrency(stats.total_value)} tone="muted" /></Grid>
             </Grid>
 

@@ -26,6 +26,7 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import useFilterLoadingState from '@/hooks/useFilterLoadingState';
+import { formatAmount } from '@/lib/formatting';
 
 export default function Index({ entries, filters, summary, templatesEnabled, templates = [], recurringProfiles = [], approvalPolicy }) {
   const data = entries?.data || [];
@@ -42,6 +43,8 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
     { key: 'entry_no', label: 'Entry No' },
     { key: 'entry_date', label: 'Date' },
     { key: 'source', label: 'Source', sx: { minWidth: 180 } },
+    { key: 'party', label: 'Party', sx: { minWidth: 220 } },
+    { key: 'workflow', label: 'Workflow', sx: { minWidth: 190 } },
     { key: 'restaurant', label: 'Restaurant', sx: { minWidth: 160 } },
     { key: 'description', label: 'Description', sx: { minWidth: 300 } },
     { key: 'debit', label: 'Debit', align: 'right' },
@@ -331,19 +334,50 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                 <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
                 <TableCell>{entry.entry_date}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={entry.source_label || 'General'} variant="outlined" />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
+                    <Chip size="small" label={entry.source_label || 'General'} variant="outlined" />
+                    <Typography variant="caption" color="text.secondary">
+                      {entry.document_no || '-'}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                    <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.party_name || '-'}</Typography>
+                    <Typography variant="caption" color="text.secondary">{entry.party_code || 'No reference code'}</Typography>
+                  </Box>
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                    <Chip
+                      size="small"
+                      label={entry.workflow_label || 'Draft'}
+                      color={entry.workflow_state === 'awaiting_approval' ? 'warning' : entry.workflow_state === 'rejected' ? 'error' : entry.workflow_state === 'submitted' ? 'info' : 'default'}
+                      variant="outlined"
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {entry.next_step_name || entry.submitted_at || 'Not submitted'}
+                    </Typography>
+                  </Box>
                 </TableCell>
                 <TableCell>{entry.restaurant_name || '-'}</TableCell>
                 <TableCell>{entry.description || '-'}</TableCell>
-                <TableCell align="right">{Number(entry.total_debit || 0).toFixed(2)}</TableCell>
-                <TableCell align="right">{Number(entry.total_credit || 0).toFixed(2)}</TableCell>
+                <TableCell align="right">{formatAmount(entry.total_debit)}</TableCell>
+                <TableCell align="right">{formatAmount(entry.total_credit)}</TableCell>
                 <TableCell>
-                  <Chip
-                    label={entry.status}
-                    size="small"
-                    color={entry.status === 'posted' ? 'success' : entry.status === 'reversed' ? 'warning' : 'default'}
-                    variant="outlined"
-                  />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
+                    <Chip
+                      label={entry.status}
+                      size="small"
+                      color={entry.status === 'posted' ? 'success' : entry.status === 'reversed' ? 'warning' : 'default'}
+                      variant="outlined"
+                    />
+                    {entry.failure_reason ? (
+                      <Typography variant="caption" color="error.main">
+                        {entry.failure_reason}
+                      </Typography>
+                    ) : null}
+                  </Box>
                 </TableCell>
                 <TableCell align="right">
                   <IconButton
@@ -373,14 +407,14 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
                         Edit
                       </MenuItem>
                     )}
-                    {entry.status === 'draft' && (
+                    {entry.status === 'draft' && entry.can_submit && (
                       <MenuItem onClick={() => runMenuAction(() => router.post(route('accounting.journals.submit', entry.id)))}>
-                        Submit
+                        Submit for Approval
                       </MenuItem>
                     )}
-                    {entry.status === 'draft' && (
+                    {entry.status === 'draft' && entry.can_approve && (
                       <MenuItem onClick={() => runMenuAction(() => router.post(route('accounting.journals.approve', entry.id)))}>
-                        Approve/Post
+                        {entry.workflow_state === 'draft' ? 'Post Now' : 'Approve/Post'}
                       </MenuItem>
                     )}
                   </Menu>

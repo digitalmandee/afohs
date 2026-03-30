@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 
 class EventBookingController extends Controller
 {
@@ -345,14 +346,18 @@ class EventBookingController extends Controller
             $totalReceived = $amountToApplyToInvoice + $securityDeposit;
 
             if ($totalReceived > 0) {
+                $paymentMethod = $this->normalizeReceiptMethod($request->paymentMode);
+                $paymentAccount = $this->validatedPostingPaymentAccount($request->paymentAccount, $paymentMethod, 'paymentAccount');
+
                 // 1. Create Receipt
                 $receipt = FinancialReceipt::create([
                     'receipt_no' => 'REC-' . time(),
+                    'payer_type' => $payerType,
+                    'payer_id' => $payerId,
                     'amount' => $totalReceived,
-                    'payment_mode' => $request->paymentMode ?? 'Cash',
-                    'payment_account' => $request->paymentAccount,
+                    'payment_method' => $paymentMethod,
+                    'payment_account_id' => $paymentAccount->id,
                     'receipt_date' => now(),
-                    'received_from' => $memberName,
                     'remarks' => ($paymentOption === 'full' ? 'Full Payment (' . $amountToApplyToInvoice . ')' : 'Advance (' . $amountToApplyToInvoice . ')') . ' & Security (' . $securityDeposit . ') for Event Booking #' . $bookingNo,
                     'created_by' => Auth::id(),
                 ]);
@@ -455,6 +460,22 @@ class EventBookingController extends Controller
             }
         }
         return $total;
+    }
+
+    private function normalizeReceiptMethod(?string $paymentMode): string
+    {
+        return match ($paymentMode ?? 'Cash') {
+            'Bank Transfer' => 'bank_transfer',
+            'Credit Card' => 'credit_card',
+            'Online' => 'online',
+            'Cheque' => 'cheque',
+            default => 'cash',
+        };
+    }
+
+    private function validatedPostingPaymentAccount(mixed $accountInput, ?string $paymentMethod, string $field = 'payment_account_id')
+    {
+        return app(PaymentAccountPostingGuard::class)->validateRequiredForPosting($accountInput, $paymentMethod, $field);
     }
 
     /**
@@ -736,14 +757,18 @@ class EventBookingController extends Controller
             $totalDiff = $diffAdvance + $diffSecurity;
 
             if ($totalDiff > 0) {
+                $paymentMethod = $this->normalizeReceiptMethod($request->paymentMode);
+                $paymentAccount = $this->validatedPostingPaymentAccount($request->paymentAccount, $paymentMethod, 'paymentAccount');
+
                 // 1. Create Receipt for Difference
                 $receipt = FinancialReceipt::create([
                     'receipt_no' => 'REC-' . time(),
+                    'payer_type' => $invoice && $invoice->member_id ? \App\Models\Member::class : ($invoice && $invoice->corporate_member_id ? \App\Models\CorporateMember::class : \App\Models\Customer::class),
+                    'payer_id' => $invoice->member_id ?? ($invoice->corporate_member_id ?? $invoice->customer_id),
                     'amount' => $totalDiff,
-                    'payment_mode' => $request->paymentMode ?? 'Cash',
-                    'payment_account' => $request->paymentAccount,
+                    'payment_method' => $paymentMethod,
+                    'payment_account_id' => $paymentAccount->id,
                     'receipt_date' => now(),
-                    'received_from' => $request->bookedBy,
                     'remarks' => 'Additional: Adv (' . $diffAdvance . ') & Sec (' . $diffSecurity . ') for Event #' . $booking->booking_no,
                     'created_by' => Auth::id(),
                 ]);
@@ -924,18 +949,20 @@ class EventBookingController extends Controller
                         ]);
                     }
 
+                    $paymentMethod = $this->normalizeReceiptMethod($request->paymentMode);
+                    $paymentAccount = $this->validatedPostingPaymentAccount($request->paymentAccount, $paymentMethod, 'paymentAccount');
+                    $payerDetails = $this->getPayerDetails($invoice);
                     $receipt = FinancialReceipt::create([
                         'receipt_no' => 'REC-' . time(),
+                        'payer_type' => $payerDetails['type'],
+                        'payer_id' => $payerDetails['id'],
                         'amount' => $remainingDue,
-                        'payment_mode' => $request->paymentMode ?? 'Cash',
-                        'payment_account' => $request->paymentAccount,
+                        'payment_method' => $paymentMethod,
+                        'payment_account_id' => $paymentAccount->id,
                         'receipt_date' => now(),
-                        'received_from' => $request->bookedBy,
                         'remarks' => 'Event completion payment for Booking #' . $booking->booking_no,
                         'created_by' => Auth::id(),
                     ]);
-
-                    $payerDetails = $this->getPayerDetails($invoice);
                     $invoiceItem = $invoice->items()->first();
 
                     Transaction::create([

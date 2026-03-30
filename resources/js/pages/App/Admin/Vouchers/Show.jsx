@@ -2,19 +2,9 @@ import React, { useState } from 'react';
 import { Box, Typography, Button, IconButton, Card, CardContent, Grid, Chip, Divider, Alert } from '@mui/material';
 import { ArrowBack as BackIcon, Edit as EditIcon, CheckCircle as CheckCircleIcon, Print as PrintIcon } from '@mui/icons-material';
 import { router } from '@inertiajs/react';
+import { formatCurrency } from '@/lib/formatting';
 
 const ShowVoucher = ({ voucher }) => {
-
-    // Format currency
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-PK', {
-            style: 'currency',
-            currency: 'PKR',
-        })
-            .format(amount)
-            .replace('PKR', 'Rs');
-    };
-
     // Format date
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';

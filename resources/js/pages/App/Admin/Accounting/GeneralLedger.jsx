@@ -7,6 +7,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function GeneralLedger({ lines, accounts, filters, summary, tenants = [], error = null }) {
     const rows = lines?.data || [];
@@ -111,9 +112,9 @@ export default function GeneralLedger({ lines, accounts, filters, summary, tenan
             subtitle="Review account-level journal movement with live filtering, consistent pagination, and a denser ledger register."
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={4}><StatCard label="Visible Ledger Lines" value={summary?.records || lines?.total || 0} accent /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Visible Debits" value={Number(summary?.total_debit || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Visible Credits" value={Number(summary?.total_credit || 0).toFixed(2)} tone="muted" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Visible Ledger Lines" value={formatCount(summary?.records || lines?.total)} accent /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Visible Debits" value={formatAmount(summary?.total_debit)} tone="light" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Visible Credits" value={formatAmount(summary?.total_credit)} tone="muted" /></Grid>
             </Grid>
 
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
@@ -196,8 +197,8 @@ export default function GeneralLedger({ lines, accounts, filters, summary, tenan
                             <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{line.entry_no}</TableCell>
                             <TableCell>{line.account?.full_code} - {line.account?.name}</TableCell>
                             <TableCell>{line.description || '-'}</TableCell>
-                            <TableCell align="right">{Number(line.debit || 0).toFixed(2)}</TableCell>
-                            <TableCell align="right">{Number(line.credit || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(line.debit)}</TableCell>
+                            <TableCell align="right">{formatAmount(line.credit)}</TableCell>
                             <TableCell>
                                 <Chip
                                     size="small"

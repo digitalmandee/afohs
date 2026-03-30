@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingEventQueue;
 use App\Models\GoodsReceipt;
 use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
@@ -77,8 +78,18 @@ class GoodsReceiptController extends Controller
             ->pluck('module_id')
             ->all();
         $postedLookup = array_fill_keys($postedIds, true);
-        $receipts->getCollection()->transform(function ($receipt) use ($postedLookup) {
+        $eventLookup = AccountingEventQueue::query()
+            ->where('source_type', GoodsReceipt::class)
+            ->whereIn('source_id', $receipts->getCollection()->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->unique('source_id')
+            ->keyBy('source_id');
+        $receipts->getCollection()->transform(function ($receipt) use ($postedLookup, $eventLookup) {
+            $event = $eventLookup->get($receipt->id);
             $receipt->gl_posted = (bool) ($postedLookup[$receipt->id] ?? false);
+            $receipt->accounting_status = $event?->status ?? ($receipt->gl_posted ? 'posted' : 'pending');
+            $receipt->accounting_failure_reason = $event?->error_message;
             return $receipt;
         });
 

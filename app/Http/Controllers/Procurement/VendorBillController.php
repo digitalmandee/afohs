@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingEventQueue;
 use App\Models\ApprovalAction;
 use App\Models\GoodsReceipt;
 use App\Models\JournalEntry;
@@ -73,9 +74,20 @@ class VendorBillController extends Controller
             ->all();
         $postedLookup = array_fill_keys($postedIds, true);
 
-        $bills->getCollection()->transform(function ($bill) use ($latestActions, $postedLookup) {
+        $eventLookup = AccountingEventQueue::query()
+            ->where('source_type', VendorBill::class)
+            ->whereIn('source_id', $bills->getCollection()->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->unique('source_id')
+            ->keyBy('source_id');
+
+        $bills->getCollection()->transform(function ($bill) use ($latestActions, $postedLookup, $eventLookup) {
             $action = $latestActions->get($bill->id);
+            $event = $eventLookup->get($bill->id);
             $bill->gl_posted = (bool) ($postedLookup[$bill->id] ?? false);
+            $bill->accounting_status = $event?->status ?? ($bill->gl_posted ? 'posted' : 'pending');
+            $bill->accounting_failure_reason = $event?->error_message;
             $bill->latest_approval_action = $action ? [
                 'action' => $action->action,
                 'remarks' => $action->remarks,

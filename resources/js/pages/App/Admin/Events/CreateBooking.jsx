@@ -1236,7 +1236,7 @@ const ChargesInfo = ({ formData, handleChange, errors, isCompletionMode, editMod
                             {paymentAccountsLoading ? 'Loading...' : paymentAccounts.length > 0 ? 'Select Payment Account' : 'No Accounts Found'}
                         </MenuItem>
                         {paymentAccounts.map((a) => (
-                            <MenuItem key={a.id} value={a.name}>
+                            <MenuItem key={a.id} value={a.id}>
                                 {a.name}
                             </MenuItem>
                         ))}

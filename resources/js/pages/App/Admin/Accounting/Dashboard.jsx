@@ -6,6 +6,7 @@ import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 import StatCard from '@/components/App/ui/StatCard';
 
 export default function Dashboard({ stats, latestTransactions, transactionFilters, moduleOptions, tenants = [], error = null }) {
@@ -14,6 +15,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
     const entryMix = stats?.entry_mix || [];
     const ruleCoverage = stats?.rule_coverage || { expected: [], active: [], missing: [] };
     const exceptions = stats?.exceptions || { failed_postings: 0, pending_postings: 0, recent_failures: [] };
+    const paymentAccountAudit = stats?.payment_account_audit || { unmapped: 0, inactive_coa: 0, non_postable_coa: 0, examples: [] };
     const [filters, setFilters] = React.useState({
         search: transactionFilters?.search || '',
         status: transactionFilters?.status || '',
@@ -122,19 +124,6 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
         { key: 'description', label: 'Description', sx: { minWidth: 320 } },
     ];
 
-    const amountFormatter = React.useMemo(
-        () => new Intl.NumberFormat('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        }),
-        [],
-    );
-
-    const countFormatter = React.useMemo(() => new Intl.NumberFormat('en-US'), []);
-
-    const formatAmount = React.useCallback((value) => amountFormatter.format(Number(value || 0)), [amountFormatter]);
-    const formatCount = React.useCallback((value) => countFormatter.format(Number(value || 0)), [countFormatter]);
-
     const integrationResolved =
         (exceptions.posted_postings || 0) +
         (exceptions.pending_postings || 0) +
@@ -159,6 +148,7 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
         { key: 'entry_no', label: 'Entry No' },
         { key: 'entry_date', label: 'Date' },
         { key: 'module_type', label: 'Source' },
+        { key: 'party', label: 'Party' },
         { key: 'status', label: 'Status' },
         { key: 'restaurant', label: 'Restaurant' },
         { key: 'description', label: 'Description', sx: { minWidth: 320 } },
@@ -240,6 +230,32 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         />
                     ))}
                 </Box>
+            </SurfaceCard>
+
+            <Grid container spacing={2.25}>
+                <Grid item xs={12} md={3}><StatCard label="Unmapped Payment Accounts" value={formatCount(paymentAccountAudit.unmapped)} tone="muted" compact /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Inactive COA Links" value={formatCount(paymentAccountAudit.inactive_coa)} tone="muted" compact /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Non-postable COA Links" value={formatCount(paymentAccountAudit.non_postable_coa)} tone="muted" compact /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Missing Period Coverage" value={formatCount(stats.missing_period_coverage)} tone="muted" compact /></Grid>
+            </Grid>
+
+            <SurfaceCard title="Accounting Audit" subtitle="Catch mapping and period gaps before they fail during posting.">
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+                    <Chip size="small" label={`Invalid rules: ${formatCount((ruleCoverage.invalid || []).length)}`} color={(ruleCoverage.invalid || []).length > 0 ? 'warning' : 'success'} variant="outlined" />
+                    <Chip size="small" label={`Unmapped payment accounts: ${formatCount(paymentAccountAudit.unmapped)}`} color={paymentAccountAudit.unmapped > 0 ? 'warning' : 'success'} variant="outlined" />
+                    <Chip size="small" label={`Missing periods: ${formatCount(stats.missing_period_coverage)}`} color={(stats.missing_period_coverage || 0) > 0 ? 'warning' : 'success'} variant="outlined" />
+                </Box>
+                {(paymentAccountAudit.examples || []).length > 0 ? (
+                    <Stack spacing={0.75}>
+                        {paymentAccountAudit.examples.map((account) => (
+                            <Typography key={account.id} variant="body2" color="text.secondary">
+                                {account.name} · {account.payment_method || 'n/a'} · {account.coa_label || 'No COA mapping'}
+                            </Typography>
+                        ))}
+                    </Stack>
+                ) : (
+                    <Typography variant="body2" color="text.secondary">No payment account mapping issues detected.</Typography>
+                )}
             </SurfaceCard>
 
             <SurfaceCard title="Quick Actions" subtitle="Jump into the highest-traffic accounting workflows.">
@@ -393,11 +409,25 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                             <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{entry.entry_no}</TableCell>
                             <TableCell>{entry.entry_date}</TableCell>
                             <TableCell>
-                                <Chip size="small" label={entry.source_label || entry.module_type || 'General'} variant="outlined" />
+                                <Stack spacing={0.35}>
+                                    <Chip size="small" label={entry.source_label || entry.module_type || 'General'} variant="outlined" />
+                                    <Typography variant="body2" color="text.secondary">{entry.document_no || '-'}</Typography>
+                                </Stack>
+                            </TableCell>
+                            <TableCell>
+                                <Stack spacing={0.35}>
+                                    <Typography sx={{ fontWeight: 700 }}>{entry.party_name || '-'}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{entry.party_code || 'No reference code'}</Typography>
+                                </Stack>
                             </TableCell>
                             <TableCell>{entry.status}</TableCell>
                             <TableCell>{entry.restaurant_name || '-'}</TableCell>
-                            <TableCell>{entry.description || '-'}</TableCell>
+                            <TableCell>
+                                <Stack spacing={0.35}>
+                                    <Typography>{entry.description || '-'}</Typography>
+                                    {entry.failure_reason ? <Typography variant="body2" color="error.main">{entry.failure_reason}</Typography> : null}
+                                </Stack>
+                            </TableCell>
                             <TableCell align="right">
                                 {entry.document_url ? (
                                     <Button size="small" variant="outlined" onClick={() => router.visit(entry.document_url)}>
@@ -433,6 +463,10 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                     <Typography variant="body2" sx={{ mt: 2, color: 'warning.main' }}>
                         Missing active mappings: {(ruleCoverage.missing || []).join(', ')}
                     </Typography>
+                ) : (ruleCoverage.invalid || []).length > 0 ? (
+                    <Typography variant="body2" sx={{ mt: 2, color: 'warning.main' }}>
+                        Invalid rule targets: {(ruleCoverage.invalid || []).join(', ')}
+                    </Typography>
                 ) : (
                     <Typography variant="body2" sx={{ mt: 2, color: 'success.main' }}>
                         All major module posting rules are active.
@@ -448,7 +482,11 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                         size="small"
                         variant="outlined"
                         disabled={(exceptions.failed_postings || 0) === 0}
-                        onClick={() => router.post(route('accounting.events.retry-all'))}
+                        onClick={() => router.post(route('accounting.events.retry-all'), {
+                            from: filters.from || undefined,
+                            to: filters.to || undefined,
+                            status: 'failed',
+                        })}
                     >
                         Retry All Failed
                     </Button>

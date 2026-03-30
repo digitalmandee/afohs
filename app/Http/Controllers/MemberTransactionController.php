@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use App\Services\Accounting\Support\AccountingSourceResolver;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 
 class MemberTransactionController extends Controller
 {
@@ -261,7 +262,7 @@ class MemberTransactionController extends Controller
                 'items.*.amount' => 'required|numeric|min:0',
                 'items.*.extra_percentage' => 'nullable|numeric|min:0',
                 'payment_method' => 'required_if:action,save_receive,pay_existing_invoice|in:cash,cheque,online,credit_card,debit_card,bank_transfer',
-                'payment_account_id' => 'nullable|exists:payment_accounts,id',
+                'payment_account_id' => 'required_if:action,save_receive,pay_existing_invoice|exists:payment_accounts,id',
             ];
 
             if ($bookingType === 'corporate') {
@@ -574,6 +575,10 @@ class MemberTransactionController extends Controller
             // 7. Handle Payment (Save & Receive)
             if ($request->action === 'save_receive') {
                 $paidAmount = $finalTotal;  // Assuming full payment for now. Partial logic can be added later.
+                $paymentAccount = $this->validatedPostingPaymentAccount(
+                    $request->payment_account_id,
+                    $request->payment_method,
+                );
 
                 // A. Create Receipt
                 $receipt = \App\Models\FinancialReceipt::create([
@@ -582,7 +587,7 @@ class MemberTransactionController extends Controller
                     'payer_id' => $payerId,
                     'amount' => $paidAmount,
                     'payment_method' => $request->payment_method,
-                    'payment_account_id' => $request->payment_account_id,
+                    'payment_account_id' => $paymentAccount->id,
                     'payment_details' => $request->payment_mode_details,  // Map cheque no/trans ID
                     'receipt_date' => now(),
                     'remarks' => $request->remarks ?? ('Payment for Invoice #' . $invoiceNo),
@@ -1213,7 +1218,7 @@ class MemberTransactionController extends Controller
 
         if ($request->status === 'paid') {
             $rules['payment_method'] = 'required|in:cash,credit_card,cheque,online,bank_transfer';
-            $rules['payment_account_id'] = 'nullable|exists:payment_accounts,id';
+            $rules['payment_account_id'] = 'required|exists:payment_accounts,id';
             // $rules['credit_card_type'] = 'required_if:payment_method,credit_card|in:mastercard,visa';
             // Receipt validation:
             if ($request->payment_method === 'credit_card' && empty($transaction->receipt)) {
@@ -1270,13 +1275,17 @@ class MemberTransactionController extends Controller
 
             // Verify we have a valid payer
             if ($payerId) {
+                $paymentAccount = $this->validatedPostingPaymentAccount(
+                    $request->payment_account_id,
+                    $request->payment_method,
+                );
                 $receipt = \App\Models\FinancialReceipt::create([
                     'receipt_no' => 'REC-' . time() . '-' . $transaction->invoice_no,
                     'payer_type' => $payerType,
                     'payer_id' => $payerId,
                     'amount' => $transaction->total_price,
                     'payment_method' => $request->payment_method,
-                    'payment_account_id' => $request->payment_account_id,
+                    'payment_account_id' => $paymentAccount->id,
                     'payment_details' => $request->payment_mode_details ?? null,
                     'receipt_date' => now(),
                     'remarks' => "Payment for Invoice #{$transaction->invoice_no}",
@@ -1585,13 +1594,18 @@ class MemberTransactionController extends Controller
                 $payerId = $invoice->member_id;
             }
 
+            $paymentAccount = $this->validatedPostingPaymentAccount(
+                $request->payment_account_id,
+                $request->payment_method,
+            );
+
             $receipt = \App\Models\FinancialReceipt::create([
                 'receipt_no' => 'REC-' . time(),
                 'payer_type' => $payerType,
                 'payer_id' => $payerId,
                 'amount' => $totalPayment,
                 'payment_method' => $request->payment_method,
-                'payment_account_id' => $request->payment_account_id,
+                'payment_account_id' => $paymentAccount->id,
                 'payment_details' => $request->payment_mode_details,
                 'receipt_date' => now(),
                 'remarks' => $request->remarks ?? ('Partial Payment for Invoice #' . $invoice->invoice_no),
@@ -1698,5 +1712,10 @@ class MemberTransactionController extends Controller
             Log::error('Failed to delete invoice: ' . $e->getMessage());
             return back()->with('error', 'Failed to delete invoice.');
         }
+    }
+
+    private function validatedPostingPaymentAccount(mixed $accountInput, ?string $paymentMethod)
+    {
+        return app(PaymentAccountPostingGuard::class)->validateRequiredForPosting($accountInput, $paymentMethod);
     }
 }

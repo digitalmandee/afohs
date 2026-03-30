@@ -19,6 +19,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { formatAmount } from '@/lib/formatting';
 
 const StatCard = ({ label, value, tone = 'default' }) => (
   <Card
@@ -37,7 +38,7 @@ const StatCard = ({ label, value, tone = 'default' }) => (
   </Card>
 );
 
-export default function Show({ entry, entrySummary, timeline = [], templatesEnabled }) {
+export default function Show({ entry, entrySummary, timeline = [], templatesEnabled, sourceContext = null, workflowState = null }) {
   const [openReverse, setOpenReverse] = React.useState(false);
   const [openTemplate, setOpenTemplate] = React.useState(false);
   const [openReject, setOpenReject] = React.useState(false);
@@ -88,9 +89,9 @@ export default function Show({ entry, entrySummary, timeline = [], templatesEnab
       <Typography variant="h4" sx={{ mb: 2, color: 'primary.main', fontWeight: 700 }}>Journal Entry {entry.entry_no}</Typography>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}><StatCard label="Total Debit" value={Number(entrySummary?.total_debit || 0).toFixed(2)} tone="muted" /></Grid>
-        <Grid item xs={12} md={4}><StatCard label="Total Credit" value={Number(entrySummary?.total_credit || 0).toFixed(2)} /></Grid>
-        <Grid item xs={12} md={4}><StatCard label="Difference" value={Number(entrySummary?.difference || 0).toFixed(2)} /></Grid>
+        <Grid item xs={12} md={4}><StatCard label="Total Debit" value={formatAmount(entrySummary?.total_debit)} tone="muted" /></Grid>
+        <Grid item xs={12} md={4}><StatCard label="Total Credit" value={formatAmount(entrySummary?.total_credit)} /></Grid>
+        <Grid item xs={12} md={4}><StatCard label="Difference" value={formatAmount(entrySummary?.difference)} /></Grid>
       </Grid>
 
       <Card sx={{ mb: 2 }}>
@@ -109,12 +110,20 @@ export default function Show({ entry, entrySummary, timeline = [], templatesEnab
                   <Button variant="outlined" onClick={() => router.visit(route('accounting.journals.edit', entry.id))}>
                     Edit Draft
                   </Button>
-                  <Button variant="outlined" onClick={() => router.post(route('accounting.journals.submit', entry.id))}>
-                    Submit
-                  </Button>
-                  <Button color="success" variant="contained" onClick={() => router.post(route('accounting.journals.approve', entry.id))}>
-                    Approve/Post
-                  </Button>
+                  {workflowState?.can_submit ? (
+                    <Button variant="outlined" onClick={() => router.post(route('accounting.journals.submit', entry.id))}>
+                      Submit for Approval
+                    </Button>
+                  ) : (
+                    <Button variant="outlined" disabled>
+                      {workflowState?.label || 'Submitted'}
+                    </Button>
+                  )}
+                  {workflowState?.can_approve ? (
+                    <Button color="success" variant="contained" onClick={() => router.post(route('accounting.journals.approve', entry.id))}>
+                      {workflowState?.has_workflow ? 'Approve/Post' : 'Post Now'}
+                    </Button>
+                  ) : null}
                   <Button color="error" variant="outlined" onClick={() => setOpenReject(true)}>
                     Reject
                   </Button>
@@ -138,12 +147,82 @@ export default function Show({ entry, entrySummary, timeline = [], templatesEnab
 
       <Card sx={{ mb: 2 }}>
         <CardContent>
+          <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Source Traceability</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Source</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{sourceContext?.source_label || entry.module_type || 'General Journal'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Document</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{sourceContext?.document_no || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Party</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{sourceContext?.party_name || '-'}</Typography>
+              <Typography variant="body2" color="text.secondary">{sourceContext?.party_code || 'No reference code'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Restaurant</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{sourceContext?.restaurant_name || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Posting Status</Typography>
+              <Typography sx={{ fontWeight: 700, textTransform: 'capitalize' }}>{sourceContext?.posting_status || entry.status || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Typography variant="body2" color="text.secondary">Failure Reason</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{sourceContext?.failure_reason || '-'}</Typography>
+            </Grid>
+          </Grid>
+          {sourceContext?.document_url ? (
+            <Box sx={{ mt: 2 }}>
+              <Button size="small" variant="outlined" onClick={() => router.visit(sourceContext.document_url)}>
+                Open Source Document
+              </Button>
+            </Box>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Workflow Status</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={3}>
+              <Typography variant="body2" color="text.secondary">Current State</Typography>
+              <Chip
+                size="small"
+                label={workflowState?.label || 'Draft'}
+                color={workflowState?.state === 'awaiting_approval' ? 'warning' : workflowState?.state === 'rejected' ? 'error' : workflowState?.state === 'submitted' ? 'info' : entry.status === 'posted' ? 'success' : 'default'}
+                variant="outlined"
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Typography variant="body2" color="text.secondary">Submitted At</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{workflowState?.submitted_at || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Typography variant="body2" color="text.secondary">Next Step</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{workflowState?.next_step_name || (workflowState?.has_workflow ? 'Waiting for workflow action' : 'Direct posting available')}</Typography>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Typography variant="body2" color="text.secondary">Reminders</Typography>
+              <Typography sx={{ fontWeight: 700 }}>{workflowState?.reminder_count ?? 0}</Typography>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
           <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Lines</Typography>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Account</TableCell>
                 <TableCell>Description</TableCell>
+                <TableCell>Reference</TableCell>
                 <TableCell align="right">Debit</TableCell>
                 <TableCell align="right">Credit</TableCell>
               </TableRow>
@@ -151,15 +230,23 @@ export default function Show({ entry, entrySummary, timeline = [], templatesEnab
             <TableBody>
               {entry.lines?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">No lines.</TableCell>
+                  <TableCell colSpan={5} align="center">No lines.</TableCell>
                 </TableRow>
               )}
               {entry.lines?.map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>{line.account?.full_code} - {line.account?.name}</TableCell>
                   <TableCell>{line.description || '-'}</TableCell>
-                  <TableCell align="right">{Number(line.debit || 0).toFixed(2)}</TableCell>
-                  <TableCell align="right">{Number(line.credit || 0).toFixed(2)}</TableCell>
+                  <TableCell>
+                    {line.vendor?.name
+                      || line.member?.full_name
+                      || line.employee?.name
+                      || line.warehouse?.name
+                      || line.reference_type
+                      || '-'}
+                  </TableCell>
+                  <TableCell align="right">{formatAmount(line.debit)}</TableCell>
+                  <TableCell align="right">{formatAmount(line.credit)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -23,6 +23,7 @@ import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 import { DeleteOutline } from '@mui/icons-material';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ vendors, filters, summary = {}, tenants = [], coaAccounts = [], paymentAccounts = [] }) {
     const [openModal, setOpenModal] = React.useState(false);
@@ -173,19 +174,19 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
         >
             <Grid container spacing={2.25}>
                 <Grid item xs={12} md={2.4}>
-                    <StatCard label="Vendors" value={summary.count || 0} />
+                    <StatCard label="Vendors" value={formatCount(summary.count)} />
                 </Grid>
                 <Grid item xs={12} md={2.4}>
-                    <StatCard label="Active" value={summary.active || 0} tone="light" />
+                    <StatCard label="Active" value={formatCount(summary.active)} tone="light" />
                 </Grid>
                 <Grid item xs={12} md={2.4}>
-                    <StatCard label="Approved" value={summary.approved || 0} tone="light" />
+                    <StatCard label="Approved" value={formatCount(summary.approved)} tone="light" />
                 </Grid>
                 <Grid item xs={12} md={2.4}>
-                    <StatCard label="Inactive" value={summary.inactive || 0} tone="muted" />
+                    <StatCard label="Inactive" value={formatCount(summary.inactive)} tone="muted" />
                 </Grid>
                 <Grid item xs={12} md={2.4}>
-                    <StatCard label="Opening Balance" value={Number(summary.opening_balance || 0).toFixed(2)} tone="light" />
+                    <StatCard label="Opening Balance" value={formatAmount(summary.opening_balance)} tone="light" />
                 </Grid>
             </Grid>
 
@@ -280,7 +281,7 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
                                 <Typography>{vendor.phone || '-'}</Typography>
                                 <Typography variant="body2" color="text.secondary">{vendor.email || '-'}</Typography>
                             </TableCell>
-                            <TableCell>{Number(vendor.opening_balance || 0).toFixed(2)}</TableCell>
+                            <TableCell>{formatAmount(vendor.opening_balance)}</TableCell>
                             <TableCell>
                                 <Chip
                                     size="small"

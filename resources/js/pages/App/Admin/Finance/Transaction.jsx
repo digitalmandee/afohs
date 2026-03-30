@@ -29,6 +29,7 @@ import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import PaymentDialog from '@/components/App/Transactions/PaymentDialog';
 import useFilterLoadingState from '@/hooks/useFilterLoadingState';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 const statusColor = {
     paid: 'success',
@@ -41,16 +42,6 @@ const statusColor = {
     posted: 'success',
     not_configured: 'default',
 };
-
-const amountFormatter = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
-
-const countFormatter = new Intl.NumberFormat(undefined);
-
-const formatAmount = (value) => amountFormatter.format(Number(value || 0));
-const formatCount = (value) => countFormatter.format(Number(value || 0));
 
 const defaultFilters = (filters, transactions) => ({
     search: filters?.search || '',

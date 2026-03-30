@@ -5,6 +5,7 @@ import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 const statusColor = {
     paid: 'success',
@@ -17,16 +18,6 @@ const statusColor = {
     posted: 'success',
     not_configured: 'default',
 };
-
-const amountFormatter = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
-
-const countFormatter = new Intl.NumberFormat(undefined);
-
-const formatAmount = (value) => amountFormatter.format(Number(value || 0));
-const formatCount = (value) => countFormatter.format(Number(value || 0));
 
 export default function Dashboard({ statistics, recent_transactions, transaction_filters = {}, error = null }) {
     const rows = recent_transactions?.data || [];

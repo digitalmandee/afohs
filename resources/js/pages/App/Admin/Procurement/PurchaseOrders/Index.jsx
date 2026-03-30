@@ -9,6 +9,7 @@ import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ orders, filters, summary = {}, vendors = [], warehouses = [], tenants = [] }) {
     const data = orders?.data || [];
@@ -153,12 +154,12 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Orders" value={summary.count || 0} accent /></Grid>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Total Value" value={Number(summary.total_value || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Draft" value={summary.draft || 0} /></Grid>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Approved" value={summary.approved || 0} /></Grid>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Received" value={summary.received || 0} /></Grid>
-                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Cancelled" value={summary.cancelled || 0} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Orders" value={formatCount(summary.count)} accent /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Total Value" value={formatAmount(summary.total_value)} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Draft" value={formatCount(summary.draft)} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Approved" value={formatCount(summary.approved)} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Received" value={formatCount(summary.received)} /></Grid>
+                <Grid item xs={12} sm={6} lg={2}><StatCard compact label="Cancelled" value={formatCount(summary.cancelled)} /></Grid>
             </Grid>
 
             <SurfaceCard
@@ -292,7 +293,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                                     variant="outlined"
                                 />
                             </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(po.grand_total || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(po.grand_total)}</TableCell>
                             <TableCell align="right">
                                 {po.status === 'draft' && (
                                     <>

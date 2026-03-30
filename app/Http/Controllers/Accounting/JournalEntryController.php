@@ -109,6 +109,11 @@ class JournalEntryController extends Controller
             'credit' => (float) $line->credit,
         ])->all());
 
+        $workflowState = $this->workflowState($journalEntry);
+        if (in_array($workflowState['state'], ['submitted', 'awaiting_approval'], true)) {
+            return redirect()->back()->with('info', 'Journal is already submitted and awaiting approval.');
+        }
+
         $amount = $this->journalAmount($journalEntry);
         $policy = $this->getJournalPolicyModel();
         $autoPostLimit = $policy?->is_active ? (float) ($policy->auto_post_below ?? 0) : 0;
@@ -146,13 +151,38 @@ class JournalEntryController extends Controller
         ])->all());
 
         $policy = $this->getJournalPolicyModel();
-        $this->enforceApproverRules($journalEntry, $policy, $request);
         $amount = $this->journalAmount($journalEntry);
-        $workflow = $this->ensureJournalWorkflow($policy, $amount);
         $steps = $this->resolveRequiredSteps($policy, $amount);
+        if ($steps->isEmpty()) {
+            $this->enforceApproverRules($journalEntry, $policy, $request, false);
+
+            $journalEntry->update([
+                'status' => 'posted',
+                'period_id' => $resolvedPeriodId,
+                'posted_by' => $request->user()?->id,
+                'posted_at' => now(),
+            ]);
+            $this->recordApprovalAction($journalEntry->id, 'approved', 'Journal posted directly without approval workflow.');
+
+            return redirect()->back()->with('success', 'Journal posted successfully.');
+        }
+
+        $this->enforceApproverRules($journalEntry, $policy, $request, true);
+        $workflow = $this->ensureJournalWorkflow($policy, $amount);
         $currentStep = $this->nextPendingStep($journalEntry, $steps);
         if (!$currentStep) {
-            return redirect()->back()->with('error', 'No pending approval step found.');
+            if ($this->workflowState($journalEntry)['state'] === 'rejected') {
+                return redirect()->back()->with('error', 'Rejected journals must be edited and re-submitted before approval.');
+            }
+
+            $journalEntry->update([
+                'status' => 'posted',
+                'period_id' => $resolvedPeriodId,
+                'posted_by' => $request->user()?->id,
+                'posted_at' => now(),
+            ]);
+            $this->recordApprovalAction($journalEntry->id, 'approved', 'Journal posted after approval workflow completion.');
+            return redirect()->back()->with('success', 'Journal fully approved and posted.');
         }
 
         $this->ensureUserCanApproveStep($request, $journalEntry, $currentStep, $policy);
@@ -307,13 +337,26 @@ class JournalEntryController extends Controller
                 $totalDebit = (float) $entry->lines->sum('debit');
                 $totalCredit = (float) $entry->lines->sum('credit');
                 $source = $sourceResolver->resolveForJournalEntry($entry);
+                $workflowState = $this->workflowState($entry);
                 $entry->total_debit = $totalDebit;
                 $entry->total_credit = $totalCredit;
                 $entry->amount = max($totalDebit, $totalCredit);
                 $entry->source_label = $source['source_label'];
                 $entry->restaurant_name = $source['restaurant_name'];
                 $entry->document_url = $source['document_url'];
+                $entry->document_no = $source['document_no'];
+                $entry->party_name = $source['party_name'];
+                $entry->party_code = $source['party_code'];
+                $entry->posting_status = $source['posting_status'];
+                $entry->failure_reason = $source['failure_reason'];
                 $entry->source_resolution_status = $source['source_resolution_status'];
+                $entry->workflow_state = $workflowState['state'];
+                $entry->workflow_label = $workflowState['label'];
+                $entry->submitted_at = $workflowState['submitted_at'];
+                $entry->reminder_count = $workflowState['reminder_count'];
+                $entry->next_step_name = $workflowState['next_step_name'];
+                $entry->can_submit = $workflowState['can_submit'];
+                $entry->can_approve = $workflowState['can_approve'];
                 return $entry;
             })
         );
@@ -447,7 +490,10 @@ class JournalEntryController extends Controller
 
     public function show(JournalEntry $journalEntry)
     {
-        $journalEntry->load('lines.account');
+        $sourceResolver = app(AccountingSourceResolver::class);
+        $journalEntry->load('lines.account', 'lines.vendor', 'lines.member', 'lines.employee', 'lines.warehouse', 'tenant');
+        $source = $sourceResolver->resolveForJournalEntry($journalEntry);
+        $workflowState = $this->workflowState($journalEntry);
 
         $entrySummary = [
             'total_debit' => (float) $journalEntry->lines->sum('debit'),
@@ -476,6 +522,8 @@ class JournalEntryController extends Controller
             'entrySummary' => $entrySummary,
             'timeline' => $timeline,
             'templatesEnabled' => Schema::hasTable('journal_templates'),
+            'sourceContext' => $source,
+            'workflowState' => $workflowState,
         ]);
     }
 
@@ -888,7 +936,7 @@ class JournalEntryController extends Controller
         return max($debit, $credit);
     }
 
-    private function enforceApproverRules(JournalEntry $entry, ?AccountingApprovalPolicy $policy, Request $request): void
+    private function enforceApproverRules(JournalEntry $entry, ?AccountingApprovalPolicy $policy, Request $request, bool $requireConfiguredWorkflow = true): void
     {
         if (!$policy || !$policy->is_active) {
             return;
@@ -901,7 +949,7 @@ class JournalEntryController extends Controller
             ]);
         }
 
-        if ($policy->enforce_maker_checker && (int) $entry->created_by === (int) $user->id) {
+        if ($requireConfiguredWorkflow && $policy->enforce_maker_checker && (int) $entry->created_by === (int) $user->id) {
             throw ValidationException::withMessages([
                 'entry' => 'Maker-checker policy blocks self-approval.',
             ]);
@@ -1097,6 +1145,76 @@ class JournalEntryController extends Controller
         return $role === ''
             ? true
             : ($this->hasUserRole($user, $role) || $this->hasEscalationAccess($entry, $policy, $user));
+    }
+
+    private function workflowState(JournalEntry $entry): array
+    {
+        $entry->loadMissing('lines');
+
+        $base = [
+            'state' => $entry->status,
+            'label' => ucfirst((string) $entry->status),
+            'submitted_at' => null,
+            'next_step_name' => null,
+            'reminder_count' => 0,
+            'can_submit' => $entry->status === 'draft',
+            'can_approve' => $entry->status === 'draft',
+            'has_workflow' => false,
+        ];
+
+        if ($entry->status !== 'draft' || !Schema::hasTable('approval_actions')) {
+            return $base;
+        }
+
+        $policy = $this->getJournalPolicyModel();
+        $amount = $this->journalAmount($entry);
+        $steps = $this->resolveRequiredSteps($policy, $amount);
+        $meta = $this->submissionMeta($entry, $policy);
+        $latestSubmission = ApprovalAction::query()
+            ->where('document_type', JournalEntry::class)
+            ->where('document_id', $entry->id)
+            ->where('action', 'submitted')
+            ->latest('id')
+            ->first();
+        $latestRejection = ApprovalAction::query()
+            ->where('document_type', JournalEntry::class)
+            ->where('document_id', $entry->id)
+            ->where('action', 'rejected')
+            ->latest('id')
+            ->first();
+
+        if (!$latestSubmission) {
+            $base['has_workflow'] = $steps->isNotEmpty();
+            $base['can_approve'] = $steps->isEmpty() ? true : false;
+            return $base;
+        }
+
+        if ($latestRejection && $latestRejection->id > $latestSubmission->id) {
+            return array_merge($base, [
+                'state' => 'rejected',
+                'label' => 'Rejected',
+                'submitted_at' => $meta['submitted_at'],
+                'reminder_count' => $meta['reminder_count'],
+                'can_submit' => true,
+                'can_approve' => false,
+                'has_workflow' => $steps->isNotEmpty(),
+            ]);
+        }
+
+        $nextStep = $this->nextPendingStep($entry, $steps);
+        $hasWorkflow = $steps->isNotEmpty();
+        $isAwaitingApproval = $hasWorkflow && $nextStep;
+
+        return array_merge($base, [
+            'state' => $isAwaitingApproval ? 'awaiting_approval' : 'submitted',
+            'label' => $isAwaitingApproval ? 'Awaiting Approval' : 'Submitted',
+            'submitted_at' => $meta['submitted_at'],
+            'next_step_name' => $nextStep ? trim(($nextStep->name ?? 'Step') . (($nextStep->role_name ?? '') !== '' ? " ({$nextStep->role_name})" : '')) : null,
+            'reminder_count' => $meta['reminder_count'],
+            'can_submit' => false,
+            'can_approve' => $hasWorkflow ? $this->canCurrentUserApprove($entry) : true,
+            'has_workflow' => $hasWorkflow,
+        ]);
     }
 
     private function submissionMeta(JournalEntry $entry, ?AccountingApprovalPolicy $policy): array

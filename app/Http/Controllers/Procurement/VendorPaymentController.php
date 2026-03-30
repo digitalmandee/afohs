@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingEventQueue;
 use App\Models\ApprovalAction;
 use App\Models\JournalEntry;
 use App\Models\PaymentAccount;
@@ -81,9 +82,20 @@ class VendorPaymentController extends Controller
             ->all();
         $postedLookup = array_fill_keys($postedIds, true);
 
-        $payments->getCollection()->transform(function ($payment) use ($latestActions, $postedLookup) {
+        $eventLookup = AccountingEventQueue::query()
+            ->where('source_type', VendorPayment::class)
+            ->whereIn('source_id', $payments->getCollection()->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->unique('source_id')
+            ->keyBy('source_id');
+
+        $payments->getCollection()->transform(function ($payment) use ($latestActions, $postedLookup, $eventLookup) {
             $action = $latestActions->get($payment->id);
+            $event = $eventLookup->get($payment->id);
             $payment->gl_posted = (bool) ($postedLookup[$payment->id] ?? false);
+            $payment->accounting_status = $event?->status ?? ($payment->gl_posted ? 'posted' : 'pending');
+            $payment->accounting_failure_reason = $event?->error_message;
             $payment->latest_approval_action = $action ? [
                 'action' => $action->action,
                 'remarks' => $action->remarks,

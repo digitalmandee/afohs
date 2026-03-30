@@ -7,6 +7,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 const defaultFilters = (filters, transactions) => ({
     search: filters?.search || '',
@@ -80,10 +81,10 @@ export default function TransactionIndex({ transactions, filters, summary = {} }
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Transactions" value={summary?.count || 0} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Amount" value={Number(summary?.total_amount || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Open Balance" value={Number(summary?.balance || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posting Failures" value={summary?.failed_postings || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Transactions" value={formatCount(summary?.count)} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Total Amount" value={formatAmount(summary?.total_amount)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Open Balance" value={formatAmount(summary?.balance)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Posting Failures" value={formatCount(summary?.failed_postings)} tone="muted" /></Grid>
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results refresh automatically while you search, change fee type, or adjust the date range.">
@@ -144,7 +145,7 @@ export default function TransactionIndex({ transactions, filters, summary = {} }
                                 </Stack>
                             </TableCell>
                             <TableCell>{String(row.fee_type || '').replaceAll('_', ' ')}</TableCell>
-                            <TableCell align="right">{Number(row.total_price || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(row.total_price)}</TableCell>
                             <TableCell>
                                 <Chip size="small" label={row.status || '-'} color={row.status === 'paid' ? 'success' : row.status === 'overdue' ? 'error' : 'warning'} />
                             </TableCell>

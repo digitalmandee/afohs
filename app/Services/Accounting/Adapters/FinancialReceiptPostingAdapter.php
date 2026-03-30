@@ -6,10 +6,10 @@ use App\Models\AccountingEventQueue;
 use App\Models\AccountingRule;
 use App\Models\FinancialReceipt;
 use App\Models\JournalEntry;
-use App\Models\PaymentAccount;
 use App\Services\Accounting\Contracts\PostingAdapter;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\Support\FinancePostingClassifier;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialReceiptPostingAdapter implements PostingAdapter
@@ -17,7 +17,8 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
     public function __construct(
         private readonly PostingService $postingService,
         private readonly RestaurantContextResolver $restaurantContextResolver,
-        private readonly FinancePostingClassifier $financePostingClassifier
+        private readonly FinancePostingClassifier $financePostingClassifier,
+        private readonly PaymentAccountPostingGuard $paymentAccountPostingGuard,
     )
     {
     }
@@ -60,7 +61,10 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
             ->pluck('member_id')
             ->first();
 
-        $paymentAccount = $this->resolveValidPaymentAccount($receipt);
+        $paymentAccount = $this->paymentAccountPostingGuard->validateRequiredForPosting(
+            $receipt->payment_account_id,
+            $receipt->payment_method,
+        );
 
         $lines = [];
         foreach ((array) $rule->lines as $line) {
@@ -100,33 +104,5 @@ class FinancialReceiptPostingAdapter implements PostingAdapter
         ])->save();
 
         return $entry;
-    }
-
-    private function resolveValidPaymentAccount(FinancialReceipt $receipt): PaymentAccount
-    {
-        if (empty($receipt->payment_account_id)) {
-            throw new \RuntimeException("Financial receipt #{$receipt->id} is missing a payment account mapping.");
-        }
-
-        $paymentAccount = $receipt->paymentAccount;
-        if (!$paymentAccount || $paymentAccount->trashed()) {
-            throw new \RuntimeException("Financial receipt #{$receipt->id} references an invalid or deleted payment account.");
-        }
-
-        $status = strtolower(trim((string) ($paymentAccount->status ?? 'active')));
-        if ($status !== '' && $status !== 'active') {
-            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is not active for accounting posting.");
-        }
-
-        $coaAccount = $paymentAccount->coaAccount;
-        if (!$coaAccount) {
-            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is missing a mapped chart of account.");
-        }
-
-        if (!$coaAccount->is_active || !$coaAccount->is_postable) {
-            throw new \RuntimeException("Payment account '{$paymentAccount->name}' is mapped to an inactive or non-postable chart of account.");
-        }
-
-        return $paymentAccount;
     }
 }

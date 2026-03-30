@@ -23,6 +23,7 @@ import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ bills, filters, summary = {}, vendors = [], tenants = [] }) {
     const rows = bills?.data || [];
@@ -158,10 +159,10 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Bills" value={summary.count || 0} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Value" value={Number(summary.total_value || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Outstanding" value={Number(summary.outstanding || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posted" value={summary.posted || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Bills" value={formatCount(summary.count)} /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Total Value" value={formatAmount(summary.total_value)} /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Outstanding" value={formatAmount(summary.outstanding)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Posted" value={formatCount(summary.posted)} tone="light" /></Grid>
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search, choose vendor/status, or adjust dates.">
@@ -246,14 +247,19 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
                             <TableCell>{bill.status || '-'}</TableCell>
                             <TableCell>{bill.latest_approval_action?.action || '-'}</TableCell>
                             <TableCell>
-                                <Chip
-                                    size="small"
-                                    label={bill.gl_posted ? 'Posted' : 'Pending'}
-                                    color={bill.gl_posted ? 'success' : 'warning'}
-                                    variant={bill.gl_posted ? 'filled' : 'outlined'}
-                                />
+                                <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(bill.accounting_status || (bill.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
+                                {bill.accounting_failure_reason ? (
+                                    <Typography variant="body2" color="error.main">{bill.accounting_failure_reason}</Typography>
+                                ) : (
+                                    <Chip
+                                        size="small"
+                                        label={bill.gl_posted ? 'Posted' : 'Pending'}
+                                        color={bill.gl_posted ? 'success' : 'warning'}
+                                        variant={bill.gl_posted ? 'filled' : 'outlined'}
+                                    />
+                                )}
                             </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(bill.grand_total || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(bill.grand_total)}</TableCell>
                             <TableCell align="right">
                                 {bill.status === 'draft' && (
                                     <>

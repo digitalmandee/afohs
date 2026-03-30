@@ -23,6 +23,7 @@ import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ payments, filters, summary = {}, vendors = [], paymentAccounts = [], tenants = [] }) {
     const rows = payments?.data || [];
@@ -167,10 +168,10 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
             ]}
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Payments" value={summary.count || 0} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Total Amount" value={Number(summary.total_amount || 0).toFixed(2)} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Posted" value={summary.posted || 0} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Void" value={summary.void || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Payments" value={formatCount(summary.count)} /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Total Amount" value={formatAmount(summary.total_amount)} /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Posted" value={formatCount(summary.posted)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Void" value={formatCount(summary.void)} tone="light" /></Grid>
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while searching and changing payment attributes.">
@@ -283,14 +284,19 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                             <TableCell>{payment.status || '-'}</TableCell>
                             <TableCell>{payment.latest_approval_action?.action || '-'}</TableCell>
                             <TableCell>
-                                <Chip
-                                    size="small"
-                                    label={payment.gl_posted ? 'Posted' : 'Pending'}
-                                    color={payment.gl_posted ? 'success' : 'warning'}
-                                    variant={payment.gl_posted ? 'filled' : 'outlined'}
-                                />
+                                <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(payment.accounting_status || (payment.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
+                                {payment.accounting_failure_reason ? (
+                                    <Typography variant="body2" color="error.main">{payment.accounting_failure_reason}</Typography>
+                                ) : (
+                                    <Chip
+                                        size="small"
+                                        label={payment.gl_posted ? 'Posted' : 'Pending'}
+                                        color={payment.gl_posted ? 'success' : 'warning'}
+                                        variant={payment.gl_posted ? 'filled' : 'outlined'}
+                                    />
+                                )}
                             </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{Number(payment.amount || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(payment.amount)}</TableCell>
                             <TableCell align="right">
                                 {payment.status === 'draft' && (
                                     <>

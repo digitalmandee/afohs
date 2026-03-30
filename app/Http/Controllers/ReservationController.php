@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 
 class ReservationController extends Controller
 {
@@ -110,7 +111,7 @@ class ReservationController extends Controller
             'end_time' => 'required|date_format:H:i|after:start_time',
             'down_payment' => 'required|numeric|min:1',
             'paymentMode' => 'required|string|in:Cash,Bank Transfer,Credit Card,Online',
-            'paymentAccount' => 'nullable|required_unless:paymentMode,Cash|string|max:255',
+            'paymentAccount' => 'required|string|max:255',
             'nature_of_function' => 'nullable|string|max:255',
             'theme_of_function' => 'nullable|string|max:255',
             'special_request' => 'nullable|string|max:1000',
@@ -167,6 +168,11 @@ class ReservationController extends Controller
             'Online' => 'online',
         ];
         $advancePaymentMethod = $paymentMethodMap[$validated['paymentMode']] ?? 'cash';
+        $paymentAccount = app(PaymentAccountPostingGuard::class)->validateRequiredForPosting(
+            $validated['paymentAccount'],
+            $advancePaymentMethod,
+            'paymentAccount',
+        );
 
         $receipt = FinancialReceipt::create([
             'receipt_no' => 'REC-' . time() . '-RSV-' . $reservation->id,
@@ -175,7 +181,8 @@ class ReservationController extends Controller
             'amount' => $validated['down_payment'],
             'advance_amount' => $validated['down_payment'],
             'payment_method' => $advancePaymentMethod,
-            'payment_details' => $validated['paymentAccount'] ?? null,
+            'payment_account_id' => $paymentAccount->id,
+            'payment_details' => is_numeric($validated['paymentAccount']) ? null : $validated['paymentAccount'],
             'receipt_date' => now(),
             'remarks' => 'Advance Payment for Reservation #' . $reservation->id,
             'created_by' => Auth::id(),

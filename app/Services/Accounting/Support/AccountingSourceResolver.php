@@ -72,6 +72,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
             'source_resolution_status' => $resolutionStatus,
+            'party_name' => $this->invoicePartyName($invoice),
+            'party_code' => $this->invoicePartyCode($invoice),
         ];
     }
 
@@ -95,6 +97,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
             'source_resolution_status' => $linkedInvoice && $this->safeRoute('finance.invoice.pay', $linkedInvoice->id) ? 'resolved' : 'unresolved',
+            'party_name' => $this->receiptPartyName($receipt, $linkedInvoice),
+            'party_code' => $linkedInvoice ? $this->invoicePartyCode($linkedInvoice) : null,
         ];
     }
 
@@ -115,6 +119,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
             'source_resolution_status' => $this->safeRoute('procurement.vendor-bills.edit', $bill->id) ? 'resolved' : 'unresolved',
+            'party_name' => $bill->vendor?->name,
+            'party_code' => $bill->vendor?->code,
         ];
     }
 
@@ -135,6 +141,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
             'source_resolution_status' => $this->safeRoute('procurement.vendor-payments.edit', $payment->id) ? 'resolved' : 'unresolved',
+            'party_name' => $payment->vendor?->name,
+            'party_code' => $payment->vendor?->code,
         ];
     }
 
@@ -155,6 +163,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
             'failure_reason' => $event?->error_message,
             'source_resolution_status' => $this->safeRoute('procurement.goods-receipts.index', ['search' => $receipt->grn_no]) ? 'resolved' : 'unresolved',
+            'party_name' => $receipt->vendor?->name,
+            'party_code' => $receipt->vendor?->code,
         ];
     }
 
@@ -214,6 +224,8 @@ class AccountingSourceResolver
             'journal_entry_id' => (int) $entry->id,
             'failure_reason' => null,
             'source_resolution_status' => 'unresolved',
+            'party_name' => null,
+            'party_code' => null,
         ];
     }
 
@@ -277,6 +289,8 @@ class AccountingSourceResolver
             'journal_entry_id' => $event->journal_entry_id,
             'failure_reason' => $event->error_message,
             'source_resolution_status' => 'unresolved',
+            'party_name' => null,
+            'party_code' => null,
         ];
     }
 
@@ -389,5 +403,29 @@ class AccountingSourceResolver
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function invoicePartyName(FinancialInvoice $invoice): ?string
+    {
+        return $invoice->member?->full_name
+            ?? $invoice->corporateMember?->full_name
+            ?? $invoice->customer?->name
+            ?? data_get($invoice, 'data.member_name')
+            ?? data_get($invoice, 'invoiceable.name')
+            ?? data_get($invoice, 'invoiceable.booked_by');
+    }
+
+    private function invoicePartyCode(FinancialInvoice $invoice): ?string
+    {
+        return $invoice->member?->membership_no
+            ?? $invoice->corporateMember?->membership_no
+            ?? $invoice->customer?->customer_no;
+    }
+
+    private function receiptPartyName(FinancialReceipt $receipt, ?FinancialInvoice $linkedInvoice = null): ?string
+    {
+        return $linkedInvoice ? $this->invoicePartyName($linkedInvoice) : data_get($receipt, 'payer.full_name')
+            ?? data_get($receipt, 'payer.name')
+            ?? data_get($receipt, 'guest_name');
     }
 }

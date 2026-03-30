@@ -1581,6 +1581,7 @@ Route::prefix('admin/accounting')->middleware(['auth'])->group(function () {
 
     Route::get('periods', [AccountingPeriodController::class, 'index'])->name('accounting.periods.index');
     Route::post('periods', [AccountingPeriodController::class, 'store'])->name('accounting.periods.store');
+    Route::post('periods/align-historical', [AccountingPeriodController::class, 'alignHistorical'])->name('accounting.periods.align-historical');
     Route::post('periods/{period}/lock', [AccountingPeriodController::class, 'lock'])->name('accounting.periods.lock');
     Route::post('periods/{period}/reopen', [AccountingPeriodController::class, 'reopen'])->name('accounting.periods.reopen');
 

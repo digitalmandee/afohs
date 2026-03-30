@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 
 class RoomBookingController extends Controller
 {
@@ -809,6 +810,8 @@ class RoomBookingController extends Controller
                 $securityDeposit = $data['securityDeposit'] ?? 0;
                 $advanceAmount = $data['advanceAmount'] ?? 0;
                 $totalPaid = $securityDeposit + $advanceAmount;
+                $paymentMethod = $this->normalizeReceiptMethod($data['paymentMode'] ?? 'Cash');
+                $paymentAccount = $this->validatedPostingPaymentAccount($data['paymentAccount'] ?? null, $paymentMethod, 'paymentAccount');
 
                 // Create Receipt
                 $receipt = FinancialReceipt::create([
@@ -816,13 +819,9 @@ class RoomBookingController extends Controller
                     'payer_type' => $payerType,
                     'payer_id' => $payerId,
                     'amount' => $totalPaid,
-                    'payment_method' => match ($data['paymentMode'] ?? 'Cash') {
-                        'Bank Transfer' => 'bank',
-                        'Credit Card' => 'credit_card',
-                        'Online' => 'bank',
-                        default => 'cash',
-                    },
-                    'payment_details' => $data['paymentAccount'] ?? null,
+                    'payment_method' => $paymentMethod,
+                    'payment_account_id' => $paymentAccount->id,
+                    'payment_details' => is_numeric($data['paymentAccount'] ?? null) ? null : ($data['paymentAccount'] ?? null),
                     'receipt_date' => now(),
                     'status' => 'active',
                     'remarks' => 'Advance/Security for Booking #' . $booking->booking_no,
@@ -1112,6 +1111,8 @@ class RoomBookingController extends Controller
 
                 if ($toBePaid > 0) {
                     // POSITIVE: Additional Payment
+                    $paymentMethod = $this->normalizeReceiptMethod($data['paymentMode'] ?? 'Cash');
+                    $paymentAccount = $this->validatedPostingPaymentAccount($data['paymentAccount'] ?? null, $paymentMethod, 'paymentAccount');
 
                     // Create Receipt
                     $receipt = FinancialReceipt::create([
@@ -1119,13 +1120,9 @@ class RoomBookingController extends Controller
                         'payer_type' => $payerType,
                         'payer_id' => $payerId,
                         'amount' => $toBePaid,
-                        'payment_method' => match ($data['paymentMode'] ?? 'Cash') {
-                            'Bank Transfer' => 'bank',
-                            'Credit Card' => 'credit_card',
-                            'Online' => 'bank',
-                            default => 'cash',
-                        },
-                        'payment_details' => $data['paymentAccount'] ?? null,
+                        'payment_method' => $paymentMethod,
+                        'payment_account_id' => $paymentAccount->id,
+                        'payment_details' => is_numeric($data['paymentAccount'] ?? null) ? null : ($data['paymentAccount'] ?? null),
                         'receipt_date' => now(),
                         'status' => 'active',
                         'remarks' => 'Additional Payment (Security: ' . $diffSecurity . ', Advance: ' . $diffAdvance . ') for Room Booking #' . $booking->booking_no,
@@ -1766,5 +1763,21 @@ class RoomBookingController extends Controller
             'message' => 'Booking status updated successfully',
             'booking' => $booking
         ]);
+    }
+
+    private function normalizeReceiptMethod(?string $paymentMode): string
+    {
+        return match ($paymentMode ?? 'Cash') {
+            'Bank Transfer' => 'bank_transfer',
+            'Credit Card' => 'credit_card',
+            'Online' => 'online',
+            'Cheque' => 'cheque',
+            default => 'cash',
+        };
+    }
+
+    private function validatedPostingPaymentAccount(mixed $accountInput, ?string $paymentMethod, string $field = 'payment_account_id')
+    {
+        return app(PaymentAccountPostingGuard::class)->validateRequiredForPosting($accountInput, $paymentMethod, $field);
     }
 }

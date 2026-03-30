@@ -110,6 +110,9 @@ export default function Periods({ periods, filters = {}, error = null }) {
                 title="Period Close & Locks"
                 subtitle="Manage close periods, review blocking checklist items, and control when journal posting is locked or reopened."
                 actions={[
+                    <Button key="align" variant="outlined" onClick={() => router.post(route('accounting.periods.align-historical'))}>
+                        Align Historical
+                    </Button>,
                     <Button key="new" variant="contained" onClick={() => setOpen(true)}>
                         New Period
                     </Button>,

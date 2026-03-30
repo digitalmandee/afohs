@@ -205,12 +205,17 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                     <Chip size="small" label={grn.status} color={grn.status === 'received' ? 'success' : 'default'} variant="outlined" />
                                 </TableCell>
                                 <TableCell>
-                                    <Chip
-                                        size="small"
-                                        label={grn.gl_posted ? 'Posted' : 'Pending'}
-                                        color={grn.gl_posted ? 'success' : 'warning'}
-                                        variant={grn.gl_posted ? 'filled' : 'outlined'}
-                                    />
+                                    <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(grn.accounting_status || (grn.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
+                                    {grn.accounting_failure_reason ? (
+                                        <Typography variant="body2" color="error.main">{grn.accounting_failure_reason}</Typography>
+                                    ) : (
+                                        <Chip
+                                            size="small"
+                                            label={grn.gl_posted ? 'Posted' : 'Pending'}
+                                            color={grn.gl_posted ? 'success' : 'warning'}
+                                            variant={grn.gl_posted ? 'filled' : 'outlined'}
+                                        />
+                                    )}
                                 </TableCell>
                             </TableRow>
                         );

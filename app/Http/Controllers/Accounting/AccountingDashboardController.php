@@ -13,6 +13,7 @@ use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\VendorBill;
 use App\Services\Accounting\Support\AccountingHealth;
+use App\Services\Accounting\Support\HistoricalAccountingPeriodAligner;
 use App\Services\Accounting\Support\AccountingSourceResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class AccountingDashboardController extends Controller
     {
         $health = app(AccountingHealth::class);
         $sourceResolver = app(AccountingSourceResolver::class);
+        $periodAligner = app(HistoricalAccountingPeriodAligner::class);
         $perPage = (int) $request->integer('per_page', 25);
         if (!in_array($perPage, [10, 25, 50, 100], true)) {
             $perPage = 25;
@@ -183,6 +185,57 @@ class AccountingDashboardController extends Controller
             $moduleCounts[$module] = ($moduleCounts[$module] ?? 0) + 1;
         }
 
+        $paymentAccountAudit = Schema::hasTable('payment_accounts')
+            ? [
+                'unmapped' => PaymentAccount::query()->whereNull('coa_account_id')->count(),
+                'inactive_coa' => PaymentAccount::query()
+                    ->whereNotNull('coa_account_id')
+                    ->whereHas('coaAccount', fn ($query) => $query->where('is_active', false))
+                    ->count(),
+                'non_postable_coa' => PaymentAccount::query()
+                    ->whereNotNull('coa_account_id')
+                    ->whereHas('coaAccount', fn ($query) => $query->where('is_postable', false))
+                    ->count(),
+                'examples' => PaymentAccount::query()
+                    ->with('coaAccount:id,name,full_code,is_active,is_postable')
+                    ->where(function ($query) {
+                        $query->whereNull('coa_account_id')
+                            ->orWhereHas('coaAccount', fn ($coa) => $coa->where('is_active', false)->orWhere('is_postable', false));
+                    })
+                    ->orderBy('name')
+                    ->limit(5)
+                    ->get(['id', 'name', 'payment_method', 'coa_account_id'])
+                    ->map(fn ($account) => [
+                        'id' => $account->id,
+                        'name' => $account->name,
+                        'payment_method' => $account->payment_method,
+                        'coa_label' => $account->coaAccount ? trim(($account->coaAccount->full_code ?? '') . ' ' . ($account->coaAccount->name ?? '')) : null,
+                    ]),
+            ]
+            : ['unmapped' => 0, 'inactive_coa' => 0, 'non_postable_coa' => 0, 'examples' => collect()];
+
+        $invalidRuleTargets = Schema::hasTable('accounting_rules')
+            ? AccountingRule::query()->get()->filter(function (AccountingRule $rule) {
+                foreach ((array) $rule->lines as $line) {
+                    if (!empty($line['use_payment_account'])) {
+                        continue;
+                    }
+
+                    $accountId = $line['account_id'] ?? null;
+                    if (!$accountId) {
+                        return true;
+                    }
+
+                    $account = CoaAccount::find($accountId);
+                    if (!$account || !$account->is_active || !$account->is_postable) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })->pluck('code')->values()->all()
+            : [];
+
         $data = [
             'total_accounts' => CoaAccount::count(),
             'total_vendors' => Schema::hasTable('vendors') ? Vendor::count() : 0,
@@ -220,6 +273,7 @@ class AccountingDashboardController extends Controller
                 'expected' => $expectedRuleCodes,
                 'active' => $activeRuleCodes,
                 'missing' => $missingRuleCodes,
+                'invalid' => $invalidRuleTargets,
             ],
             'exceptions' => [
                 'posted_postings' => (int) ($statusCounts['posted'] ?? 0),
@@ -233,6 +287,8 @@ class AccountingDashboardController extends Controller
                     ->take(5)
                     ->values(),
             ],
+            'payment_account_audit' => $paymentAccountAudit,
+            'missing_period_coverage' => $periodAligner->missingCoverageCount(),
         ];
 
         return Inertia::render('App/Admin/Accounting/Dashboard', [
@@ -258,6 +314,10 @@ class AccountingDashboardController extends Controller
                         'document_no' => $source['document_no'],
                         'document_url' => $source['document_url'],
                         'restaurant_name' => $source['restaurant_name'],
+                        'party_name' => $source['party_name'],
+                        'party_code' => $source['party_code'],
+                        'posting_status' => $source['posting_status'],
+                        'failure_reason' => $source['failure_reason'],
                         'source_resolution_status' => $source['source_resolution_status'],
                     ];
                 }),

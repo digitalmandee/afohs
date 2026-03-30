@@ -4,6 +4,7 @@ import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function WarehouseValuationIndex({
     summary = {},
@@ -21,9 +22,9 @@ export default function WarehouseValuationIndex({
         >
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={4}><StatCard label="Total Valuation" value={Number(summary.total_valuation || 0).toFixed(2)} accent /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Warehouses" value={summary.warehouse_count || 0} tone="light" /></Grid>
-                <Grid item xs={12} md={4}><StatCard label="Restaurants" value={summary.restaurant_count || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Total Valuation" value={formatAmount(summary.total_valuation)} accent /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Warehouses" value={formatCount(summary.warehouse_count)} tone="light" /></Grid>
+                <Grid item xs={12} md={4}><StatCard label="Restaurants" value={formatCount(summary.restaurant_count)} tone="muted" /></Grid>
             </Grid>
 
             <Grid container spacing={2.25}>
@@ -42,7 +43,7 @@ export default function WarehouseValuationIndex({
                                 <TableRow hover key={`${row.warehouse_id}-${index}`}>
                                     <TableCell>{row.warehouse ? `${row.warehouse.code} · ${row.warehouse.name}` : '-'}</TableCell>
                                     <TableCell align="right">{Number(row.net_qty || 0).toFixed(3)}</TableCell>
-                                    <TableCell align="right">{Number(row.valuation || 0).toFixed(2)}</TableCell>
+                                    <TableCell align="right">{formatAmount(row.valuation)}</TableCell>
                                 </TableRow>
                             )}
                         />
@@ -63,7 +64,7 @@ export default function WarehouseValuationIndex({
                                 <TableRow hover key={`${row.tenant_id}-${index}`}>
                                     <TableCell>{row.tenant?.name || '-'}</TableCell>
                                     <TableCell align="right">{Number(row.net_qty || 0).toFixed(3)}</TableCell>
-                                    <TableCell align="right">{Number(row.valuation || 0).toFixed(2)}</TableCell>
+                                    <TableCell align="right">{formatAmount(row.valuation)}</TableCell>
                                 </TableRow>
                             )}
                         />
@@ -87,7 +88,7 @@ export default function WarehouseValuationIndex({
                             <TableCell>{row.warehouse ? `${row.warehouse.code} · ${row.warehouse.name}` : '-'}</TableCell>
                             <TableCell>{row.warehouse_location ? `${row.warehouse_location.code} · ${row.warehouse_location.name}` : 'No location'}</TableCell>
                             <TableCell align="right">{Number(row.net_qty || 0).toFixed(3)}</TableCell>
-                            <TableCell align="right">{Number(row.valuation || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(row.valuation)}</TableCell>
                         </TableRow>
                     )}
                 />
@@ -107,7 +108,7 @@ export default function WarehouseValuationIndex({
                         <TableRow hover key={`${row.type}-${index}`}>
                             <TableCell>{String(row.type || '').replaceAll('_', ' ')}</TableCell>
                             <TableCell align="right">{Number(row.net_qty || 0).toFixed(3)}</TableCell>
-                            <TableCell align="right">{Number(row.total_value || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{formatAmount(row.total_value)}</TableCell>
                         </TableRow>
                     )}
                 />

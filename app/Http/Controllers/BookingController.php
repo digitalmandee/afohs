@@ -22,6 +22,7 @@ use App\Models\RoomType;
 use App\Models\Transaction;
 use App\Models\TransactionRelation;
 use App\Models\User;
+use App\Services\Accounting\Support\PaymentAccountPostingGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -237,7 +238,7 @@ class BookingController extends Controller
             'amount' => 'required|numeric|min:0',
             'pay_orders' => 'nullable|boolean',
             'payment_method' => 'required|string',
-            'payment_account_id' => 'nullable|exists:payment_accounts,id',
+            'payment_account_id' => 'required|exists:payment_accounts,id',
         ]);
 
         $invoice = FinancialInvoice::where('invoice_no', $request->invoice_no)->first();
@@ -361,6 +362,10 @@ class BookingController extends Controller
             $payerDetails = $this->getPayerDetails($invoice);
             $payerType = $payerDetails['type'];
             $payerId = $payerDetails['id'];
+            $paymentAccount = app(PaymentAccountPostingGuard::class)->validateRequiredForPosting(
+                $request->payment_account_id,
+                $request->payment_method,
+            );
 
             // ✅ 1. Create Financial Receipt
             $receipt = FinancialReceipt::create([
@@ -369,7 +374,7 @@ class BookingController extends Controller
                 'payer_id' => $payerId,
                 'amount' => $request->amount,
                 'payment_method' => $request->payment_method,  // Trust the frontend values (cash, credit_card, etc.)
-                'payment_account_id' => $request->payment_account_id,
+                'payment_account_id' => $paymentAccount->id,
                 'payment_details' => $request->paymentAccount ?? null,
                 'receipt_date' => now(),
                 'status' => 'active',

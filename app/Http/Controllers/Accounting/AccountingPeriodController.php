@@ -7,6 +7,7 @@ use App\Models\AccountingEventQueue;
 use App\Models\AccountingPeriod;
 use App\Models\BankReconciliationSession;
 use App\Models\JournalEntry;
+use App\Services\Accounting\Support\HistoricalAccountingPeriodAligner;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -115,6 +116,16 @@ class AccountingPeriodController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Period reopened.');
+    }
+
+    public function alignHistorical(HistoricalAccountingPeriodAligner $aligner)
+    {
+        $result = $aligner->align();
+
+        return redirect()->back()->with(
+            'success',
+            "Historical accounting periods aligned. Created {$result['created']} missing period(s)."
+        );
     }
 
     private function periodChecklist(AccountingPeriod $period): array

@@ -7,6 +7,7 @@ import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Receivables({ invoices, total, summary, filters }) {
     const rows = invoices?.data || [];
@@ -112,11 +113,11 @@ export default function Receivables({ invoices, total, summary, filters }) {
             subtitle="Track unpaid and partially paid invoices with live filters, clearer source context, and operational drilldowns."
         >
             <Grid container spacing={2.25}>
-                <Grid item xs={12} md={3}><StatCard label="Global Outstanding" value={Number(total || 0).toFixed(2)} accent /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Filtered Records" value={summary?.records || 0} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Filtered Outstanding" value={Number(summary?.filtered_outstanding || 0).toFixed(2)} tone="light" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Unpaid" value={summary?.unpaid_count || 0} tone="muted" /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Partial" value={summary?.partial_count || 0} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Global Outstanding" value={formatAmount(total)} accent /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Filtered Records" value={formatCount(summary?.records)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Filtered Outstanding" value={formatAmount(summary?.filtered_outstanding)} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Unpaid" value={formatCount(summary?.unpaid_count)} tone="muted" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Partial" value={formatCount(summary?.partial_count)} tone="muted" /></Grid>
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically as you refine payer, status, and invoice dates.">
@@ -202,9 +203,9 @@ export default function Receivables({ invoices, total, summary, filters }) {
                                     />
                                 </TableCell>
                                 <TableCell>{invoice.issue_date || '-'}</TableCell>
-                                <TableCell align="right">{Number(invoice.total_price || 0).toFixed(2)}</TableCell>
-                                <TableCell align="right">{Number(invoice.paid_amount || 0).toFixed(2)}</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 700 }}>{balance.toFixed(2)}</TableCell>
+                                <TableCell align="right">{formatAmount(invoice.total_price)}</TableCell>
+                                <TableCell align="right">{formatAmount(invoice.paid_amount)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(balance)}</TableCell>
                                 <TableCell align="center">
                                     {invoice.document_url ? (
                                         <Button size="small" variant="outlined" onClick={() => router.visit(invoice.document_url)}>
