@@ -1,13 +1,25 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Grid, IconButton, MenuItem, TextField, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Grid, IconButton, MenuItem, TextField, Typography, Alert } from '@mui/material';
 import { DeleteOutline } from '@mui/icons-material';
 
-export default function Edit({ bill, vendors, receipts }) {
+export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }) {
+  const billRequiresGrn = Boolean(procurementPolicy.bill_requires_grn ?? true);
+
   const initialItems = (bill?.items || []).map((item) => ({
+    inventory_item_id: item.inventory_item_id || '',
     description: item.description || '',
     qty: item.qty || 1,
     unit_cost: item.unit_cost || 0,
+    tax_amount: item.tax_amount || 0,
+    discount_amount: item.discount_amount || 0,
+  }));
+
+  const initialCharges = (bill?.other_charges || []).map((charge) => ({
+    account_id: charge.account_id || '',
+    party_vendor_id: charge.party_vendor_id || '',
+    description: charge.description || '',
+    amount: charge.amount || 0,
   }));
 
   const { data, setData, put, processing, errors } = useForm({
@@ -16,15 +28,19 @@ export default function Edit({ bill, vendors, receipts }) {
     bill_date: bill?.bill_date || new Date().toISOString().slice(0, 10),
     due_date: bill?.due_date || '',
     remarks: bill?.remarks || '',
-    items: initialItems.length > 0 ? initialItems : [{ description: '', qty: 1, unit_cost: 0 }],
+    items: initialItems.length > 0 ? initialItems : [{ inventory_item_id: '', description: '', qty: 1, unit_cost: 0, tax_amount: 0, discount_amount: 0 }],
+    other_charges: initialCharges,
   });
 
   const handleReceiptChange = (value) => {
     const selected = (receipts || []).find((row) => String(row.id) === String(value));
     const nextItems = (selected?.items || []).map((item) => ({
-      description: item.product?.name || '',
+      inventory_item_id: item.inventory_item_id || '',
+      description: item.inventory_item?.name || '',
       qty: item.qty_received || 1,
       unit_cost: item.unit_cost || 0,
+      tax_amount: 0,
+      discount_amount: 0,
     }));
 
     setData('goods_receipt_id', value);
@@ -34,18 +50,26 @@ export default function Edit({ bill, vendors, receipts }) {
     }
   };
 
-  const addItem = () => setData('items', [...data.items, { description: '', qty: 1, unit_cost: 0 }]);
-  const removeItem = (index) => setData('items', data.items.filter((_, idx) => idx !== index));
   const updateItem = (index, field, value) => {
     const next = [...data.items];
     next[index] = { ...next[index], [field]: value };
     setData('items', next);
   };
+  const addItem = () => setData('items', [...data.items, { inventory_item_id: '', description: '', qty: 1, unit_cost: 0, tax_amount: 0, discount_amount: 0 }]);
+  const removeItem = (index) => setData('items', data.items.filter((_, idx) => idx !== index));
 
-  const grandTotal = data.items.reduce(
-    (sum, item) => sum + Number(item.qty || 0) * Number(item.unit_cost || 0),
-    0
-  );
+  const updateCharge = (index, field, value) => {
+    const next = [...data.other_charges];
+    next[index] = { ...next[index], [field]: value };
+    setData('other_charges', next);
+  };
+  const addCharge = () => setData('other_charges', [...data.other_charges, { account_id: '', party_vendor_id: '', description: '', amount: 0 }]);
+  const removeCharge = (index) => setData('other_charges', data.other_charges.filter((_, idx) => idx !== index));
+
+  const grandTotal = data.items.reduce((sum, item) => {
+    const base = Number(item.qty || 0) * Number(item.unit_cost || 0);
+    return sum + base + Number(item.tax_amount || 0) - Number(item.discount_amount || 0);
+  }, 0) + data.other_charges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
 
   const submit = (e) => {
     e.preventDefault();
@@ -58,6 +82,8 @@ export default function Edit({ bill, vendors, receipts }) {
       <Card>
         <CardContent>
           <form onSubmit={submit}>
+            {billRequiresGrn ? <Alert severity="info" sx={{ mb: 2 }}>Strict policy enabled: Goods Receipt is required.</Alert> : null}
+
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField select label="Vendor" value={data.vendor_id} onChange={(e) => setData('vendor_id', e.target.value)} error={!!errors.vendor_id} helperText={errors.vendor_id} fullWidth>
@@ -65,8 +91,8 @@ export default function Edit({ bill, vendors, receipts }) {
                 </TextField>
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField select label="Goods Receipt (optional)" value={data.goods_receipt_id} onChange={(e) => handleReceiptChange(e.target.value)} fullWidth>
-                  <MenuItem value="">None</MenuItem>
+                <TextField select label={`Goods Receipt${billRequiresGrn ? '' : ' (optional)'}`} value={data.goods_receipt_id} onChange={(e) => handleReceiptChange(e.target.value)} error={!!errors.goods_receipt_id} helperText={errors.goods_receipt_id} fullWidth>
+                  {!billRequiresGrn ? <MenuItem value="">None</MenuItem> : null}
                   {(receipts || []).map((row) => <MenuItem key={row.id} value={row.id}>{row.grn_no} - {row.vendor?.name}</MenuItem>)}
                 </TextField>
               </Grid>
@@ -85,24 +111,54 @@ export default function Edit({ bill, vendors, receipts }) {
               <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Items</Typography>
               {data.items.map((item, index) => (
                 <Grid container spacing={2} key={index} sx={{ mb: 2 }}>
-                  <Grid item xs={12} md={5}>
+                  <Grid item xs={12} md={2}>
+                    <TextField label="Item ID" value={item.inventory_item_id} onChange={(e) => updateItem(index, 'inventory_item_id', e.target.value)} error={!!errors[`items.${index}.inventory_item_id`]} helperText={errors[`items.${index}.inventory_item_id`]} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
                     <TextField label="Description" value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} fullWidth />
                   </Grid>
-                  <Grid item xs={12} md={2}>
-                    <TextField label="Qty" type="number" value={item.qty} onChange={(e) => updateItem(index, 'qty', e.target.value)} error={!!errors[`items.${index}.qty`]} helperText={errors[`items.${index}.qty`]} fullWidth />
+                  <Grid item xs={12} md={1.5}>
+                    <TextField label="Qty" type="number" value={item.qty} onChange={(e) => updateItem(index, 'qty', e.target.value)} fullWidth />
                   </Grid>
-                  <Grid item xs={12} md={2}>
-                    <TextField label="Unit Cost" type="number" value={item.unit_cost} onChange={(e) => updateItem(index, 'unit_cost', e.target.value)} error={!!errors[`items.${index}.unit_cost`]} helperText={errors[`items.${index}.unit_cost`]} fullWidth />
+                  <Grid item xs={12} md={1.5}>
+                    <TextField label="Unit Cost" type="number" value={item.unit_cost} onChange={(e) => updateItem(index, 'unit_cost', e.target.value)} fullWidth />
                   </Grid>
-                  <Grid item xs={12} md={2}>
-                    <TextField label="Line Total" value={(Number(item.qty || 0) * Number(item.unit_cost || 0)).toFixed(2)} fullWidth disabled />
+                  <Grid item xs={12} md={1.5}>
+                    <TextField label="Tax" type="number" value={item.tax_amount} onChange={(e) => updateItem(index, 'tax_amount', e.target.value)} fullWidth />
                   </Grid>
-                  <Grid item xs={12} md={1} sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Grid item xs={12} md={1.5}>
+                    <TextField label="Discount" type="number" value={item.discount_amount} onChange={(e) => updateItem(index, 'discount_amount', e.target.value)} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={1}>
                     <IconButton color="error" onClick={() => removeItem(index)} disabled={data.items.length <= 1}><DeleteOutline /></IconButton>
                   </Grid>
                 </Grid>
               ))}
               <Button onClick={addItem}>Add Item</Button>
+            </Box>
+
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Other Charges</Typography>
+              {data.other_charges.map((charge, index) => (
+                <Grid container spacing={2} key={index} sx={{ mb: 2 }}>
+                  <Grid item xs={12} md={2}>
+                    <TextField label="Account ID" value={charge.account_id} onChange={(e) => updateCharge(index, 'account_id', e.target.value)} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <TextField label="Party Vendor ID" value={charge.party_vendor_id} onChange={(e) => updateCharge(index, 'party_vendor_id', e.target.value)} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={5}>
+                    <TextField label="Description" value={charge.description} onChange={(e) => updateCharge(index, 'description', e.target.value)} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={2}>
+                    <TextField label="Amount" type="number" value={charge.amount} onChange={(e) => updateCharge(index, 'amount', e.target.value)} fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={1}>
+                    <IconButton color="error" onClick={() => removeCharge(index)}><DeleteOutline /></IconButton>
+                  </Grid>
+                </Grid>
+              ))}
+              <Button onClick={addCharge}>Add Charge</Button>
             </Box>
 
             <Card sx={{ mt: 3, border: '1px solid', borderColor: 'divider' }}>

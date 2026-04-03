@@ -204,89 +204,92 @@ class GoodsReceiptController extends Controller
             }
         }
 
-        $receipt = GoodsReceipt::create([
-            'grn_no' => 'GRN-' . now()->format('YmdHis'),
-            'purchase_order_id' => $po->id,
-            'vendor_id' => $po->vendor_id,
-            'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
-            'warehouse_id' => $po->warehouse_id,
-            'warehouse_location_id' => $locationId,
-            'received_date' => $data['received_date'],
-            'status' => 'received',
-            'remarks' => $data['remarks'] ?? null,
-            'created_by' => $request->user()?->id,
-        ]);
-
-        $total = 0;
-        foreach ($data['items'] as $item) {
-            $lineTotal = $item['qty_received'] * $item['unit_cost'];
-            $total += $lineTotal;
-            $receipt->items()->create([
-                'purchase_order_item_id' => $item['purchase_order_item_id'],
-                'product_id' => null,
-                'inventory_item_id' => $item['inventory_item_id'],
-                'qty_received' => $item['qty_received'],
-                'unit_cost' => $item['unit_cost'],
-                'line_total' => $lineTotal,
-            ]);
-
-            $inventoryMovementService->record([
-                'product_id' => null,
-                'inventory_item_id' => $item['inventory_item_id'],
+        $receipt = null;
+        DB::transaction(function () use ($data, $inventoryMovementService, $locationId, $po, $poItems, $request, &$receipt) {
+            $receipt = GoodsReceipt::create([
+                'grn_no' => 'GRN-' . now()->format('YmdHis'),
+                'purchase_order_id' => $po->id,
+                'vendor_id' => $po->vendor_id,
                 'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
                 'warehouse_id' => $po->warehouse_id,
                 'warehouse_location_id' => $locationId,
-                'transaction_date' => $data['received_date'],
-                'type' => 'purchase',
-                'qty_in' => $item['qty_received'],
-                'qty_out' => 0,
-                'unit_cost' => $item['unit_cost'],
-                'total_cost' => $lineTotal,
-                'reference_type' => GoodsReceipt::class,
-                'reference_id' => $receipt->id,
-                'reason' => 'Purchase receipt',
-                'status' => 'posted',
+                'received_date' => $data['received_date'],
+                'status' => 'received',
+                'remarks' => $data['remarks'] ?? null,
                 'created_by' => $request->user()?->id,
             ]);
 
-            $poItem = $poItems->get($item['purchase_order_item_id']);
-            if ($poItem) {
-                $poItem->qty_received = (float) $poItem->qty_received + (float) $item['qty_received'];
-                $poItem->save();
+            $total = 0.0;
+            foreach ($data['items'] as $item) {
+                $lineTotal = (float) $item['qty_received'] * (float) $item['unit_cost'];
+                $total += $lineTotal;
+                $receipt->items()->create([
+                    'purchase_order_item_id' => $item['purchase_order_item_id'],
+                    'product_id' => null,
+                    'inventory_item_id' => $item['inventory_item_id'],
+                    'qty_received' => $item['qty_received'],
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                ]);
+
+                $inventoryMovementService->record([
+                    'product_id' => null,
+                    'inventory_item_id' => $item['inventory_item_id'],
+                    'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
+                    'warehouse_id' => $po->warehouse_id,
+                    'warehouse_location_id' => $locationId,
+                    'transaction_date' => $data['received_date'],
+                    'type' => 'purchase',
+                    'qty_in' => $item['qty_received'],
+                    'qty_out' => 0,
+                    'unit_cost' => $item['unit_cost'],
+                    'total_cost' => $lineTotal,
+                    'reference_type' => GoodsReceipt::class,
+                    'reference_id' => $receipt->id,
+                    'reason' => 'Purchase receipt',
+                    'status' => 'posted',
+                    'created_by' => $request->user()?->id,
+                ]);
+
+                $poItem = $poItems->get($item['purchase_order_item_id']);
+                if ($poItem) {
+                    $poItem->qty_received = (float) $poItem->qty_received + (float) $item['qty_received'];
+                    $poItem->save();
+                }
+
+                VendorItemMapping::query()->updateOrCreate(
+                    [
+                        'vendor_id' => $po->vendor_id,
+                        'inventory_item_id' => $item['inventory_item_id'],
+                    ],
+                    [
+                        'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
+                        'last_purchase_price' => $item['unit_cost'],
+                        'currency' => 'PKR',
+                        'is_active' => true,
+                    ]
+                );
             }
 
-            VendorItemMapping::query()->updateOrCreate(
+            $remaining = $po->items()->whereColumn('qty_received', '<', 'qty_ordered')->count();
+            $po->status = $remaining === 0 ? 'received' : 'partially_received';
+            $po->save();
+
+            app(AccountingEventDispatcher::class)->dispatch(
+                'goods_receipt_posted',
+                GoodsReceipt::class,
+                (int) $receipt->id,
                 [
-                    'vendor_id' => $po->vendor_id,
-                    'inventory_item_id' => $item['inventory_item_id'],
+                    'grn_no' => $receipt->grn_no,
+                    'warehouse_id' => $receipt->warehouse_id,
+                    'warehouse_location_id' => $receipt->warehouse_location_id,
+                    'vendor_id' => $receipt->vendor_id,
+                    'total_value' => $total,
                 ],
-                [
-                    'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
-                    'last_purchase_price' => $item['unit_cost'],
-                    'currency' => 'PKR',
-                    'is_active' => true,
-                ]
+                $request->user()?->id,
+                $receipt->tenant_id
             );
-        }
-
-        $remaining = $po->items()->whereColumn('qty_received', '<', 'qty_ordered')->count();
-        $po->status = $remaining === 0 ? 'received' : 'partially_received';
-        $po->save();
-
-        app(AccountingEventDispatcher::class)->dispatch(
-            'goods_receipt_posted',
-            GoodsReceipt::class,
-            (int) $receipt->id,
-            [
-                'grn_no' => $receipt->grn_no,
-                'warehouse_id' => $receipt->warehouse_id,
-                'warehouse_location_id' => $receipt->warehouse_location_id,
-                'vendor_id' => $receipt->vendor_id,
-                'total_value' => $total,
-            ],
-            $request->user()?->id,
-            $receipt->tenant_id
-        );
+        });
 
         return redirect()->route('procurement.goods-receipts.index')->with('success', 'Goods receipt created.');
     }

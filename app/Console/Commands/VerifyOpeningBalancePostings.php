@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AccountingEventQueue;
 use App\Models\InventoryDocument;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
@@ -62,9 +63,20 @@ class VerifyOpeningBalancePostings extends Command
             }
 
             $status = 'ok';
+            $latestQueueStatus = '-';
+            $latestQueueError = '-';
             if (!$journal) {
                 $status = 'missing_journal';
                 $missingJournal++;
+                $latestQueue = AccountingEventQueue::query()
+                    ->where('source_type', InventoryDocument::class)
+                    ->where('source_id', $document->id)
+                    ->latest('id')
+                    ->first(['status', 'error_message']);
+                if ($latestQueue) {
+                    $latestQueueStatus = (string) ($latestQueue->status ?? '-');
+                    $latestQueueError = (string) ($latestQueue->error_message ?? '-');
+                }
             } elseif (abs($docAmount - $journalAmount) > 0.01) {
                 $status = 'amount_mismatch';
                 $mismatch++;
@@ -77,11 +89,13 @@ class VerifyOpeningBalancePostings extends Command
                 'journal_entry' => $journal?->entry_no ?: '-',
                 'journal_amount' => number_format($journalAmount, 2, '.', ''),
                 'status' => $status,
+                'queue_status' => $latestQueueStatus,
+                'queue_error' => $latestQueueError,
             ];
         }
 
         $this->table(
-            ['document_no', 'date', 'doc_amount', 'journal_entry', 'journal_amount', 'status'],
+            ['document_no', 'date', 'doc_amount', 'journal_entry', 'journal_amount', 'status', 'queue_status', 'queue_error'],
             $rows
         );
 

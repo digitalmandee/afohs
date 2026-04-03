@@ -10,6 +10,7 @@ use App\Models\InventoryItem;
 use App\Models\InventoryBatch;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
+use App\Services\Procurement\ProcurementPolicyService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -31,19 +32,37 @@ class InventoryMovementService
             $unitCost = (float) ($attributes['unit_cost'] ?? 0);
             $totalCost = (float) ($attributes['total_cost'] ?? 0);
             $transactionDate = (string) $attributes['transaction_date'];
+            $inventoryItem = $inventoryItemId ? InventoryItem::query()->find($inventoryItemId) : null;
+            $valuationMethod = $this->resolveValuationMethod($attributes, $inventoryItem);
 
             $fifoMeta = null;
             if ($inventoryItemId && $qtyOut > 0.0001) {
-                $fifoMeta = $this->allocateOutflowBatches(
-                    (int) $inventoryItemId,
-                    $warehouseId,
-                    $locationId,
-                    $qtyOut,
-                    $transactionDate,
-                    (bool) ($attributes['enforce_expiry'] ?? true)
-                );
-                $unitCost = $fifoMeta['effective_unit_cost'];
-                $totalCost = $fifoMeta['effective_total_cost'];
+                if ($valuationMethod === 'weighted_average') {
+                    $weightedRate = $this->resolveWeightedAverageRate((int) $inventoryItemId, $warehouseId, $locationId, $inventoryItem);
+                    $fifoMeta = $this->allocateOutflowBatches(
+                        (int) $inventoryItemId,
+                        $warehouseId,
+                        $locationId,
+                        $qtyOut,
+                        $transactionDate,
+                        (bool) ($attributes['enforce_expiry'] ?? true),
+                        false
+                    );
+                    $unitCost = $weightedRate;
+                    $totalCost = $qtyOut * $weightedRate;
+                } else {
+                    $fifoMeta = $this->allocateOutflowBatches(
+                        (int) $inventoryItemId,
+                        $warehouseId,
+                        $locationId,
+                        $qtyOut,
+                        $transactionDate,
+                        (bool) ($attributes['enforce_expiry'] ?? true),
+                        true
+                    );
+                    $unitCost = $fifoMeta['effective_unit_cost'];
+                    $totalCost = $fifoMeta['effective_total_cost'];
+                }
             }
 
             $transaction = InventoryTransaction::create([
@@ -62,6 +81,8 @@ class InventoryMovementService
                 'reference_id' => $attributes['reference_id'] ?? null,
                 'reason' => $attributes['reason'] ?? null,
                 'status' => $attributes['status'] ?? 'posted',
+                'valuation_method' => $valuationMethod,
+                'valuation_rate' => $unitCost,
                 'created_by' => $attributes['created_by'] ?? null,
             ]);
 
@@ -102,6 +123,10 @@ class InventoryMovementService
                 if ($productId) {
                     Product::query()->whereKey($productId)->increment('current_stock', $delta);
                 }
+            }
+
+            if ($inventoryItemId && $valuationMethod === 'weighted_average') {
+                $this->recalculateMovingAverageCost((int) $inventoryItemId, $warehouseId, $locationId, $inventoryItem);
             }
 
             return $transaction;
@@ -452,7 +477,8 @@ class InventoryMovementService
         ?int $locationId,
         float $requiredQty,
         string $transactionDate,
-        bool $enforceExpiry
+        bool $enforceExpiry,
+        bool $useBatchCosts = true
     ): array {
         $item = InventoryItem::query()->find($inventoryItemId);
         if (!$item) {
@@ -508,7 +534,9 @@ class InventoryMovementService
             $batch->status = $batch->remaining_qty > 0.0001 ? 'open' : 'closed';
             $batch->save();
 
-            $totalCost += $lineCost;
+            if ($useBatchCosts) {
+                $totalCost += $lineCost;
+            }
             $remaining -= $consumeQty;
         }
 
@@ -518,9 +546,69 @@ class InventoryMovementService
 
         return [
             'allocations' => $allocations,
-            'effective_total_cost' => $totalCost,
-            'effective_unit_cost' => $requiredQty > 0 ? ($totalCost / $requiredQty) : 0,
+            'effective_total_cost' => $useBatchCosts ? $totalCost : 0.0,
+            'effective_unit_cost' => $useBatchCosts && $requiredQty > 0 ? ($totalCost / $requiredQty) : 0.0,
         ];
+    }
+
+    private function resolveValuationMethod(array $attributes, ?InventoryItem $inventoryItem): string
+    {
+        $requested = (string) ($attributes['valuation_method'] ?? '');
+        if (in_array($requested, ['fifo', 'weighted_average'], true)) {
+            return $requested;
+        }
+
+        $itemMethod = (string) ($inventoryItem?->valuation_method ?? '');
+        if (in_array($itemMethod, ['fifo', 'weighted_average'], true)) {
+            return $itemMethod;
+        }
+
+        return app(ProcurementPolicyService::class)->valuationMethod();
+    }
+
+    private function resolveWeightedAverageRate(
+        int $inventoryItemId,
+        int $warehouseId,
+        ?int $locationId,
+        ?InventoryItem $inventoryItem
+    ): float {
+        $itemRate = (float) ($inventoryItem?->moving_average_cost ?? 0);
+        if ($itemRate > 0.0001) {
+            return $itemRate;
+        }
+
+        $value = $this->stockValue($inventoryItemId, $warehouseId, $locationId);
+        $qty = $this->availableQuantity($inventoryItemId, $warehouseId, $locationId);
+        if ($qty > 0.0001) {
+            return $value / $qty;
+        }
+
+        return (float) ($inventoryItem?->default_unit_cost ?? 0);
+    }
+
+    private function recalculateMovingAverageCost(
+        int $inventoryItemId,
+        int $warehouseId,
+        ?int $locationId,
+        ?InventoryItem $inventoryItem
+    ): void {
+        $qty = $this->availableQuantity($inventoryItemId, $warehouseId, $locationId);
+        $value = $this->stockValue($inventoryItemId, $warehouseId, $locationId);
+        $newRate = $qty > 0.0001 ? ($value / $qty) : (float) ($inventoryItem?->default_unit_cost ?? 0);
+
+        InventoryItem::query()->whereKey($inventoryItemId)->update([
+            'moving_average_cost' => max(0, $newRate),
+        ]);
+    }
+
+    private function stockValue(int $inventoryItemId, int $warehouseId, ?int $locationId = null): float
+    {
+        return (float) InventoryTransaction::query()
+            ->where('inventory_item_id', $inventoryItemId)
+            ->where('warehouse_id', $warehouseId)
+            ->when($locationId, fn ($query) => $query->where('warehouse_location_id', $locationId))
+            ->selectRaw('COALESCE(SUM(total_cost * (CASE WHEN qty_in > 0 THEN 1 ELSE -1 END)), 0) as value')
+            ->value('value');
     }
 
     private function backfillLegacyBatchGap(

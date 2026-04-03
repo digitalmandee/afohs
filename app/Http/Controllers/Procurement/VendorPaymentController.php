@@ -9,9 +9,12 @@ use App\Models\JournalEntry;
 use App\Models\PaymentAccount;
 use App\Models\Tenant;
 use App\Models\Vendor;
+use App\Models\VendorBill;
 use App\Models\VendorPayment;
+use App\Models\VendorPaymentAllocation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use App\Services\Accounting\AccountingEventDispatcher;
 
@@ -119,6 +122,12 @@ class VendorPaymentController extends Controller
         return Inertia::render('App/Admin/Procurement/VendorPayments/Create', [
             'vendors' => Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']),
             'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
+            'openVendorBills' => VendorBill::query()
+                ->whereIn('status', ['posted', 'partially_paid'])
+                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount'])
+                ->orderByDesc('id')
+                ->limit(500)
+                ->get(),
         ]);
     }
 
@@ -132,6 +141,12 @@ class VendorPaymentController extends Controller
             'payment' => $vendorPayment,
             'vendors' => Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']),
             'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
+            'openVendorBills' => VendorBill::query()
+                ->whereIn('status', ['posted', 'partially_paid'])
+                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount'])
+                ->orderByDesc('id')
+                ->limit(500)
+                ->get(),
         ]);
     }
 
@@ -142,10 +157,34 @@ class VendorPaymentController extends Controller
             'payment_account_id' => 'nullable|exists:payment_accounts,id',
             'payment_date' => 'required|date',
             'method' => 'required|in:cash,bank,cheque,online',
+            'payment_intent' => 'nullable|in:ledger_wise,invoice_wise',
+            'vendor_bill_id' => 'nullable|exists:vendor_bills,id',
             'amount' => 'required|numeric|min:0.01',
             'reference' => 'nullable|string|max:255',
             'remarks' => 'nullable|string',
         ]);
+
+        $paymentIntent = (string) ($data['payment_intent'] ?? 'ledger_wise');
+        if ($paymentIntent === 'invoice_wise' && empty($data['vendor_bill_id'])) {
+            return redirect()->back()->withErrors([
+                'vendor_bill_id' => 'Vendor bill is required for invoice-wise payment.',
+            ])->withInput();
+        }
+
+        if (!empty($data['vendor_bill_id'])) {
+            $bill = VendorBill::query()->find($data['vendor_bill_id']);
+            if (!$bill || (int) $bill->vendor_id !== (int) $data['vendor_id']) {
+                return redirect()->back()->withErrors([
+                    'vendor_bill_id' => 'Selected bill does not belong to selected vendor.',
+                ])->withInput();
+            }
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+            if ((float) $data['amount'] > $outstanding + 0.01) {
+                return redirect()->back()->withErrors([
+                    'amount' => "Payment amount exceeds bill outstanding ({$outstanding}).",
+                ])->withInput();
+            }
+        }
 
         if (($data['method'] ?? 'cash') !== 'cash' && empty($data['payment_account_id'])) {
             return redirect()->back()->withErrors([
@@ -181,6 +220,9 @@ class VendorPaymentController extends Controller
             'payment_account_id' => $data['payment_account_id'] ?? null,
             'payment_date' => $data['payment_date'],
             'method' => $data['method'],
+            'payment_intent' => $paymentIntent,
+            'source_document_type' => !empty($data['vendor_bill_id']) ? VendorBill::class : null,
+            'source_document_id' => $data['vendor_bill_id'] ?? null,
             'amount' => $data['amount'],
             'status' => 'draft',
             'reference' => $data['reference'] ?? null,
@@ -210,10 +252,34 @@ class VendorPaymentController extends Controller
             'payment_account_id' => 'nullable|exists:payment_accounts,id',
             'payment_date' => 'required|date',
             'method' => 'required|in:cash,bank,cheque,online',
+            'payment_intent' => 'nullable|in:ledger_wise,invoice_wise',
+            'vendor_bill_id' => 'nullable|exists:vendor_bills,id',
             'amount' => 'required|numeric|min:0.01',
             'reference' => 'nullable|string|max:255',
             'remarks' => 'nullable|string',
         ]);
+
+        $paymentIntent = (string) ($data['payment_intent'] ?? 'ledger_wise');
+        if ($paymentIntent === 'invoice_wise' && empty($data['vendor_bill_id'])) {
+            return redirect()->back()->withErrors([
+                'vendor_bill_id' => 'Vendor bill is required for invoice-wise payment.',
+            ])->withInput();
+        }
+
+        if (!empty($data['vendor_bill_id'])) {
+            $bill = VendorBill::query()->find($data['vendor_bill_id']);
+            if (!$bill || (int) $bill->vendor_id !== (int) $data['vendor_id']) {
+                return redirect()->back()->withErrors([
+                    'vendor_bill_id' => 'Selected bill does not belong to selected vendor.',
+                ])->withInput();
+            }
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+            if ((float) $data['amount'] > $outstanding + 0.01) {
+                return redirect()->back()->withErrors([
+                    'amount' => "Payment amount exceeds bill outstanding ({$outstanding}).",
+                ])->withInput();
+            }
+        }
 
         if (($data['method'] ?? 'cash') !== 'cash' && empty($data['payment_account_id'])) {
             return redirect()->back()->withErrors([
@@ -247,6 +313,9 @@ class VendorPaymentController extends Controller
             'payment_account_id' => $data['payment_account_id'] ?? null,
             'payment_date' => $data['payment_date'],
             'method' => $data['method'],
+            'payment_intent' => $paymentIntent,
+            'source_document_type' => !empty($data['vendor_bill_id']) ? VendorBill::class : null,
+            'source_document_id' => $data['vendor_bill_id'] ?? null,
             'amount' => $data['amount'],
             'reference' => $data['reference'] ?? null,
             'remarks' => $data['remarks'] ?? null,
@@ -286,33 +355,63 @@ class VendorPaymentController extends Controller
             return redirect()->back()->with('error', 'Only draft payments can be approved.');
         }
 
-        $vendorPayment->update([
-            'status' => 'posted',
-            'posted_by' => $request->user()?->id,
-            'posted_at' => now(),
-        ]);
+        DB::transaction(function () use ($vendorPayment, $request) {
+            $vendorPayment->update([
+                'status' => 'posted',
+                'posted_by' => $request->user()?->id,
+                'posted_at' => now(),
+            ]);
 
-        app(AccountingEventDispatcher::class)->dispatch(
-            'vendor_payment_posted',
-            VendorPayment::class,
-            (int) $vendorPayment->id,
-            [
-                'payment_no' => $vendorPayment->payment_no,
-                'vendor_id' => $vendorPayment->vendor_id,
-                'payment_account_id' => $vendorPayment->payment_account_id,
-                'amount' => $vendorPayment->amount,
-            ],
-            $request->user()?->id,
-            $vendorPayment->tenant_id
-        );
+            if ($vendorPayment->source_document_type === VendorBill::class && $vendorPayment->source_document_id) {
+                $bill = VendorBill::query()->lockForUpdate()->find($vendorPayment->source_document_id);
+                if (!$bill) {
+                    throw ValidationException::withMessages([
+                        'source_document_id' => 'Linked vendor bill was not found for invoice-wise payment.',
+                    ]);
+                }
+                $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+                if ((float) $vendorPayment->amount > $outstanding + 0.01) {
+                    throw ValidationException::withMessages([
+                        'amount' => 'Payment amount exceeds bill outstanding at approval time.',
+                    ]);
+                }
+                VendorPaymentAllocation::query()->updateOrCreate(
+                    [
+                        'vendor_payment_id' => $vendorPayment->id,
+                        'vendor_bill_id' => $bill->id,
+                    ],
+                    [
+                        'amount' => $vendorPayment->amount,
+                    ]
+                );
+                $bill->paid_amount = (float) $bill->paid_amount + (float) $vendorPayment->amount;
+                $billOutstandingAfter = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+                $bill->status = $billOutstandingAfter <= 0.01 ? 'paid' : 'partially_paid';
+                $bill->save();
+            }
 
-        ApprovalAction::create([
-            'document_type' => 'vendor_payment',
-            'document_id' => $vendorPayment->id,
-            'action' => 'approved',
-            'remarks' => 'Vendor payment approved/posted.',
-            'action_by' => $request->user()?->id,
-        ]);
+            app(AccountingEventDispatcher::class)->dispatch(
+                'vendor_payment_posted',
+                VendorPayment::class,
+                (int) $vendorPayment->id,
+                [
+                    'payment_no' => $vendorPayment->payment_no,
+                    'vendor_id' => $vendorPayment->vendor_id,
+                    'payment_account_id' => $vendorPayment->payment_account_id,
+                    'amount' => $vendorPayment->amount,
+                ],
+                $request->user()?->id,
+                $vendorPayment->tenant_id
+            );
+
+            ApprovalAction::create([
+                'document_type' => 'vendor_payment',
+                'document_id' => $vendorPayment->id,
+                'action' => 'approved',
+                'remarks' => 'Vendor payment approved/posted.',
+                'action_by' => $request->user()?->id,
+            ]);
+        });
 
         return redirect()->back()->with('success', 'Vendor payment approved.');
     }

@@ -20,6 +20,8 @@ class VendorBill extends Model
         'discount_total',
         'grand_total',
         'paid_amount',
+        'advance_applied_amount',
+        'other_charges_total',
         'remarks',
         'created_by',
         'posted_by',
@@ -33,8 +35,10 @@ class VendorBill extends Model
         'sub_total' => 'decimal:2',
         'tax_total' => 'decimal:2',
         'discount_total' => 'decimal:2',
+        'other_charges_total' => 'decimal:2',
         'grand_total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'advance_applied_amount' => 'decimal:2',
     ];
 
     public function vendor()
@@ -60,5 +64,15 @@ class VendorBill extends Model
     public function allocations()
     {
         return $this->hasMany(VendorPaymentAllocation::class);
+    }
+
+    public function advanceApplications()
+    {
+        return $this->hasMany(SupplierAdvanceApplication::class);
+    }
+
+    public function otherCharges()
+    {
+        return $this->hasMany(VendorBillOtherCharge::class);
     }
 }

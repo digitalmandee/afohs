@@ -1632,6 +1632,8 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
     Route::post('purchase-orders/{purchaseOrder}/submit', [PurchaseOrderController::class, 'submit'])->name('procurement.purchase-orders.submit');
     Route::post('purchase-orders/{purchaseOrder}/approve', [PurchaseOrderController::class, 'approve'])->name('procurement.purchase-orders.approve');
     Route::post('purchase-orders/{purchaseOrder}/reject', [PurchaseOrderController::class, 'reject'])->name('procurement.purchase-orders.reject');
+    Route::get('purchase-orders/{purchaseOrder}/revisions', [PurchaseOrderController::class, 'revisions'])->name('procurement.purchase-orders.revisions');
+    Route::post('purchase-orders/{purchaseOrder}/amend', [PurchaseOrderController::class, 'amend'])->name('procurement.purchase-orders.amend');
 
     Route::get('goods-receipts', [GoodsReceiptController::class, 'index'])->name('procurement.goods-receipts.index');
     Route::get('goods-receipts/create', [GoodsReceiptController::class, 'create'])->name('procurement.goods-receipts.create');
@@ -1658,6 +1660,8 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
     Route::get('insights/discrepancies', [ProcurementInsightsController::class, 'discrepancies'])->name('procurement.insights.discrepancies');
     Route::get('payment-run', [ProcurementInsightsController::class, 'paymentRun'])->name('procurement.payment-run.index');
     Route::post('payment-run', [ProcurementInsightsController::class, 'executePaymentRun'])->name('procurement.payment-run.execute');
+    Route::get('policy', [\App\Http\Controllers\Procurement\ProcurementPolicyController::class, 'show'])->name('procurement.policy.show');
+    Route::post('policy', [\App\Http\Controllers\Procurement\ProcurementPolicyController::class, 'update'])->name('procurement.policy.update');
 
     Route::get('approval-actions', [\App\Http\Controllers\Procurement\ApprovalActionController::class, 'index'])->name('procurement.approval-actions.index');
 
@@ -1675,6 +1679,13 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
     Route::post('cash-purchases/{cashPurchase}/submit', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'submit'])->name('procurement.cash-purchases.submit');
     Route::post('cash-purchases/{cashPurchase}/approve', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'approve'])->name('procurement.cash-purchases.approve');
     Route::post('cash-purchases/{cashPurchase}/reject', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'reject'])->name('procurement.cash-purchases.reject');
+
+    Route::get('supplier-advances', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'index'])->name('procurement.supplier-advances.index');
+    Route::post('supplier-advances', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'store'])->name('procurement.supplier-advances.store');
+    Route::post('supplier-advances/{supplierAdvance}/submit', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'submit'])->name('procurement.supplier-advances.submit');
+    Route::post('supplier-advances/{supplierAdvance}/approve', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'approve'])->name('procurement.supplier-advances.approve');
+    Route::post('supplier-advances/{supplierAdvance}/apply', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'apply'])->name('procurement.supplier-advances.apply');
+    Route::post('supplier-advances/{supplierAdvance}/reject', [\App\Http\Controllers\Procurement\SupplierAdvanceController::class, 'reject'])->name('procurement.supplier-advances.reject');
 
     Route::get('purchase-returns', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'index'])->name('procurement.purchase-returns.index');
     Route::get('purchase-returns/create', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'create'])->name('procurement.purchase-returns.create');

@@ -9,6 +9,7 @@ use App\Models\AccountingRule;
 use App\Models\CoaAccount;
 use App\Models\InventoryDocumentTypeConfig;
 use App\Models\PaymentAccount;
+use App\Models\Setting;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 
@@ -38,6 +39,7 @@ class VerifyAccountingModule extends Command
             'vendor_bills',
             'vendor_payments',
             'goods_receipts',
+            'supplier_advances',
             'accounting_posting_logs',
         ];
 
@@ -114,6 +116,13 @@ class VerifyAccountingModule extends Command
 
         $this->newLine();
         $this->info('Event Queue');
+
+        $this->newLine();
+        $this->info('Procurement Policy');
+        $policy = Setting::getGroup('procurement_policy');
+        $this->line('bill_requires_grn: ' . (!empty($policy['bill_requires_grn']) ? 'yes' : 'no'));
+        $this->line('valuation_method: ' . ($policy['valuation_method'] ?? 'fifo'));
+        $this->line('po_amendment_mode: ' . ($policy['po_amendment_mode'] ?? 'admin_prospective'));
 
         if (Schema::hasTable('inventory_document_type_configs')) {
             $this->newLine();

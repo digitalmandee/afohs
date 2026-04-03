@@ -42,10 +42,6 @@ class InventoryDocumentPostingAdapter implements PostingAdapter
             return $existing;
         }
 
-        if ($document->lines->isEmpty()) {
-            throw new RuntimeException('Inventory document has no lines to post.');
-        }
-
         $lines = match ($document->type) {
             'cash_purchase' => $this->cashPurchaseLines($document),
             'purchase_return' => $this->purchaseReturnLines($document),
@@ -80,6 +76,10 @@ class InventoryDocumentPostingAdapter implements PostingAdapter
 
     private function cashPurchaseLines(InventoryDocument $document): array
     {
+        if ($document->lines->isEmpty()) {
+            throw new RuntimeException('Inventory document has no lines to post.');
+        }
+
         $cashPurchase = null;
         if ($document->source_document_type === CashPurchase::class && $document->source_document_id) {
             $cashPurchase = CashPurchase::query()->with('paymentAccount.coaAccount')->find($document->source_document_id);
@@ -129,6 +129,10 @@ class InventoryDocumentPostingAdapter implements PostingAdapter
 
     private function purchaseReturnLines(InventoryDocument $document): array
     {
+        if ($document->lines->isEmpty()) {
+            throw new RuntimeException('Inventory document has no lines to post.');
+        }
+
         $return = null;
         if ($document->source_document_type === PurchaseReturn::class && $document->source_document_id) {
             $return = PurchaseReturn::query()->with('vendor')->find($document->source_document_id);
@@ -239,6 +243,10 @@ class InventoryDocumentPostingAdapter implements PostingAdapter
 
     private function stockAdjustmentLines(InventoryDocument $document): array
     {
+        if ($document->lines->isEmpty()) {
+            throw new RuntimeException('Inventory document has no lines to post.');
+        }
+
         $entries = [];
         foreach ($document->lines as $line) {
             $amount = (float) $line->line_total;

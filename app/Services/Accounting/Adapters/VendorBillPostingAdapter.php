@@ -25,7 +25,7 @@ class VendorBillPostingAdapter implements PostingAdapter
 
     public function post(AccountingEventQueue $event): ?JournalEntry
     {
-        $bill = VendorBill::with(['vendor', 'goodsReceipt.purchaseOrder'])->find($event->source_id);
+        $bill = VendorBill::with(['vendor', 'goodsReceipt.purchaseOrder', 'otherCharges'])->find($event->source_id);
         if (!$bill) {
             throw new \RuntimeException('Vendor bill not found for posting.');
         }
@@ -49,9 +49,12 @@ class VendorBillPostingAdapter implements PostingAdapter
         }
 
         $restaurantId = $this->restaurantContextResolver->forVendorBill($bill);
+        $otherChargesTotal = (float) ($bill->other_charges_total ?? 0);
+        $baseAmount = max(0, $amount - $otherChargesTotal);
+
         $lines = [];
         foreach ((array) $rule->lines as $line) {
-            $lineAmount = $amount * (float) ($line['ratio'] ?? 1);
+            $lineAmount = $baseAmount * (float) ($line['ratio'] ?? 1);
             $side = $line['side'] ?? 'debit';
             $lines[] = [
                 'account_id' => $line['account_id'] ?? null,
@@ -60,6 +63,60 @@ class VendorBillPostingAdapter implements PostingAdapter
                 'vendor_id' => $bill->vendor_id,
                 'warehouse_id' => $bill->goodsReceipt?->warehouse_id,
                 'warehouse_location_id' => $bill->goodsReceipt?->warehouse_location_id,
+                'reference_type' => VendorBill::class,
+                'reference_id' => $bill->id,
+            ];
+        }
+
+        $debitBaseLine = collect($lines)->first(fn ($line) => (float) ($line['debit'] ?? 0) > 0.0);
+        if ($otherChargesTotal > 0.0 && !$debitBaseLine) {
+            throw new \RuntimeException('Vendor bill posting could not resolve debit base account for other charges.');
+        }
+
+        foreach ($bill->otherCharges as $charge) {
+            $chargeAmount = (float) ($charge->amount ?? 0);
+            if ($chargeAmount <= 0.0) {
+                continue;
+            }
+            $lines[] = [
+                'account_id' => $debitBaseLine['account_id'] ?? null,
+                'debit' => $chargeAmount,
+                'credit' => 0,
+                'vendor_id' => $bill->vendor_id,
+                'warehouse_id' => $bill->goodsReceipt?->warehouse_id,
+                'warehouse_location_id' => $bill->goodsReceipt?->warehouse_location_id,
+                'reference_type' => VendorBill::class,
+                'reference_id' => $bill->id,
+            ];
+            $lines[] = [
+                'account_id' => $charge->account_id,
+                'debit' => 0,
+                'credit' => $chargeAmount,
+                'vendor_id' => $charge->party_vendor_id ?: $bill->vendor_id,
+                'reference_type' => VendorBill::class,
+                'reference_id' => $bill->id,
+            ];
+        }
+
+        $advanceApplied = (float) ($bill->advance_applied_amount ?? 0);
+        if ($advanceApplied > 0.0) {
+            $payableLine = collect($lines)->first(fn ($line) => (float) ($line['credit'] ?? 0) > 0.0);
+            if (!$bill->vendor?->advance_account_id || !$payableLine) {
+                throw new \RuntimeException('Bill advance adjustment requires vendor advance account and payable line.');
+            }
+            $lines[] = [
+                'account_id' => $payableLine['account_id'],
+                'debit' => $advanceApplied,
+                'credit' => 0,
+                'vendor_id' => $bill->vendor_id,
+                'reference_type' => VendorBill::class,
+                'reference_id' => $bill->id,
+            ];
+            $lines[] = [
+                'account_id' => $bill->vendor->advance_account_id,
+                'debit' => 0,
+                'credit' => $advanceApplied,
+                'vendor_id' => $bill->vendor_id,
                 'reference_type' => VendorBill::class,
                 'reference_id' => $bill->id,
             ];

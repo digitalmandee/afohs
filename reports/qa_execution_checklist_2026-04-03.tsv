@@ -1,0 +1,49 @@
+test_id	module	flow	expected_result	evidence_doc_no	evidence_journal_no	evidence_screenshot	status	tester	executed_at	notes
+TC-01	accounting	Manual journal direct post	Approve/Post posts draft with no workflow error				PENDING			
+TC-02	accounting	Manual journal workflow submit	Submit shows submitted/awaiting approval state				PENDING			
+TC-03	accounting	Manual journal maker-checker	Same maker cannot approve when policy enforced				PENDING			
+TC-04	accounting	Manual journal validation	Unbalanced/closed period blocks submit or approve				PENDING			
+TC-05	inventory	Inventory document valid approve/post	Posted successfully with stock movement				PENDING			
+TC-06	inventory	Inventory document invalid approve/post	Shows user-friendly error, no partial posting				PENDING			
+TC-07	finance	Membership invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-08	finance	Subscription invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-09	finance	Maintenance invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-10	finance	Room invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-11	finance	Event invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-12	finance	POS invoice+receipt receipt mapping valid	Invoice and receipt journals posted				PENDING			
+TC-13	finance	Invalid receipt payment account mapping	Blocked or failed with explicit reason				PENDING			
+TC-14	accounting	Posting in historical open period	Post succeeds and period attached				PENDING			
+TC-15	accounting	Posting in closed period	Blocked with explicit error				PENDING			
+TC-16	procurement	PO non-posting validation	PO creates no journal				PENDING			
+TC-17	procurement	GRN posting validation	GRN creates journal once				PENDING			
+TC-18	procurement	Vendor bill posting validation	Vendor bill creates journal once				PENDING			
+TC-19	procurement	Vendor payment posting validation	Vendor payment creates journal once				PENDING			
+TC-20	procurement	Idempotent posting retry	Retry does not duplicate journal				PENDING			
+TC-21	procurement	PR partial conversion	PR status becomes partially_converted				PENDING			
+TC-22	procurement	PR full conversion	PR status becomes converted_to_po				PENDING			
+TC-23	procurement	PR over-conversion guard	Conversion above remaining qty blocked				PENDING			
+TC-24	procurement	Cash purchase posting	Stock-in and journal follow config				PENDING			
+TC-25	procurement	Purchase return within cap	Posted successfully within remaining qty				PENDING			
+TC-26	procurement	Purchase return over cap	Line-specific validation error				PENDING			
+TC-27	procurement	Delivery note print output	Print includes required header/body fields				PENDING			
+TC-28	inventory	Runtime config approval-required type	Draft->submit->approve/post behavior				PENDING			
+TC-29	inventory	Runtime config auto-post type	Direct post on create				PENDING			
+TC-30	inventory	Location-specific issue	Deducts stock from selected location only				PENDING			
+TC-31	inventory	Department transfer movement	Warehouse decreases and department increases				PENDING			
+TC-32	inventory	Department over-decrease guard	Decrease beyond department stock blocked				PENDING			
+TC-33	inventory	FIFO allocation	Oldest batch consumed first				PENDING			
+TC-34	inventory	FIFO partial allocations	Issue allocations split correctly across batches				PENDING			
+TC-35	inventory	Expiry enforcement	Expired stock issue blocked/warned per policy				PENDING			
+TC-36	inventory	Opening balance posting	Document+line+movement+journal created				PENDING			
+TC-37	inventory	Opening balance idempotency	Retry does not duplicate journal				PENDING			
+TC-38	inventory	Opening balance reconciliation	Reconciliation command shows aligned values				PENDING			
+TC-39	item-master	Item COA validation	Requires active postable COA mapping				PENDING			
+TC-40	item-master	Vendor mapping atomicity	Invalid preferred vendor payload rolls back fully				PENDING			
+TC-41	item-master	Fixed price policy enforcement	Override rules enforced in PO/GRN/Cash Purchase				PENDING			
+TC-42	accounting	Accounting enablement matrix enabled types	Enabled types queue and post journals				PENDING			
+TC-43	accounting	Accounting enablement matrix disabled types	Disabled types stay operational and non-posting				PENDING			
+TC-44	accounting	Diagnostics command output	Commands show matrix and adapter coverage				PENDING			
+TC-45	accounting	Journal source traceability	Party/doc/source links visible in journal				PENDING			
+TC-46	accounting	Failure visibility	Failed posting reason visible near source				PENDING			
+TC-47	frontend	Comma amount formatting regression	All targeted pages show grouped amounts				PENDING			
+TC-48	frontend	Numeric input safety	No parsing/submission regression after formatting				PENDING			

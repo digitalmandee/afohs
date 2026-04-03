@@ -180,7 +180,7 @@ class ProcurementInsightsController extends Controller
         $query = VendorBill::query()
             ->with('vendor:id,name')
             ->whereIn('status', ['posted', 'partially_paid'])
-            ->whereRaw('(grand_total - paid_amount) > 0.009');
+            ->whereRaw('(grand_total - paid_amount - advance_applied_amount) > 0.009');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -225,7 +225,7 @@ class ProcurementInsightsController extends Controller
             $dueRef = $bill->due_date ?: $bill->bill_date;
             $ageDays = $dueRef ? Carbon::parse($dueRef)->diffInDays($today, false) : 0;
             $ageDays = max(0, $ageDays);
-            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount);
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
             $bucket = $ageDays <= 30 ? '0-30' : ($ageDays <= 60 ? '31-60' : ($ageDays <= 90 ? '61-90' : '90+'));
             $bill->outstanding = $outstanding;
             $bill->age_days = $ageDays;
@@ -235,10 +235,10 @@ class ProcurementInsightsController extends Controller
 
         $summary = [
             'count' => (int) $summaryQuery->count(),
-            'outstanding' => (float) ((clone $summaryQuery)->select(DB::raw('SUM(grand_total - paid_amount) as balance'))->value('balance') ?? 0),
+            'outstanding' => (float) ((clone $summaryQuery)->select(DB::raw('SUM(grand_total - paid_amount - advance_applied_amount) as balance'))->value('balance') ?? 0),
             'overdue_90_plus' => (float) ((clone $summaryQuery)
                 ->whereRaw('GREATEST(DATEDIFF(CURDATE(), COALESCE(due_date, bill_date)), 0) >= 91')
-                ->select(DB::raw('SUM(grand_total - paid_amount) as balance'))
+                ->select(DB::raw('SUM(grand_total - paid_amount - advance_applied_amount) as balance'))
                 ->value('balance') ?? 0),
         ];
 
@@ -313,7 +313,7 @@ class ProcurementInsightsController extends Controller
                 ]);
             }
 
-            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount);
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
             if ($allocatedAmount > $outstanding + 0.01) {
                 return redirect()->back()->withErrors([
                     'allocations' => "Allocated amount exceeds outstanding for bill {$bill->bill_no}.",
@@ -355,9 +355,10 @@ class ProcurementInsightsController extends Controller
                         'amount' => $allocation['amount'],
                     ]);
 
-                    $updatedPaid = min((float) $bill->grand_total, (float) $bill->paid_amount + (float) $allocation['amount']);
+                    $maxPayable = max(0, (float) $bill->grand_total - (float) $bill->advance_applied_amount);
+                    $updatedPaid = min($maxPayable, (float) $bill->paid_amount + (float) $allocation['amount']);
                     $bill->paid_amount = $updatedPaid;
-                    $bill->status = $updatedPaid >= ((float) $bill->grand_total - 0.01) ? 'paid' : 'partially_paid';
+                    $bill->status = ($updatedPaid + (float) $bill->advance_applied_amount) >= ((float) $bill->grand_total - 0.01) ? 'paid' : 'partially_paid';
                     $bill->save();
                 }
 

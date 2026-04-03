@@ -70,4 +70,9 @@ class Vendor extends Model
     {
         return $this->hasMany(VendorItemMapping::class);
     }
+
+    public function supplierAdvances()
+    {
+        return $this->hasMany(SupplierAdvance::class);
+    }
 }

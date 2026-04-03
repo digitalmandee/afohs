@@ -27,6 +27,7 @@ class PostingService
     ): JournalEntry
     {
         $createdBy = $this->resolveCreatedBy($createdBy);
+        $this->assertBalancedLines($lines);
 
         return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId) {
             $periodId = $this->accountingPeriodGate->resolveOpenPeriodId($entryDate);
@@ -86,5 +87,26 @@ class PostingService
         } while (JournalEntry::query()->where('entry_no', $candidate)->exists() && $attempts < 20);
 
         return $candidate;
+    }
+
+    private function assertBalancedLines(array $lines): void
+    {
+        if (empty($lines)) {
+            throw new \InvalidArgumentException('Journal posting requires at least one line.');
+        }
+
+        $debit = 0.0;
+        $credit = 0.0;
+        foreach ($lines as $idx => $line) {
+            if (empty($line['account_id'])) {
+                throw new \InvalidArgumentException("Journal line at index {$idx} is missing account_id.");
+            }
+            $debit += (float) ($line['debit'] ?? 0);
+            $credit += (float) ($line['credit'] ?? 0);
+        }
+
+        if (abs($debit - $credit) > 0.0001) {
+            throw new \InvalidArgumentException('Journal lines are unbalanced and cannot be posted.');
+        }
     }
 }

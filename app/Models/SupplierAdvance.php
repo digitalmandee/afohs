@@ -4,19 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class VendorPayment extends Model
+class SupplierAdvance extends Model
 {
     protected $fillable = [
-        'payment_no',
+        'advance_no',
         'vendor_id',
         'tenant_id',
+        'purchase_order_id',
         'payment_account_id',
-        'payment_date',
-        'method',
-        'payment_intent',
-        'source_document_id',
-        'source_document_type',
+        'advance_date',
         'amount',
+        'applied_amount',
         'status',
         'reference',
         'remarks',
@@ -26,9 +24,10 @@ class VendorPayment extends Model
     ];
 
     protected $casts = [
-        'payment_date' => 'date',
-        'posted_at' => 'datetime',
+        'advance_date' => 'date',
         'amount' => 'decimal:2',
+        'applied_amount' => 'decimal:2',
+        'posted_at' => 'datetime',
     ];
 
     public function vendor()
@@ -36,9 +35,9 @@ class VendorPayment extends Model
         return $this->belongsTo(Vendor::class);
     }
 
-    public function tenant()
+    public function purchaseOrder()
     {
-        return $this->belongsTo(Tenant::class, 'tenant_id');
+        return $this->belongsTo(PurchaseOrder::class);
     }
 
     public function paymentAccount()
@@ -46,13 +45,8 @@ class VendorPayment extends Model
         return $this->belongsTo(PaymentAccount::class, 'payment_account_id');
     }
 
-    public function allocations()
+    public function applications()
     {
-        return $this->hasMany(VendorPaymentAllocation::class);
-    }
-
-    public function sourceDocument()
-    {
-        return $this->morphTo(__FUNCTION__, 'source_document_type', 'source_document_id');
+        return $this->hasMany(SupplierAdvanceApplication::class);
     }
 }

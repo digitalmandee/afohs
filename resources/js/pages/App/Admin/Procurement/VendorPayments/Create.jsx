@@ -9,11 +9,13 @@ const accountMethodByPaymentMethod = {
   online: ['online', 'bank', 'bank_transfer'],
 };
 
-export default function Create({ vendors, paymentAccounts }) {
+export default function Create({ vendors, paymentAccounts, openVendorBills = [] }) {
   const { data, setData, post, processing, errors } = useForm({
     vendor_id: '',
     payment_date: new Date().toISOString().slice(0, 10),
     method: 'cash',
+    payment_intent: 'ledger_wise',
+    vendor_bill_id: '',
     payment_account_id: '',
     amount: 0,
     reference: '',
@@ -34,6 +36,10 @@ export default function Create({ vendors, paymentAccounts }) {
   const selectedVendor = React.useMemo(
     () => (vendors || []).find((vendor) => String(vendor.id) === String(data.vendor_id)),
     [vendors, data.vendor_id]
+  );
+  const billOptions = React.useMemo(
+    () => (openVendorBills || []).filter((bill) => String(bill.vendor_id) === String(data.vendor_id)),
+    [openVendorBills, data.vendor_id]
   );
 
   const submit = (e) => {
@@ -108,6 +114,41 @@ export default function Create({ vendors, paymentAccounts }) {
                   <MenuItem value="online">Online</MenuItem>
                 </TextField>
               </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  select
+                  label="Payment Intent"
+                  value={data.payment_intent}
+                  onChange={(e) => setData('payment_intent', e.target.value)}
+                  fullWidth
+                >
+                  <MenuItem value="ledger_wise">Ledger-wise</MenuItem>
+                  <MenuItem value="invoice_wise">Invoice-wise</MenuItem>
+                </TextField>
+              </Grid>
+              {data.payment_intent === 'invoice_wise' ? (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    select
+                    label="Vendor Bill"
+                    value={data.vendor_bill_id}
+                    onChange={(e) => setData('vendor_bill_id', e.target.value)}
+                    error={!!errors.vendor_bill_id}
+                    helperText={errors.vendor_bill_id}
+                    fullWidth
+                  >
+                    <MenuItem value="">Select Bill</MenuItem>
+                    {billOptions.map((bill) => {
+                      const outstanding = Number(bill.grand_total || 0) - Number(bill.paid_amount || 0) - Number(bill.advance_applied_amount || 0);
+                      return (
+                        <MenuItem key={bill.id} value={bill.id}>
+                          {bill.bill_no} (Outstanding: {outstanding.toFixed(2)})
+                        </MenuItem>
+                      );
+                    })}
+                  </TextField>
+                </Grid>
+              ) : null}
               <Grid item xs={12} md={4}>
                 <TextField
                   select

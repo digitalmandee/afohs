@@ -159,6 +159,7 @@ class InventoryItemController extends Controller
             'manage_stock' => 'nullable|boolean',
             'is_expiry_tracked' => 'nullable|boolean',
             'purchase_price_mode' => 'required|in:open,fixed',
+            'valuation_method' => 'nullable|in:fifo,weighted_average',
             'fixed_purchase_price' => 'nullable|numeric|min:0',
             'allow_price_override' => 'nullable|boolean',
             'max_price_variance_percent' => 'nullable|numeric|min:0|max:100',
@@ -181,6 +182,10 @@ class InventoryItemController extends Controller
             $data['fixed_purchase_price'] = null;
             $data['allow_price_override'] = true;
             $data['max_price_variance_percent'] = null;
+        }
+
+        if (empty($data['valuation_method'])) {
+            $data['valuation_method'] = 'fifo';
         }
 
         foreach (['inventory_account_id', 'cogs_account_id', 'purchase_account_id'] as $accountField) {

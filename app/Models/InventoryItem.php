@@ -32,9 +32,11 @@ class InventoryItem extends BaseModel
         'is_purchasable',
         'is_expiry_tracked',
         'purchase_price_mode',
+        'valuation_method',
         'fixed_purchase_price',
         'allow_price_override',
         'max_price_variance_percent',
+        'moving_average_cost',
         'status',
         'tenant_id',
         'created_by',
@@ -52,6 +54,7 @@ class InventoryItem extends BaseModel
         'fixed_purchase_price' => 'decimal:4',
         'allow_price_override' => 'boolean',
         'max_price_variance_percent' => 'decimal:2',
+        'moving_average_cost' => 'decimal:4',
     ];
 
     public function category()

@@ -24,6 +24,8 @@ class InventoryTransaction extends Model
         'reference_id',
         'reason',
         'status',
+        'valuation_method',
+        'valuation_rate',
         'created_by',
     ];
 
@@ -33,6 +35,7 @@ class InventoryTransaction extends Model
         'qty_out' => 'decimal:3',
         'unit_cost' => 'decimal:4',
         'total_cost' => 'decimal:4',
+        'valuation_rate' => 'decimal:4',
     ];
 
     public function tenant()

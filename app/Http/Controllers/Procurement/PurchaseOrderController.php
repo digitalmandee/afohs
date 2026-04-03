@@ -7,6 +7,7 @@ use App\Models\ApprovalAction;
 use App\Models\Ingredient;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
+use App\Models\PurchaseOrderRevision;
 use App\Models\PurchaseOrder;
 use App\Models\Tenant;
 use App\Models\Vendor;
@@ -358,6 +359,99 @@ class PurchaseOrderController extends Controller
         return redirect()->back()->with('success', 'Purchase order rejected.');
     }
 
+    public function revisions(PurchaseOrder $purchaseOrder)
+    {
+        $revisions = $purchaseOrder->revisions()->latest('revision_no')->get();
+
+        return response()->json([
+            'purchase_order_id' => $purchaseOrder->id,
+            'revisions' => $revisions,
+        ]);
+    }
+
+    public function amend(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        if (!$this->canAmendPurchaseOrder($request)) {
+            abort(403, 'Only procurement admins can amend posted purchase orders.');
+        }
+
+        if (!in_array($purchaseOrder->status, ['approved', 'partially_received', 'received'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'Only approved/received purchase orders can be amended.',
+            ]);
+        }
+
+        $data = $request->validate([
+            'change_reason' => 'required|string|min:5',
+            'expected_date' => 'nullable|date',
+            'remarks' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|exists:purchase_order_items,id',
+            'items.*.qty_ordered' => 'required|numeric|min:0.001',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        DB::transaction(function () use ($purchaseOrder, $data, $request) {
+            $purchaseOrder->load('items');
+            $snapshot = [
+                'order' => $purchaseOrder->only([
+                    'status', 'order_date', 'expected_date', 'currency', 'sub_total', 'tax_total', 'discount_total', 'grand_total', 'remarks',
+                ]),
+                'items' => $purchaseOrder->items->map->only(['id', 'inventory_item_id', 'qty_ordered', 'qty_received', 'unit_cost', 'line_total'])->values()->all(),
+            ];
+
+            $revisionNo = (int) ($purchaseOrder->revisions()->max('revision_no') ?? 0) + 1;
+            $purchaseOrder->revisions()->create([
+                'revision_no' => $revisionNo,
+                'snapshot' => $snapshot,
+                'change_reason' => $data['change_reason'],
+                'changed_by' => $request->user()?->id,
+            ]);
+
+            $itemsById = $purchaseOrder->items->keyBy('id');
+            $newSubTotal = 0.0;
+
+            foreach ($data['items'] as $line) {
+                $item = $itemsById->get((int) $line['id']);
+                if (!$item) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Amendment item is not part of this purchase order.',
+                    ]);
+                }
+                $newQty = (float) $line['qty_ordered'];
+                $receivedQty = (float) $item->qty_received;
+                if ($newQty + 0.0001 < $receivedQty) {
+                    throw ValidationException::withMessages([
+                        'items' => "Ordered quantity cannot be reduced below already received quantity for line {$item->id}.",
+                    ]);
+                }
+
+                $item->qty_ordered = $newQty;
+                $item->unit_cost = (float) $line['unit_cost'];
+                $item->line_total = $newQty * (float) $line['unit_cost'];
+                $item->save();
+                $newSubTotal += (float) $item->line_total;
+            }
+
+            $purchaseOrder->update([
+                'sub_total' => $newSubTotal,
+                'grand_total' => $newSubTotal,
+                'expected_date' => $data['expected_date'] ?? $purchaseOrder->expected_date,
+                'remarks' => $data['remarks'] ?? $purchaseOrder->remarks,
+            ]);
+
+            ApprovalAction::create([
+                'document_type' => 'purchase_order',
+                'document_id' => $purchaseOrder->id,
+                'action' => 'amended',
+                'remarks' => 'PO amended prospectively. Reason: ' . $data['change_reason'],
+                'action_by' => $request->user()?->id,
+            ]);
+        });
+
+        return redirect()->back()->with('success', 'Purchase order amended prospectively.');
+    }
+
     protected function buildProcurementProductOptions(array $warehouseIds = [])
     {
         $products = InventoryItem::query()
@@ -438,5 +532,23 @@ class PurchaseOrderController extends Controller
                 ]);
             }
         }
+    }
+
+    private function canAmendPurchaseOrder(Request $request): bool
+    {
+        $user = $request->user();
+        if (!$user) {
+            return false;
+        }
+
+        if (method_exists($user, 'hasRole') && ($user->hasRole('Super Admin') || $user->hasRole('Procurement Admin'))) {
+            return true;
+        }
+
+        if (method_exists($user, 'can') && ($user->can('procurement.purchase-order.amend') || $user->can('financial.manage'))) {
+            return true;
+        }
+
+        return false;
     }
 }

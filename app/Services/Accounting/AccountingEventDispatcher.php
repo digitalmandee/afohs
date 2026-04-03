@@ -10,6 +10,7 @@ use App\Services\Accounting\Adapters\FinancialInvoicePostingAdapter;
 use App\Services\Accounting\Adapters\FinancialReceiptPostingAdapter;
 use App\Services\Accounting\Adapters\GoodsReceiptPostingAdapter;
 use App\Services\Accounting\Adapters\InventoryDocumentPostingAdapter;
+use App\Services\Accounting\Adapters\SupplierAdvancePostingAdapter;
 use App\Services\Accounting\Adapters\VendorBillPostingAdapter;
 use App\Services\Accounting\Adapters\VendorPaymentPostingAdapter;
 use App\Services\Accounting\Contracts\PostingAdapter;
@@ -28,7 +29,8 @@ class AccountingEventDispatcher
         VendorBillPostingAdapter $vendorBillPostingAdapter,
         VendorPaymentPostingAdapter $vendorPaymentPostingAdapter,
         GoodsReceiptPostingAdapter $goodsReceiptPostingAdapter,
-        InventoryDocumentPostingAdapter $inventoryDocumentPostingAdapter
+        InventoryDocumentPostingAdapter $inventoryDocumentPostingAdapter,
+        SupplierAdvancePostingAdapter $supplierAdvancePostingAdapter
     )
     {
         $this->adapters = [
@@ -38,6 +40,7 @@ class AccountingEventDispatcher
             $vendorPaymentPostingAdapter,
             $goodsReceiptPostingAdapter,
             $inventoryDocumentPostingAdapter,
+            $supplierAdvancePostingAdapter,
         ];
     }
 
