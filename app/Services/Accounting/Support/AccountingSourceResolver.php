@@ -6,6 +6,7 @@ use App\Models\AccountingEventQueue;
 use App\Models\FinancialInvoice;
 use App\Models\FinancialReceipt;
 use App\Models\GoodsReceipt;
+use App\Models\InventoryDocument;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Tenant;
@@ -168,6 +169,28 @@ class AccountingSourceResolver
         ];
     }
 
+    public function resolveForInventoryDocument(InventoryDocument $document, ?AccountingEventQueue $event = null, ?JournalEntry $journal = null): array
+    {
+        $document->loadMissing('tenant');
+
+        return [
+            'source_module' => 'inventory',
+            'source_label' => 'Inventory Document',
+            'source_type' => (string) $document->type,
+            'source_id' => (int) $document->id,
+            'document_no' => (string) ($document->document_no ?: 'Document #' . $document->id),
+            'document_url' => $this->safeRoute('inventory.operations.index', ['search' => $document->id]),
+            'restaurant_id' => $event?->restaurant_id ?? $document->tenant_id,
+            'restaurant_name' => $event?->restaurant?->name ?? $document->tenant?->name ?? $this->restaurantName($document->tenant_id),
+            'posting_status' => $event?->status ?? ($journal ? 'posted' : 'not_configured'),
+            'journal_entry_id' => $event?->journal_entry_id ?? $journal?->id,
+            'failure_reason' => $event?->error_message,
+            'source_resolution_status' => $this->safeRoute('inventory.operations.index', ['search' => $document->id]) ? 'resolved' : 'unresolved',
+            'party_name' => null,
+            'party_code' => null,
+        ];
+    }
+
     public function resolveForJournalEntry(JournalEntry $entry): array
     {
         $entry->loadMissing('tenant');
@@ -208,6 +231,13 @@ class AccountingSourceResolver
             $receipt = GoodsReceipt::query()->with('tenant')->find($entry->module_id);
             if ($receipt) {
                 return $this->resolveForGoodsReceipt($receipt, null, $entry);
+            }
+        }
+
+        if (in_array($moduleType, ['opening_balance', 'stock_adjustment', 'cash_purchase', 'purchase_return', 'inventory_document'], true)) {
+            $document = InventoryDocument::query()->with('tenant')->find($entry->module_id);
+            if ($document) {
+                return $this->resolveForInventoryDocument($document, null, $entry);
             }
         }
 
@@ -271,6 +301,13 @@ class AccountingSourceResolver
             }
         }
 
+        if ($event->source_type === InventoryDocument::class) {
+            $document = InventoryDocument::query()->with('tenant')->find($event->source_id);
+            if ($document) {
+                return $this->resolveForInventoryDocument($document, $event, $event->journalEntry);
+            }
+        }
+
         return [
             'source_module' => 'finance',
             'source_label' => class_basename((string) $event->source_type),
@@ -316,6 +353,11 @@ class AccountingSourceResolver
             'vendor_bill' => 'Vendor Bill',
             'vendor_payment' => 'Vendor Payment',
             'goods_receipt', 'purchase_receipt' => 'Goods Receipt',
+            'opening_balance' => 'Opening Balance',
+            'stock_adjustment' => 'Stock Adjustment',
+            'cash_purchase' => 'Cash Purchase',
+            'purchase_return' => 'Purchase Return',
+            'inventory_document' => 'Inventory Document',
             default => ucwords(str_replace('_', ' ', $moduleType ?: 'general')),
         };
     }
@@ -336,6 +378,7 @@ class AccountingSourceResolver
             'room_invoice' => 'room',
             'event_invoice' => 'event',
             'vendor_bill', 'vendor_payment', 'goods_receipt', 'purchase_receipt' => 'procurement',
+            'opening_balance', 'stock_adjustment', 'cash_purchase', 'purchase_return', 'inventory_document' => 'inventory',
             default => 'finance',
         };
     }

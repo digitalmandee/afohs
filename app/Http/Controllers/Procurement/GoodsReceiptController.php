@@ -7,6 +7,7 @@ use App\Models\AccountingEventQueue;
 use App\Models\GoodsReceipt;
 use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
+use App\Models\VendorItemMapping;
 use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\Warehouse;
@@ -188,6 +189,19 @@ class GoodsReceiptController extends Controller
                     "items.{$index}.qty_received" => "Cannot receive more than available qty ({$available}) for this item.",
                 ]);
             }
+
+            $inventoryItem = \App\Models\InventoryItem::query()
+                ->find($item['inventory_item_id'], ['id', 'name', 'purchase_price_mode', 'fixed_purchase_price', 'allow_price_override', 'max_price_variance_percent']);
+            if ($inventoryItem) {
+                $this->assertPurchasePricePolicy(
+                    itemName: $inventoryItem->name,
+                    mode: (string) ($inventoryItem->purchase_price_mode ?? 'open'),
+                    fixedPrice: $inventoryItem->fixed_purchase_price,
+                    allowOverride: (bool) ($inventoryItem->allow_price_override ?? true),
+                    maxVariancePercent: $inventoryItem->max_price_variance_percent,
+                    inputUnitCost: (float) $item['unit_cost']
+                );
+            }
         }
 
         $receipt = GoodsReceipt::create([
@@ -240,6 +254,19 @@ class GoodsReceiptController extends Controller
                 $poItem->qty_received = (float) $poItem->qty_received + (float) $item['qty_received'];
                 $poItem->save();
             }
+
+            VendorItemMapping::query()->updateOrCreate(
+                [
+                    'vendor_id' => $po->vendor_id,
+                    'inventory_item_id' => $item['inventory_item_id'],
+                ],
+                [
+                    'tenant_id' => $po->tenant_id ?: $po->warehouse?->tenant_id,
+                    'last_purchase_price' => $item['unit_cost'],
+                    'currency' => 'PKR',
+                    'is_active' => true,
+                ]
+            );
         }
 
         $remaining = $po->items()->whereColumn('qty_received', '<', 'qty_ordered')->count();
@@ -262,5 +289,38 @@ class GoodsReceiptController extends Controller
         );
 
         return redirect()->route('procurement.goods-receipts.index')->with('success', 'Goods receipt created.');
+    }
+
+    private function assertPurchasePricePolicy(
+        string $itemName,
+        string $mode,
+        mixed $fixedPrice,
+        bool $allowOverride,
+        mixed $maxVariancePercent,
+        float $inputUnitCost
+    ): void {
+        if ($mode !== 'fixed') {
+            return;
+        }
+
+        $fixed = (float) ($fixedPrice ?? 0);
+        if ($fixed <= 0) {
+            return;
+        }
+
+        if (!$allowOverride && abs($inputUnitCost - $fixed) > 0.0001) {
+            throw ValidationException::withMessages([
+                'items' => "Item '{$itemName}' requires fixed purchase price ({$fixed}).",
+            ]);
+        }
+
+        if ($allowOverride && $maxVariancePercent !== null) {
+            $variance = abs($inputUnitCost - $fixed) / $fixed * 100;
+            if ($variance - (float) $maxVariancePercent > 0.0001) {
+                throw ValidationException::withMessages([
+                    'items' => "Item '{$itemName}' exceeds allowed variance ({$maxVariancePercent}%).",
+                ]);
+            }
+        }
     }
 }

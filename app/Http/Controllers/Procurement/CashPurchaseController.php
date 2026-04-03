@@ -10,6 +10,7 @@ use App\Models\InventoryItem;
 use App\Models\PaymentAccount;
 use App\Models\Tenant;
 use App\Models\Vendor;
+use App\Models\VendorItemMapping;
 use App\Models\Warehouse;
 use App\Services\Inventory\InventoryDocumentWorkflowService;
 use App\Services\Inventory\InventoryMovementService;
@@ -84,6 +85,28 @@ class CashPurchaseController extends Controller
             'items.*.qty' => 'required|numeric|min:0.001',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
+
+        if (empty($data['payment_account_id'])) {
+            return back()->withErrors([
+                'payment_account_id' => 'Payment account is required for cash purchase posting.',
+            ])->withInput();
+        }
+
+        foreach ($data['items'] as $item) {
+            $inventoryItem = InventoryItem::query()
+                ->find($item['inventory_item_id'], ['id', 'name', 'purchase_price_mode', 'fixed_purchase_price', 'allow_price_override', 'max_price_variance_percent']);
+            if (!$inventoryItem) {
+                continue;
+            }
+            $this->assertPurchasePricePolicy(
+                itemName: $inventoryItem->name,
+                mode: (string) ($inventoryItem->purchase_price_mode ?? 'open'),
+                fixedPrice: $inventoryItem->fixed_purchase_price,
+                allowOverride: (bool) ($inventoryItem->allow_price_override ?? true),
+                maxVariancePercent: $inventoryItem->max_price_variance_percent,
+                inputUnitCost: (float) $item['unit_cost']
+            );
+        }
 
         $cashPurchase = DB::transaction(function () use ($data) {
             $cpNo = $this->workflowService->nextDocumentNumber('cash_purchase');
@@ -188,6 +211,21 @@ class CashPurchaseController extends Controller
                     'reason' => 'Cash purchase receipt',
                     'created_by' => auth()->id(),
                 ]);
+
+                if ($cashPurchase->vendor_id) {
+                    VendorItemMapping::query()->updateOrCreate(
+                        [
+                            'vendor_id' => $cashPurchase->vendor_id,
+                            'inventory_item_id' => $line->inventory_item_id,
+                        ],
+                        [
+                            'tenant_id' => $cashPurchase->tenant_id,
+                            'last_purchase_price' => $line->unit_cost,
+                            'currency' => 'PKR',
+                            'is_active' => true,
+                        ]
+                    );
+                }
             }
 
             $this->workflowService->maybeQueueAccountingEvent($inventoryDocument);
@@ -206,5 +244,38 @@ class CashPurchaseController extends Controller
     {
         $cashPurchase->update(['status' => 'rejected']);
         return back()->with('success', 'Cash purchase rejected.');
+    }
+
+    private function assertPurchasePricePolicy(
+        string $itemName,
+        string $mode,
+        mixed $fixedPrice,
+        bool $allowOverride,
+        mixed $maxVariancePercent,
+        float $inputUnitCost
+    ): void {
+        if ($mode !== 'fixed') {
+            return;
+        }
+
+        $fixed = (float) ($fixedPrice ?? 0);
+        if ($fixed <= 0) {
+            return;
+        }
+
+        if (!$allowOverride && abs($inputUnitCost - $fixed) > 0.0001) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'items' => "Item '{$itemName}' requires fixed purchase price ({$fixed}).",
+            ]);
+        }
+
+        if ($allowOverride && $maxVariancePercent !== null) {
+            $variance = abs($inputUnitCost - $fixed) / $fixed * 100;
+            if ($variance - (float) $maxVariancePercent > 0.0001) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'items' => "Item '{$itemName}' exceeds allowed variance ({$maxVariancePercent}%).",
+                ]);
+            }
+        }
     }
 }

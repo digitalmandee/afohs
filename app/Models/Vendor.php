@@ -65,4 +65,9 @@ class Vendor extends Model
     {
         return $this->hasMany(VendorBankAccount::class);
     }
+
+    public function itemMappings()
+    {
+        return $this->hasMany(VendorItemMapping::class);
+    }
 }

@@ -189,7 +189,7 @@ class PurchaseOrderController extends Controller
 
         $inventoryItems = InventoryItem::query()
             ->whereIn('id', $submittedItemIds)
-            ->get(['id', 'legacy_product_id'])
+            ->get(['id', 'legacy_product_id', 'name', 'purchase_price_mode', 'fixed_purchase_price', 'allow_price_override', 'max_price_variance_percent'])
             ->keyBy('id');
 
         $invalidIds = $submittedItemIds->diff($eligibleIds)->values();
@@ -237,9 +237,20 @@ class PurchaseOrderController extends Controller
 
             $subTotal = 0;
             foreach ($data['items'] as $item) {
+                $inventoryItem = $inventoryItems->get((int) $item['inventory_item_id']);
+                if ($inventoryItem) {
+                    $this->assertPurchasePricePolicy(
+                        itemName: $inventoryItem->name,
+                        mode: (string) ($inventoryItem->purchase_price_mode ?? 'open'),
+                        fixedPrice: $inventoryItem->fixed_purchase_price,
+                        allowOverride: (bool) ($inventoryItem->allow_price_override ?? true),
+                        maxVariancePercent: $inventoryItem->max_price_variance_percent,
+                        inputUnitCost: (float) $item['unit_cost']
+                    );
+                }
+
                 $lineTotal = $item['qty_ordered'] * $item['unit_cost'];
                 $subTotal += $lineTotal;
-                $inventoryItem = $inventoryItems->get((int) $item['inventory_item_id']);
 
                 $order->items()->create([
                     'product_id' => $inventoryItem?->legacy_product_id,
@@ -394,5 +405,38 @@ class PurchaseOrderController extends Controller
                 'stock_by_warehouse' => $warehouseSnapshots,
             ];
         });
+    }
+
+    private function assertPurchasePricePolicy(
+        string $itemName,
+        string $mode,
+        mixed $fixedPrice,
+        bool $allowOverride,
+        mixed $maxVariancePercent,
+        float $inputUnitCost
+    ): void {
+        if ($mode !== 'fixed') {
+            return;
+        }
+
+        $fixed = (float) ($fixedPrice ?? 0);
+        if ($fixed <= 0) {
+            return;
+        }
+
+        if (!$allowOverride && abs($inputUnitCost - $fixed) > 0.0001) {
+            throw ValidationException::withMessages([
+                'items' => "Item '{$itemName}' requires fixed purchase price ({$fixed}).",
+            ]);
+        }
+
+        if ($allowOverride && $maxVariancePercent !== null) {
+            $variance = abs($inputUnitCost - $fixed) / $fixed * 100;
+            if ($variance - (float) $maxVariancePercent > 0.0001) {
+                throw ValidationException::withMessages([
+                    'items' => "Item '{$itemName}' exceeds allowed variance ({$maxVariancePercent}%).",
+                ]);
+            }
+        }
     }
 }

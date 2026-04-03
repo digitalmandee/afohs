@@ -12,9 +12,11 @@ use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
 use App\Services\Inventory\InventoryDocumentWorkflowService;
 use App\Services\Inventory\InventoryMovementService;
+use InvalidArgumentException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 use Inertia\Inertia;
 
 class InventoryDocumentFlowController extends Controller
@@ -118,6 +120,12 @@ class InventoryDocumentFlowController extends Controller
             'items.*.unit_cost' => 'nullable|numeric|min:0',
         ]);
 
+        if (in_array($data['type'], ['department_transfer_note', 'department_adjustment', 'store_issue_note', 'material_issue_note'], true) && empty($data['department_id'])) {
+            throw ValidationException::withMessages([
+                'department_id' => 'Department is required for department/consumption issue documents.',
+            ]);
+        }
+
         $documentNo = $this->workflowService->nextDocumentNumber($data['type']);
 
         $document = DB::transaction(function () use ($data, $documentNo) {
@@ -182,18 +190,27 @@ class InventoryDocumentFlowController extends Controller
 
     public function approve(InventoryDocument $inventoryDocument)
     {
-        DB::transaction(function () use ($inventoryDocument) {
-            $document = InventoryDocument::query()
-                ->lockForUpdate()
-                ->findOrFail($inventoryDocument->id);
+        try {
+            DB::transaction(function () use ($inventoryDocument) {
+                $document = InventoryDocument::query()
+                    ->lockForUpdate()
+                    ->findOrFail($inventoryDocument->id);
 
-            if ($document->status === 'posted') {
-                return;
-            }
+                if ($document->status === 'posted') {
+                    return;
+                }
 
-            $document = $this->workflowService->approveDocument($document, auth()->id());
-            $this->postDocument($document);
-        });
+                $document = $this->workflowService->approveDocument($document, auth()->id());
+                $this->postDocument($document);
+            });
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'document' => $exception->getMessage(),
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+            return back()->with('error', 'Approve/Post failed. Please verify stock, warehouse/location, and document setup, then try again.');
+        }
 
         return back()->with('success', 'Document approved and posted.');
     }
@@ -216,6 +233,22 @@ class InventoryDocumentFlowController extends Controller
                 if (!$document->source_warehouse_id) {
                     throw ValidationException::withMessages(['source_warehouse_id' => 'Source warehouse is required for issue/department transfer notes.']);
                 }
+                $this->assertWarehouseContext(
+                    (int) $document->source_warehouse_id,
+                    $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null,
+                    $document->tenant_id ? (int) $document->tenant_id : null
+                );
+
+                $available = $this->movementService->availableQuantity(
+                    (int) $line->inventory_item_id,
+                    (int) $document->source_warehouse_id,
+                    $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null
+                );
+                if ($available + 0.0001 < $quantity) {
+                    throw ValidationException::withMessages([
+                        'items' => "Insufficient stock for item {$line->inventory_item_id} in source warehouse/location.",
+                    ]);
+                }
 
                 $this->movementService->record([
                     'inventory_item_id' => $line->inventory_item_id,
@@ -232,6 +265,7 @@ class InventoryDocumentFlowController extends Controller
                     'reference_id' => $document->id,
                     'reason' => $document->type,
                     'created_by' => auth()->id(),
+                    'enforce_expiry' => true,
                 ]);
             }
 
@@ -239,6 +273,11 @@ class InventoryDocumentFlowController extends Controller
                 if (!$document->destination_warehouse_id) {
                     throw ValidationException::withMessages(['destination_warehouse_id' => 'Destination warehouse is required for material receipt note.']);
                 }
+                $this->assertWarehouseContext(
+                    (int) $document->destination_warehouse_id,
+                    $document->destination_warehouse_location_id ? (int) $document->destination_warehouse_location_id : null,
+                    $document->tenant_id ? (int) $document->tenant_id : null
+                );
 
                 $this->movementService->record([
                     'inventory_item_id' => $line->inventory_item_id,
@@ -262,6 +301,27 @@ class InventoryDocumentFlowController extends Controller
                 if (!$document->source_warehouse_id || !$document->destination_warehouse_id) {
                     throw ValidationException::withMessages(['warehouse' => 'Source and destination warehouses are required for warehouse transfers.']);
                 }
+                $this->assertWarehouseContext(
+                    (int) $document->source_warehouse_id,
+                    $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null,
+                    $document->tenant_id ? (int) $document->tenant_id : null
+                );
+                $this->assertWarehouseContext(
+                    (int) $document->destination_warehouse_id,
+                    $document->destination_warehouse_location_id ? (int) $document->destination_warehouse_location_id : null,
+                    $document->tenant_id ? (int) $document->tenant_id : null
+                );
+
+                $available = $this->movementService->availableQuantity(
+                    (int) $line->inventory_item_id,
+                    (int) $document->source_warehouse_id,
+                    $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null
+                );
+                if ($available + 0.0001 < $quantity) {
+                    throw ValidationException::withMessages([
+                        'items' => "Insufficient stock for item {$line->inventory_item_id} in source warehouse/location.",
+                    ]);
+                }
 
                 $this->movementService->record([
                     'inventory_item_id' => $line->inventory_item_id,
@@ -278,6 +338,7 @@ class InventoryDocumentFlowController extends Controller
                     'reference_id' => $document->id,
                     'reason' => $document->type,
                     'created_by' => auth()->id(),
+                    'enforce_expiry' => true,
                 ]);
 
                 $this->movementService->record([
@@ -306,8 +367,34 @@ class InventoryDocumentFlowController extends Controller
                 if (!$document->source_warehouse_id && !$document->destination_warehouse_id) {
                     throw ValidationException::withMessages(['warehouse' => 'Warehouse is required for stock adjustment.']);
                 }
+                if ($document->source_warehouse_id) {
+                    $this->assertWarehouseContext(
+                        (int) $document->source_warehouse_id,
+                        $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null,
+                        $document->tenant_id ? (int) $document->tenant_id : null
+                    );
+                }
+                if ($document->destination_warehouse_id) {
+                    $this->assertWarehouseContext(
+                        (int) $document->destination_warehouse_id,
+                        $document->destination_warehouse_location_id ? (int) $document->destination_warehouse_location_id : null,
+                        $document->tenant_id ? (int) $document->tenant_id : null
+                    );
+                }
 
                 $isOut = (bool) $document->source_warehouse_id;
+                if ($isOut) {
+                    $available = $this->movementService->availableQuantity(
+                        (int) $line->inventory_item_id,
+                        (int) $document->source_warehouse_id,
+                        $document->source_warehouse_location_id ? (int) $document->source_warehouse_location_id : null
+                    );
+                    if ($available + 0.0001 < $quantity) {
+                        throw ValidationException::withMessages([
+                            'items' => "Insufficient stock for item {$line->inventory_item_id} in source warehouse/location.",
+                        ]);
+                    }
+                }
                 $this->movementService->record([
                     'inventory_item_id' => $line->inventory_item_id,
                     'tenant_id' => $document->tenant_id,
@@ -323,6 +410,7 @@ class InventoryDocumentFlowController extends Controller
                     'reference_id' => $document->id,
                     'reason' => $document->type,
                     'created_by' => auth()->id(),
+                    'enforce_expiry' => $isOut,
                 ]);
             }
 
@@ -363,5 +451,24 @@ class InventoryDocumentFlowController extends Controller
         $this->workflowService->maybeQueueAccountingEvent($document);
 
         return $document;
+    }
+
+    private function assertWarehouseContext(int $warehouseId, ?int $locationId = null, ?int $tenantId = null): void
+    {
+        $warehouse = Warehouse::query()->findOrFail($warehouseId);
+        if ($tenantId && (int) $warehouse->tenant_id !== (int) $tenantId) {
+            throw ValidationException::withMessages([
+                'tenant_id' => 'Selected warehouse does not belong to the selected restaurant.',
+            ]);
+        }
+
+        if ($locationId) {
+            $location = WarehouseLocation::query()->findOrFail($locationId);
+            if ((int) $location->warehouse_id !== (int) $warehouse->id) {
+                throw ValidationException::withMessages([
+                    'warehouse_location_id' => 'Selected location does not belong to the selected warehouse.',
+                ]);
+            }
+        }
     }
 }

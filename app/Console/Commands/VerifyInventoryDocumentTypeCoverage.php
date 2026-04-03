@@ -14,6 +14,7 @@ class VerifyInventoryDocumentTypeCoverage extends Command
     protected $description = 'Verify inventory_documents.type enum includes active mapped document type configs.';
 
     private const MAPPED_CODES = [
+        'opening_balance',
         'purchase_requisition',
         'cash_purchase',
         'purchase_return',
@@ -27,6 +28,13 @@ class VerifyInventoryDocumentTypeCoverage extends Command
         'department_transfer_note',
         'department_adjustment',
         'stock_audit',
+    ];
+
+    private const ADAPTER_SUPPORTED_ACCOUNTING_CODES = [
+        'cash_purchase',
+        'purchase_return',
+        'opening_balance',
+        'stock_adjustment',
     ];
 
     public function handle(): int
@@ -60,6 +68,50 @@ class VerifyInventoryDocumentTypeCoverage extends Command
         $missing = array_values(array_diff($expected, $enumValues));
         if (!empty($missing)) {
             $this->error('Enum coverage failed. Missing values: ' . implode(', ', $missing));
+            return self::FAILURE;
+        }
+
+        $this->newLine();
+        $this->info('Posting Matrix');
+
+        $matrixCodes = ['cash_purchase', 'purchase_return', 'opening_balance', 'stock_adjustment'];
+        $configs = InventoryDocumentTypeConfig::query()
+            ->whereIn('code', $matrixCodes)
+            ->get()
+            ->keyBy('code');
+
+        $rows = [];
+        foreach ($matrixCodes as $code) {
+            $config = $configs->get($code);
+            $adapterSupported = in_array($code, self::ADAPTER_SUPPORTED_ACCOUNTING_CODES, true);
+            $rows[] = [
+                'code' => $code,
+                'auto_post' => $config?->auto_post ? 'yes' : 'no',
+                'approval_required' => $config?->approval_required ? 'yes' : 'no',
+                'accounting_enabled' => $config?->accounting_enabled ? 'yes' : 'no',
+                'adapter_supported' => $adapterSupported ? 'yes' : 'no',
+            ];
+        }
+
+        $this->table(
+            ['code', 'auto_post', 'approval_required', 'accounting_enabled', 'adapter_supported'],
+            $rows
+        );
+
+        $unsupportedEnabled = InventoryDocumentTypeConfig::query()
+            ->where('is_active', true)
+            ->where('accounting_enabled', true)
+            ->pluck('code')
+            ->filter(fn ($code) => !in_array((string) $code, self::ADAPTER_SUPPORTED_ACCOUNTING_CODES, true))
+            ->values()
+            ->all();
+
+        if (!empty($unsupportedEnabled)) {
+            $this->error(
+                'Accounting is enabled for unsupported inventory document type(s): '
+                . implode(', ', $unsupportedEnabled)
+                . '. Disable accounting_enabled or add adapter mappings.'
+            );
             return self::FAILURE;
         }
 

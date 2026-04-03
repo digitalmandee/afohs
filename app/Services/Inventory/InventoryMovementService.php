@@ -4,7 +4,10 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryDocument;
 use App\Models\InventoryDocumentTypeConfig;
+use App\Models\InventoryDocumentLine;
+use App\Models\InventoryIssueAllocation;
 use App\Models\InventoryItem;
+use App\Models\InventoryBatch;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
@@ -14,43 +17,95 @@ class InventoryMovementService
 {
     public function record(array $attributes): InventoryTransaction
     {
-        $inventoryItemId = $attributes['inventory_item_id'] ?? null;
-        $productId = $attributes['product_id'] ?? null;
-        if (!$productId && $inventoryItemId) {
-            $productId = $this->resolveLedgerProductId((int) $inventoryItemId);
-        }
-
-        $transaction = InventoryTransaction::create([
-            'product_id' => $productId,
-            'inventory_item_id' => $inventoryItemId,
-            'tenant_id' => $attributes['tenant_id'] ?? null,
-            'warehouse_id' => $attributes['warehouse_id'],
-            'warehouse_location_id' => $attributes['warehouse_location_id'] ?? null,
-            'transaction_date' => $attributes['transaction_date'],
-            'type' => $attributes['type'],
-            'qty_in' => $attributes['qty_in'] ?? 0,
-            'qty_out' => $attributes['qty_out'] ?? 0,
-            'unit_cost' => $attributes['unit_cost'] ?? 0,
-            'total_cost' => $attributes['total_cost'] ?? 0,
-            'reference_type' => $attributes['reference_type'] ?? null,
-            'reference_id' => $attributes['reference_id'] ?? null,
-            'reason' => $attributes['reason'] ?? null,
-            'status' => $attributes['status'] ?? 'posted',
-            'created_by' => $attributes['created_by'] ?? null,
-        ]);
-
-        $delta = (float) ($transaction->qty_in ?? 0) - (float) ($transaction->qty_out ?? 0);
-        if (abs($delta) > 0.0001) {
-            if ($inventoryItemId) {
-                InventoryItem::query()->whereKey($inventoryItemId)->increment('current_stock', $delta);
+        return DB::transaction(function () use ($attributes) {
+            $inventoryItemId = $attributes['inventory_item_id'] ?? null;
+            $productId = $attributes['product_id'] ?? null;
+            if (!$productId && $inventoryItemId) {
+                $productId = $this->resolveLedgerProductId((int) $inventoryItemId);
             }
 
-            if ($productId) {
-                Product::query()->whereKey($productId)->increment('current_stock', $delta);
-            }
-        }
+            $warehouseId = (int) $attributes['warehouse_id'];
+            $locationId = isset($attributes['warehouse_location_id']) ? (int) $attributes['warehouse_location_id'] : null;
+            $qtyIn = (float) ($attributes['qty_in'] ?? 0);
+            $qtyOut = (float) ($attributes['qty_out'] ?? 0);
+            $unitCost = (float) ($attributes['unit_cost'] ?? 0);
+            $totalCost = (float) ($attributes['total_cost'] ?? 0);
+            $transactionDate = (string) $attributes['transaction_date'];
 
-        return $transaction;
+            $fifoMeta = null;
+            if ($inventoryItemId && $qtyOut > 0.0001) {
+                $fifoMeta = $this->allocateOutflowBatches(
+                    (int) $inventoryItemId,
+                    $warehouseId,
+                    $locationId,
+                    $qtyOut,
+                    $transactionDate,
+                    (bool) ($attributes['enforce_expiry'] ?? true)
+                );
+                $unitCost = $fifoMeta['effective_unit_cost'];
+                $totalCost = $fifoMeta['effective_total_cost'];
+            }
+
+            $transaction = InventoryTransaction::create([
+                'product_id' => $productId,
+                'inventory_item_id' => $inventoryItemId,
+                'tenant_id' => $attributes['tenant_id'] ?? null,
+                'warehouse_id' => $warehouseId,
+                'warehouse_location_id' => $locationId,
+                'transaction_date' => $transactionDate,
+                'type' => $attributes['type'],
+                'qty_in' => $qtyIn,
+                'qty_out' => $qtyOut,
+                'unit_cost' => $unitCost,
+                'total_cost' => $totalCost,
+                'reference_type' => $attributes['reference_type'] ?? null,
+                'reference_id' => $attributes['reference_id'] ?? null,
+                'reason' => $attributes['reason'] ?? null,
+                'status' => $attributes['status'] ?? 'posted',
+                'created_by' => $attributes['created_by'] ?? null,
+            ]);
+
+            if ($inventoryItemId && $qtyIn > 0.0001) {
+                $this->createInflowBatch(
+                    inventoryItemId: (int) $inventoryItemId,
+                    tenantId: $attributes['tenant_id'] ?? null,
+                    warehouseId: $warehouseId,
+                    locationId: $locationId,
+                    transactionDate: $transactionDate,
+                    quantity: $qtyIn,
+                    unitCost: $unitCost,
+                    referenceType: $attributes['reference_type'] ?? null,
+                    referenceId: $attributes['reference_id'] ?? null,
+                    explicitBatchNo: $attributes['batch_no'] ?? null,
+                    expiryDate: $attributes['expiry_date'] ?? null,
+                );
+            }
+
+            if ($fifoMeta && !empty($fifoMeta['allocations'])) {
+                foreach ($fifoMeta['allocations'] as $allocation) {
+                    InventoryIssueAllocation::query()->create([
+                        'inventory_transaction_id' => $transaction->id,
+                        'inventory_batch_id' => $allocation['batch_id'],
+                        'quantity' => $allocation['quantity'],
+                        'unit_cost' => $allocation['unit_cost'],
+                        'total_cost' => $allocation['total_cost'],
+                    ]);
+                }
+            }
+
+            $delta = (float) ($transaction->qty_in ?? 0) - (float) ($transaction->qty_out ?? 0);
+            if (abs($delta) > 0.0001) {
+                if ($inventoryItemId) {
+                    InventoryItem::query()->whereKey($inventoryItemId)->increment('current_stock', $delta);
+                }
+
+                if ($productId) {
+                    Product::query()->whereKey($productId)->increment('current_stock', $delta);
+                }
+            }
+
+            return $transaction;
+        });
     }
 
     protected function resolveLedgerProductId(int $inventoryItemId): ?int
@@ -123,8 +178,26 @@ class InventoryMovementService
                 'destination_warehouse_location_id' => $payload['warehouse_location_id'] ?? null,
                 'transaction_date' => $payload['transaction_date'],
                 'status' => 'posted',
+                'approval_status' => 'approved',
                 'remarks' => $payload['remarks'] ?? 'Opening balance',
+                'posting_key' => 'opening-balance:' . now()->format('YmdHis') . ':' . ($payload['inventory_item_id'] ?? 'na'),
+                'approved_at' => now(),
+                'approved_by' => $payload['created_by'] ?? null,
+                'posted_at' => now(),
                 'created_by' => $payload['created_by'] ?? null,
+            ]);
+
+            $lineTotal = (float) $payload['quantity'] * (float) $payload['unit_cost'];
+            InventoryDocumentLine::query()->create([
+                'inventory_document_id' => $document->id,
+                'inventory_item_id' => $payload['inventory_item_id'],
+                'quantity' => $payload['quantity'],
+                'unit_cost' => $payload['unit_cost'],
+                'line_total' => $lineTotal,
+            ]);
+
+            $document->update([
+                'posting_key' => "opening-balance:{$document->id}",
             ]);
 
             $this->record([
@@ -145,6 +218,8 @@ class InventoryMovementService
                 'status' => 'posted',
                 'created_by' => $payload['created_by'] ?? null,
             ]);
+
+            app(InventoryDocumentWorkflowService::class)->maybeQueueAccountingEvent($document->fresh());
 
             return $document;
         });
@@ -328,5 +403,163 @@ class InventoryMovementService
         return (float) $query
             ->selectRaw('COALESCE(SUM(qty_in - qty_out), 0) as balance')
             ->value('balance');
+    }
+
+    private function createInflowBatch(
+        int $inventoryItemId,
+        ?int $tenantId,
+        int $warehouseId,
+        ?int $locationId,
+        string $transactionDate,
+        float $quantity,
+        float $unitCost,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?string $explicitBatchNo = null,
+        ?string $expiryDate = null
+    ): void {
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $batchNo = $explicitBatchNo ?: sprintf(
+            'B-%s-%d-%d',
+            now()->format('YmdHis'),
+            $inventoryItemId,
+            random_int(100, 999)
+        );
+
+        InventoryBatch::query()->create([
+            'inventory_item_id' => $inventoryItemId,
+            'tenant_id' => $tenantId,
+            'warehouse_id' => $warehouseId,
+            'warehouse_location_id' => $locationId,
+            'batch_no' => $batchNo,
+            'received_date' => $transactionDate,
+            'expiry_date' => $expiryDate,
+            'unit_cost' => $unitCost,
+            'original_qty' => $quantity,
+            'remaining_qty' => $quantity,
+            'status' => 'open',
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+        ]);
+    }
+
+    private function allocateOutflowBatches(
+        int $inventoryItemId,
+        int $warehouseId,
+        ?int $locationId,
+        float $requiredQty,
+        string $transactionDate,
+        bool $enforceExpiry
+    ): array {
+        $item = InventoryItem::query()->find($inventoryItemId);
+        if (!$item) {
+            throw new InvalidArgumentException('Inventory item not found for FIFO allocation.');
+        }
+
+        $available = $this->availableQuantity($inventoryItemId, $warehouseId, $locationId);
+        if ($available + 0.0001 < $requiredQty) {
+            throw new InvalidArgumentException('Issue quantity exceeds available stock for the selected warehouse/location.');
+        }
+
+        $this->backfillLegacyBatchGap($item, $warehouseId, $locationId, $transactionDate);
+
+        $query = InventoryBatch::query()
+            ->where('inventory_item_id', $inventoryItemId)
+            ->where('warehouse_id', $warehouseId)
+            ->when($locationId, fn ($builder) => $builder->where('warehouse_location_id', $locationId))
+            ->where('remaining_qty', '>', 0.0001)
+            ->orderBy('received_date')
+            ->orderBy('id');
+
+        if ($enforceExpiry && $item->is_expiry_tracked) {
+            $query->where(function ($builder) use ($transactionDate) {
+                $builder->whereNull('expiry_date')
+                    ->orWhereDate('expiry_date', '>=', $transactionDate);
+            });
+        }
+
+        $batches = $query->lockForUpdate()->get();
+        $remaining = $requiredQty;
+        $allocations = [];
+        $totalCost = 0.0;
+
+        foreach ($batches as $batch) {
+            if ($remaining <= 0.0001) {
+                break;
+            }
+
+            $consumeQty = min($remaining, (float) $batch->remaining_qty);
+            if ($consumeQty <= 0.0001) {
+                continue;
+            }
+
+            $lineCost = $consumeQty * (float) $batch->unit_cost;
+            $allocations[] = [
+                'batch_id' => (int) $batch->id,
+                'quantity' => $consumeQty,
+                'unit_cost' => (float) $batch->unit_cost,
+                'total_cost' => $lineCost,
+            ];
+
+            $batch->remaining_qty = (float) $batch->remaining_qty - $consumeQty;
+            $batch->status = $batch->remaining_qty > 0.0001 ? 'open' : 'closed';
+            $batch->save();
+
+            $totalCost += $lineCost;
+            $remaining -= $consumeQty;
+        }
+
+        if ($remaining > 0.0001) {
+            throw new InvalidArgumentException('Insufficient FIFO batches available to allocate this stock outflow.');
+        }
+
+        return [
+            'allocations' => $allocations,
+            'effective_total_cost' => $totalCost,
+            'effective_unit_cost' => $requiredQty > 0 ? ($totalCost / $requiredQty) : 0,
+        ];
+    }
+
+    private function backfillLegacyBatchGap(
+        InventoryItem $item,
+        int $warehouseId,
+        ?int $locationId,
+        string $transactionDate
+    ): void {
+        $stockOnHand = $this->availableQuantity($item->id, $warehouseId, $locationId);
+        if ($stockOnHand <= 0.0001) {
+            return;
+        }
+
+        $batchQty = (float) InventoryBatch::query()
+            ->where('inventory_item_id', $item->id)
+            ->where('warehouse_id', $warehouseId)
+            ->when($locationId, fn ($builder) => $builder->where('warehouse_location_id', $locationId))
+            ->selectRaw('COALESCE(SUM(remaining_qty), 0) as qty')
+            ->value('qty');
+
+        $gap = $stockOnHand - $batchQty;
+        if ($gap <= 0.0001) {
+            return;
+        }
+
+        InventoryBatch::query()->create([
+            'inventory_item_id' => $item->id,
+            'tenant_id' => $item->tenant_id,
+            'warehouse_id' => $warehouseId,
+            'warehouse_location_id' => $locationId,
+            'batch_no' => sprintf('LEGACY-%d-%d-%s', $item->id, $warehouseId, now()->format('YmdHis')),
+            'received_date' => $transactionDate,
+            'expiry_date' => null,
+            'unit_cost' => (float) ($item->fixed_purchase_price ?? $item->default_unit_cost ?? 0),
+            'original_qty' => $gap,
+            'remaining_qty' => $gap,
+            'status' => 'open',
+            'reference_type' => InventoryItem::class,
+            'reference_id' => $item->id,
+        ]);
     }
 }

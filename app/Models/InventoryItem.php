@@ -22,11 +22,19 @@ class InventoryItem extends BaseModel
         'category_id',
         'manufacturer_id',
         'unit_id',
+        'inventory_account_id',
+        'cogs_account_id',
+        'purchase_account_id',
         'default_unit_cost',
         'current_stock',
         'minimum_stock',
         'manage_stock',
         'is_purchasable',
+        'is_expiry_tracked',
+        'purchase_price_mode',
+        'fixed_purchase_price',
+        'allow_price_override',
+        'max_price_variance_percent',
         'status',
         'tenant_id',
         'created_by',
@@ -40,6 +48,10 @@ class InventoryItem extends BaseModel
         'minimum_stock' => 'decimal:3',
         'manage_stock' => 'boolean',
         'is_purchasable' => 'boolean',
+        'is_expiry_tracked' => 'boolean',
+        'fixed_purchase_price' => 'decimal:4',
+        'allow_price_override' => 'boolean',
+        'max_price_variance_percent' => 'decimal:2',
     ];
 
     public function category()
@@ -57,6 +69,21 @@ class InventoryItem extends BaseModel
         return $this->belongsTo(PosUnit::class, 'unit_id');
     }
 
+    public function inventoryAccount()
+    {
+        return $this->belongsTo(CoaAccount::class, 'inventory_account_id');
+    }
+
+    public function cogsAccount()
+    {
+        return $this->belongsTo(CoaAccount::class, 'cogs_account_id');
+    }
+
+    public function purchaseAccount()
+    {
+        return $this->belongsTo(CoaAccount::class, 'purchase_account_id');
+    }
+
     public function tenant()
     {
         return $this->belongsTo(Tenant::class);
@@ -70,6 +97,16 @@ class InventoryItem extends BaseModel
     public function legacyProduct()
     {
         return $this->belongsTo(Product::class, 'legacy_product_id');
+    }
+
+    public function vendorMappings()
+    {
+        return $this->hasMany(VendorItemMapping::class);
+    }
+
+    public function batches()
+    {
+        return $this->hasMany(InventoryBatch::class);
     }
 
     public function scopeProcurementEligible(Builder $query): Builder

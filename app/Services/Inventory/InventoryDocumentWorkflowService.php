@@ -9,6 +9,7 @@ use App\Models\DepartmentInventoryTransaction;
 use App\Models\InventoryDocument;
 use App\Models\InventoryDocumentTypeConfig;
 use App\Models\InventoryItem;
+use App\Models\InventoryDocument as InventoryDocumentModel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -172,8 +173,8 @@ class InventoryDocumentWorkflowService
         }
 
         AccountingEventQueue::query()->create([
-            'module_type' => 'inventory_document',
-            'module_id' => $document->id,
+            'source_type' => InventoryDocumentModel::class,
+            'source_id' => $document->id,
             'event_type' => 'document_posted',
             'status' => 'pending',
             'payload' => [
@@ -181,9 +182,10 @@ class InventoryDocumentWorkflowService
                 'document_type' => $document->type,
                 'tenant_id' => $document->tenant_id,
             ],
-            'occurred_at' => now(),
             'idempotency_key' => $idempotencyKey,
-            'attempts' => 0,
+            'retry_count' => 0,
+            'created_by' => $document->created_by,
+            'restaurant_id' => $document->tenant_id,
         ]);
     }
 

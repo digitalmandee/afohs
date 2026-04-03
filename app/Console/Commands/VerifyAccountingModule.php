@@ -7,6 +7,7 @@ use App\Models\AccountingPeriod;
 use App\Models\AccountingPostingLog;
 use App\Models\AccountingRule;
 use App\Models\CoaAccount;
+use App\Models\InventoryDocumentTypeConfig;
 use App\Models\PaymentAccount;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
@@ -113,6 +114,35 @@ class VerifyAccountingModule extends Command
 
         $this->newLine();
         $this->info('Event Queue');
+
+        if (Schema::hasTable('inventory_document_type_configs')) {
+            $this->newLine();
+            $this->info('Inventory Document Posting Matrix');
+
+            $matrixCodes = ['cash_purchase', 'purchase_return', 'opening_balance', 'stock_adjustment'];
+            $supportedByAdapter = ['cash_purchase', 'purchase_return', 'opening_balance', 'stock_adjustment'];
+            $configs = InventoryDocumentTypeConfig::query()
+                ->whereIn('code', $matrixCodes)
+                ->get()
+                ->keyBy('code');
+
+            $rows = [];
+            foreach ($matrixCodes as $code) {
+                $config = $configs->get($code);
+                $rows[] = [
+                    'code' => $code,
+                    'auto_post' => $config?->auto_post ? 'yes' : 'no',
+                    'approval_required' => $config?->approval_required ? 'yes' : 'no',
+                    'accounting_enabled' => $config?->accounting_enabled ? 'yes' : 'no',
+                    'adapter_supported' => in_array($code, $supportedByAdapter, true) ? 'yes' : 'no',
+                ];
+            }
+
+            $this->table(
+                ['code', 'auto_post', 'approval_required', 'accounting_enabled', 'adapter_supported'],
+                $rows
+            );
+        }
 
         $queueCounts = AccountingEventQueue::query()
             ->selectRaw('status, COUNT(*) as aggregate')

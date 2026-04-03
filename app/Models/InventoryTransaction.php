@@ -69,4 +69,9 @@ class InventoryTransaction extends Model
     {
         return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
+
+    public function issueAllocations()
+    {
+        return $this->hasMany(InventoryIssueAllocation::class, 'inventory_transaction_id');
+    }
 }
