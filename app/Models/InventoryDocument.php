@@ -9,6 +9,8 @@ class InventoryDocument extends Model
     protected $fillable = [
         'document_no',
         'tenant_id',
+        'department_id',
+        'subdepartment_id',
         'type',
         'source_warehouse_id',
         'source_warehouse_location_id',
@@ -16,13 +18,24 @@ class InventoryDocument extends Model
         'destination_warehouse_location_id',
         'transaction_date',
         'status',
+        'approval_status',
         'remarks',
+        'source_document_type',
+        'source_document_id',
+        'posting_key',
+        'submitted_at',
+        'approved_at',
+        'approved_by',
+        'posted_at',
         'created_by',
         'updated_by',
     ];
 
     protected $casts = [
         'transaction_date' => 'date',
+        'submitted_at' => 'datetime',
+        'approved_at' => 'datetime',
+        'posted_at' => 'datetime',
     ];
 
     public function tenant()
@@ -54,5 +67,10 @@ class InventoryDocument extends Model
     {
         return $this->hasMany(InventoryTransaction::class, 'reference_id')
             ->where('reference_type', self::class);
+    }
+
+    public function lines()
+    {
+        return $this->hasMany(InventoryDocumentLine::class);
     }
 }

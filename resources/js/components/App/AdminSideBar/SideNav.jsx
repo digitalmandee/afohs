@@ -397,10 +397,14 @@ const buildTopLevelMenu = (permissions) => {
                     text: 'Transactions',
                     children: [
                         { text: 'Vendors', path: route('procurement.vendors.index'), permission: 'financial.view' },
+                        { text: 'Purchase Requisitions', path: route('procurement.purchase-requisitions.index'), permission: 'financial.view' },
                         { text: 'Purchase Orders', path: route('procurement.purchase-orders.index'), permission: 'financial.view' },
+                        { text: 'Cash Purchases', path: route('procurement.cash-purchases.index'), permission: 'financial.view' },
                         { text: 'Goods Receipts', path: route('procurement.goods-receipts.index'), permission: 'financial.view' },
+                        { text: 'Purchase Returns', path: route('procurement.purchase-returns.index'), permission: 'financial.view' },
                         { text: 'Vendor Bills', path: route('procurement.vendor-bills.index'), permission: 'financial.view' },
                         { text: 'Vendor Payments', path: route('procurement.vendor-payments.index'), permission: 'financial.view' },
+                        { text: 'Delivery Notes', path: route('procurement.delivery-notes.index'), permission: 'financial.view' },
                     ],
                 },
                 {
@@ -432,6 +436,8 @@ const buildTopLevelMenu = (permissions) => {
                 { text: 'Locations', path: route('inventory.locations.index'), permission: 'pos.inventory.view' },
                 { text: 'Stock Operations', path: route('inventory.operations.index'), permission: 'pos.inventory.view' },
                 { text: 'Stock Documents', path: route('inventory.documents.index'), permission: 'pos.inventory.view' },
+                { text: 'Stock Audits', path: route('inventory.audits.index'), permission: 'pos.inventory.view' },
+                { text: 'Issue/Receipt Notes', path: route('inventory.document-flows.index'), permission: 'pos.inventory.view' },
                 { text: 'Valuation & Reconcile', path: route('inventory.valuation.index'), permission: 'pos.inventory.view' },
             ],
         },

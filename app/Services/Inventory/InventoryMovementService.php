@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryDocument;
+use App\Models\InventoryDocumentTypeConfig;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
@@ -289,7 +290,18 @@ class InventoryMovementService
 
     protected function generateDocumentNo(string $type): string
     {
-        $prefix = match ($type) {
+        $code = match ($type) {
+            'transfer' => 'warehouse_transfer',
+            'adjustment' => 'stock_adjustment',
+            default => $type,
+        };
+
+        $config = InventoryDocumentTypeConfig::query()
+            ->where('code', $code)
+            ->where('is_active', true)
+            ->first();
+
+        $prefix = $config?->prefix ?: match ($type) {
             'opening_balance' => 'OB',
             'transfer' => 'TRF',
             'adjustment' => 'ADJ',

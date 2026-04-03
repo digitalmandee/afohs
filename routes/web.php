@@ -1660,6 +1660,33 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
     Route::post('payment-run', [ProcurementInsightsController::class, 'executePaymentRun'])->name('procurement.payment-run.execute');
 
     Route::get('approval-actions', [\App\Http\Controllers\Procurement\ApprovalActionController::class, 'index'])->name('procurement.approval-actions.index');
+
+    Route::get('purchase-requisitions', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'index'])->name('procurement.purchase-requisitions.index');
+    Route::get('purchase-requisitions/create', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'create'])->name('procurement.purchase-requisitions.create');
+    Route::post('purchase-requisitions', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'store'])->name('procurement.purchase-requisitions.store');
+    Route::post('purchase-requisitions/{purchaseRequisition}/submit', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'submit'])->name('procurement.purchase-requisitions.submit');
+    Route::post('purchase-requisitions/{purchaseRequisition}/approve', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'approve'])->name('procurement.purchase-requisitions.approve');
+    Route::post('purchase-requisitions/{purchaseRequisition}/reject', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'reject'])->name('procurement.purchase-requisitions.reject');
+    Route::post('purchase-requisitions/{purchaseRequisition}/convert-to-po', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'convertToPo'])->name('procurement.purchase-requisitions.convert-to-po');
+
+    Route::get('cash-purchases', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'index'])->name('procurement.cash-purchases.index');
+    Route::get('cash-purchases/create', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'create'])->name('procurement.cash-purchases.create');
+    Route::post('cash-purchases', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'store'])->name('procurement.cash-purchases.store');
+    Route::post('cash-purchases/{cashPurchase}/submit', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'submit'])->name('procurement.cash-purchases.submit');
+    Route::post('cash-purchases/{cashPurchase}/approve', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'approve'])->name('procurement.cash-purchases.approve');
+    Route::post('cash-purchases/{cashPurchase}/reject', [\App\Http\Controllers\Procurement\CashPurchaseController::class, 'reject'])->name('procurement.cash-purchases.reject');
+
+    Route::get('purchase-returns', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'index'])->name('procurement.purchase-returns.index');
+    Route::get('purchase-returns/create', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'create'])->name('procurement.purchase-returns.create');
+    Route::post('purchase-returns', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'store'])->name('procurement.purchase-returns.store');
+    Route::post('purchase-returns/{purchaseReturn}/submit', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'submit'])->name('procurement.purchase-returns.submit');
+    Route::post('purchase-returns/{purchaseReturn}/approve', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'approve'])->name('procurement.purchase-returns.approve');
+    Route::post('purchase-returns/{purchaseReturn}/reject', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'reject'])->name('procurement.purchase-returns.reject');
+
+    Route::get('delivery-notes', [\App\Http\Controllers\Procurement\DeliveryNoteController::class, 'index'])->name('procurement.delivery-notes.index');
+    Route::get('delivery-notes/create', [\App\Http\Controllers\Procurement\DeliveryNoteController::class, 'create'])->name('procurement.delivery-notes.create');
+    Route::get('delivery-notes/{inventoryDocument}/print', [\App\Http\Controllers\Procurement\DeliveryNoteController::class, 'print'])->name('procurement.delivery-notes.print');
+    Route::post('delivery-notes', [\App\Http\Controllers\Procurement\DeliveryNoteController::class, 'store'])->name('procurement.delivery-notes.store');
 });
 
 Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
@@ -1737,6 +1764,19 @@ Route::prefix('admin/inventory')->middleware(['auth'])->group(function () {
     Route::post('operations/adjustments', [InventoryOperationController::class, 'storeAdjustment'])->name('inventory.operations.adjustments.store');
     Route::post('operations/issues', [InventoryOperationController::class, 'storeIssue'])->name('inventory.operations.issues.store');
     Route::post('operations/transfers', [InventoryOperationController::class, 'storeTransfer'])->name('inventory.operations.transfers.store');
+
+    Route::get('audits', [\App\Http\Controllers\Inventory\StockAuditController::class, 'index'])->name('inventory.audits.index');
+    Route::get('audits/create', [\App\Http\Controllers\Inventory\StockAuditController::class, 'create'])->name('inventory.audits.create');
+    Route::post('audits', [\App\Http\Controllers\Inventory\StockAuditController::class, 'store'])->name('inventory.audits.store');
+    Route::post('audits/{stockAudit}/submit', [\App\Http\Controllers\Inventory\StockAuditController::class, 'submit'])->name('inventory.audits.submit');
+    Route::post('audits/{stockAudit}/approve', [\App\Http\Controllers\Inventory\StockAuditController::class, 'approve'])->name('inventory.audits.approve');
+
+    Route::get('document-flows', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'index'])->name('inventory.document-flows.index');
+    Route::get('document-flows/create', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'create'])->name('inventory.document-flows.create');
+    Route::post('document-flows', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'store'])->name('inventory.document-flows.store');
+    Route::post('document-flows/{inventoryDocument}/submit', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'submit'])->name('inventory.document-flows.submit');
+    Route::post('document-flows/{inventoryDocument}/approve', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'approve'])->name('inventory.document-flows.approve');
+    Route::post('document-flows/{inventoryDocument}/reject', [\App\Http\Controllers\Inventory\InventoryDocumentFlowController::class, 'reject'])->name('inventory.document-flows.reject');
 });
 
 // Central guest-only auth routes
