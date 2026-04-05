@@ -33,7 +33,7 @@ class PurchaseRequisitionController extends Controller
                 'tenant:id,name',
                 'branch:id,name',
                 'warehouse:id,name',
-                'latestPurchaseOrder:id,purchase_requisition_id,po_no,status',
+                'latestPurchaseOrder:purchase_orders.id,purchase_orders.purchase_requisition_id,purchase_orders.po_no,purchase_orders.status',
                 'department:id,name',
                 'items:id,purchase_requisition_id,inventory_item_id,qty_requested,qty_converted,estimated_unit_cost',
                 'items.inventoryItem:id,name,sku',
