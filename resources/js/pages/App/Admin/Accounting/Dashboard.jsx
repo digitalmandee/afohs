@@ -316,7 +316,13 @@ export default function Dashboard({ stats, latestTransactions, transactionFilter
                 cardSx={{ borderRadius: '18px' }}
                 contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
             >
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(filters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine dashboard metrics by restaurant and reporting range."
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={3}>
                             <TextField

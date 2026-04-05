@@ -125,7 +125,13 @@ export default function Payables({ bills, total, summary, filters, tenants = [] 
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while you refine vendors, bill status, and date range.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine payables by search, status, restaurant, and date range."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField

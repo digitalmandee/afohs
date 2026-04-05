@@ -187,7 +187,13 @@ export default function SalesSummaryWithItems({
                 </Grid>
 
                 <SurfaceCard title="Report Filters" subtitle="Keep the rich invoice and item filtering while replacing the legacy POS report shell with shared components.">
-                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Refine report dimensions and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <DateRangeFilterFields
                                 startLabel="Start Date"

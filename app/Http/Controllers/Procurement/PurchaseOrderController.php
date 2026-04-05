@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\ApprovalAction;
 use App\Models\Ingredient;
 use App\Models\InventoryItem;
@@ -12,6 +13,8 @@ use App\Models\PurchaseOrder;
 use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\Warehouse;
+use App\Services\Procurement\ProcurementDocumentNumberService;
+use App\Support\Branding\StaticDocumentBrandingResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -133,6 +136,75 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
+    public function edit(PurchaseOrder $purchaseOrder)
+    {
+        if (!in_array((string) $purchaseOrder->status, ['draft', 'submitted'], true)) {
+            return redirect()->route('procurement.purchase-orders.index')
+                ->with('error', 'Only draft or submitted purchase orders can be edited directly.');
+        }
+
+        $purchaseOrder->load(['items:id,purchase_order_id,inventory_item_id,product_id,qty_ordered,unit_cost']);
+
+        $warehouses = Warehouse::with('tenant:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'tenant_id', 'status']);
+
+        $products = $this->buildProcurementProductOptions($warehouses->pluck('id')->all());
+
+        return Inertia::render('App/Admin/Procurement/PurchaseOrders/Create', [
+            'purchaseOrder' => [
+                'id' => $purchaseOrder->id,
+                'po_no' => $purchaseOrder->po_no,
+                'status' => $purchaseOrder->status,
+                'vendor_id' => $purchaseOrder->vendor_id,
+                'warehouse_id' => $purchaseOrder->warehouse_id,
+                'order_date' => optional($purchaseOrder->order_date)->toDateString(),
+                'expected_date' => optional($purchaseOrder->expected_date)->toDateString(),
+                'currency' => $purchaseOrder->currency,
+                'remarks' => $purchaseOrder->remarks,
+                'items' => $purchaseOrder->items->map(fn ($item) => [
+                    'inventory_item_id' => $item->inventory_item_id ?: $item->product_id,
+                    'qty_ordered' => (float) $item->qty_ordered,
+                    'unit_cost' => (float) $item->unit_cost,
+                ])->values()->all(),
+            ],
+            'vendors' => Vendor::orderBy('name')->get(['id', 'name']),
+            'warehouses' => $warehouses,
+            'products' => $products->values(),
+            'inventorySummary' => [
+                'product_count' => $products->count(),
+                'linked_ingredients' => Ingredient::query()->whereNotNull('inventory_item_id')->count(),
+                'legacy_only_ingredients' => Ingredient::query()->whereNull('inventory_item_id')->count(),
+                'empty_reason' => null,
+            ],
+        ]);
+    }
+
+    public function view(PurchaseOrder $purchaseOrder)
+    {
+        return response()->view(
+            'procurement.purchase-orders.document',
+            $this->buildPurchaseOrderDocumentPayload($purchaseOrder, false)
+        );
+    }
+
+    public function print(PurchaseOrder $purchaseOrder)
+    {
+        return response()->view(
+            'procurement.purchase-orders.document',
+            $this->buildPurchaseOrderDocumentPayload($purchaseOrder, true)
+        );
+    }
+
+    public function pdf(PurchaseOrder $purchaseOrder)
+    {
+        $payload = $this->buildPurchaseOrderDocumentPayload($purchaseOrder, false);
+
+        return Pdf::loadView('procurement.purchase-orders.document', $payload)
+            ->setPaper('a4', 'portrait')
+            ->download(sprintf('%s-%s.pdf', (string) $purchaseOrder->po_no, now()->format('Ymd-His')));
+    }
+
     public function store(Request $request)
     {
         $request->merge([
@@ -223,10 +295,24 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
+            $tenantId = $warehouse->tenant_id ?: null;
+            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            if ($branchId <= 0) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'Branch mapping missing for numbering. Assign a branch to the selected restaurant before creating PO.',
+                ]);
+            }
+
+            $poNo = app(ProcurementDocumentNumberService::class)->generate(
+                documentType: 'PO',
+                branchId: $branchId,
+                documentDate: $data['order_date']
+            );
+
             $order = PurchaseOrder::create([
-                'po_no' => 'PO-' . now()->format('YmdHis'),
+                'po_no' => $poNo,
                 'vendor_id' => $data['vendor_id'],
-                'tenant_id' => $warehouse->tenant_id ?: null,
+                'tenant_id' => $tenantId,
                 'warehouse_id' => $data['warehouse_id'],
                 'order_date' => $data['order_date'],
                 'expected_date' => $data['expected_date'] ?? null,
@@ -298,6 +384,117 @@ class PurchaseOrderController extends Controller
         }
     }
 
+    public function update(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        if (!in_array((string) $purchaseOrder->status, ['draft', 'submitted'], true)) {
+            return redirect()->back()->with('error', 'Only draft or submitted purchase orders can be edited.');
+        }
+
+        $hasReceipts = $purchaseOrder->items()->where('qty_received', '>', 0)->exists();
+        if ($hasReceipts) {
+            return redirect()->back()->with('error', 'This purchase order already has received quantity and cannot be edited directly.');
+        }
+
+        $request->merge([
+            'items' => collect($request->input('items', []))->map(function ($item) {
+                if (!isset($item['inventory_item_id']) && isset($item['product_id'])) {
+                    $item['inventory_item_id'] = $item['product_id'];
+                }
+                return $item;
+            })->all(),
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'vendor_id' => 'required|exists:vendors,id',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'order_date' => 'required|date',
+            'expected_date' => 'nullable|date',
+            'currency' => 'nullable|string|max:8',
+            'remarks' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.inventory_item_id' => [
+                'required',
+                Rule::exists('inventory_items', 'id'),
+            ],
+            'items.*.qty_ordered' => 'required|numeric|min:0.001',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        $data = $validator->validated();
+        $submittedItemIds = collect($data['items'] ?? [])
+            ->pluck('inventory_item_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $eligibleIds = InventoryItem::query()
+            ->procurementEligible()
+            ->whereIn('id', $submittedItemIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id);
+
+        $invalidIds = $submittedItemIds->diff($eligibleIds)->values();
+        if ($invalidIds->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'items' => 'One or more selected inventory items are not eligible for procurement.',
+            ]);
+        }
+
+        DB::transaction(function () use ($purchaseOrder, $data, $request) {
+            $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
+            if ((string) ($warehouse->status ?? 'inactive') !== 'active') {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'The selected warehouse is inactive.',
+                ]);
+            }
+
+            $purchaseOrder->update([
+                'vendor_id' => $data['vendor_id'],
+                'warehouse_id' => $warehouse->id,
+                'tenant_id' => $warehouse->tenant_id ?: null,
+                'order_date' => $data['order_date'],
+                'expected_date' => $data['expected_date'] ?? null,
+                'currency' => $data['currency'] ?? 'PKR',
+                'remarks' => $data['remarks'] ?? null,
+            ]);
+
+            $purchaseOrder->items()->delete();
+
+            $subTotal = 0.0;
+            foreach ($data['items'] as $item) {
+                $lineTotal = (float) $item['qty_ordered'] * (float) $item['unit_cost'];
+                $subTotal += $lineTotal;
+                $purchaseOrder->items()->create([
+                    'inventory_item_id' => $item['inventory_item_id'],
+                    'qty_ordered' => $item['qty_ordered'],
+                    'qty_received' => 0,
+                    'unit_cost' => $item['unit_cost'],
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            $purchaseOrder->update([
+                'sub_total' => $subTotal,
+                'grand_total' => $subTotal,
+            ]);
+
+            ApprovalAction::create([
+                'document_type' => 'purchase_order',
+                'document_id' => $purchaseOrder->id,
+                'action' => 'updated',
+                'remarks' => 'PO updated from edit screen.',
+                'action_by' => $request->user()?->id,
+            ]);
+        });
+
+        return redirect()->route('procurement.purchase-orders.index')->with('success', 'Purchase order updated.');
+    }
+
     public function submit(Request $request, PurchaseOrder $purchaseOrder)
     {
         if ($purchaseOrder->status !== 'draft') {
@@ -319,6 +516,32 @@ class PurchaseOrderController extends Controller
     {
         if ($purchaseOrder->status !== 'draft') {
             return redirect()->back()->with('error', 'Only draft purchase orders can be approved.');
+        }
+
+        $purchaseOrder->load('items');
+        foreach ($purchaseOrder->items as $index => $poItem) {
+            $resolvedInventoryItemId = (int) ($poItem->inventory_item_id ?: 0);
+            if ($resolvedInventoryItemId <= 0) {
+                $legacyProductId = (int) ($poItem->product_id ?: 0);
+                if ($legacyProductId > 0) {
+                    $resolvedInventoryItemId = (int) (InventoryItem::query()
+                        ->whereKey($legacyProductId)
+                        ->value('id')
+                        ?? InventoryItem::query()->where('legacy_product_id', $legacyProductId)->value('id')
+                        ?? 0);
+                }
+            }
+
+            if ($resolvedInventoryItemId <= 0 || !InventoryItem::query()->whereKey($resolvedInventoryItemId)->exists()) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.inventory_item_id" => "PO line {$poItem->id} has invalid inventory mapping. Resolve inventory item before approval.",
+                ]);
+            }
+
+            if (empty($poItem->inventory_item_id)) {
+                $poItem->inventory_item_id = $resolvedInventoryItemId;
+                $poItem->save();
+            }
         }
 
         $purchaseOrder->update([
@@ -532,6 +755,82 @@ class PurchaseOrderController extends Controller
                 ]);
             }
         }
+    }
+
+    private function buildPurchaseOrderDocumentPayload(PurchaseOrder $purchaseOrder, bool $autoPrint): array
+    {
+        $purchaseOrder->loadMissing(['vendor', 'tenant', 'warehouse.tenant', 'items.inventoryItem.unit', 'createdBy:id,name', 'approvedBy:id,name']);
+
+        $lineItems = $purchaseOrder->items->map(function ($item) {
+            $qty = (float) ($item->qty_ordered ?? 0);
+            $unitCost = (float) ($item->unit_cost ?? 0);
+            $lineTotal = (float) ($item->line_total ?? ($qty * $unitCost));
+
+            return [
+                'item_name' => $item->inventoryItem?->name ?? $item->description ?? ('Inventory Item #' . ($item->inventory_item_id ?: $item->product_id)),
+                'sku' => $item->inventoryItem?->sku ?: '-',
+                'uom' => $item->inventoryItem?->unit?->name ?: '-',
+                'qty_ordered' => number_format($qty, 3, '.', ','),
+                'unit_cost' => number_format($unitCost, 2, '.', ','),
+                'line_total' => number_format($lineTotal, 2, '.', ','),
+            ];
+        })->values()->all();
+
+        $tenantName = $purchaseOrder->tenant?->name
+            ?: $purchaseOrder->warehouse?->tenant?->name
+            ?: config('app.name', 'AFOHS Club');
+        $approvalCompleted = in_array((string) $purchaseOrder->status, ['approved', 'partially_received', 'received'], true);
+        $approvedByName = $purchaseOrder->approvedBy?->name ?: ($approvalCompleted ? 'N/A' : 'Pending');
+        $approvedAt = optional($purchaseOrder->approved_at)->format('d/m/Y h:i A') ?: ($approvalCompleted ? 'N/A' : 'Pending');
+
+        return [
+            'title' => 'Purchase Order',
+            'companyName' => $tenantName,
+            'logoDataUri' => $this->documentLogoDataUri(),
+            'generatedAt' => now()->format('d/m/Y h:i A'),
+            'autoPrint' => $autoPrint,
+            'signatories' => [
+                'prepared_by_name' => $purchaseOrder->createdBy?->name ?: 'N/A',
+                'prepared_at' => optional($purchaseOrder->created_at)->format('d/m/Y h:i A') ?: 'N/A',
+                'verified_by_name' => $approvedByName,
+                'verified_at' => $approvedAt,
+                'accepted_by_name' => $approvedByName,
+                'accepted_at' => $approvedAt,
+            ],
+            'po' => [
+                'number' => $purchaseOrder->po_no,
+                'status' => strtoupper(str_replace('_', ' ', (string) $purchaseOrder->status)),
+                'order_date' => optional($purchaseOrder->order_date)->format('d/m/Y') ?: '-',
+                'expected_date' => optional($purchaseOrder->expected_date)->format('d/m/Y') ?: '-',
+                'currency' => $purchaseOrder->currency ?: 'PKR',
+                'warehouse' => $purchaseOrder->warehouse?->name ?: '-',
+                'restaurant' => $tenantName,
+                'remarks' => $purchaseOrder->remarks ?: '-',
+                'created_by' => $purchaseOrder->createdBy?->name ?: 'N/A',
+                'created_at' => optional($purchaseOrder->created_at)->format('d/m/Y h:i A') ?: 'N/A',
+                'approved_by' => $purchaseOrder->approvedBy?->name ?: 'N/A',
+                'approved_at' => optional($purchaseOrder->approved_at)->format('d/m/Y h:i A') ?: 'N/A',
+            ],
+            'vendor' => [
+                'name' => $purchaseOrder->vendor?->name ?: '-',
+                'code' => $purchaseOrder->vendor?->code ?: '-',
+                'phone' => $purchaseOrder->vendor?->phone ?: '-',
+                'email' => $purchaseOrder->vendor?->email ?: '-',
+                'address' => $purchaseOrder->vendor?->address ?: '-',
+            ],
+            'lineItems' => $lineItems,
+            'totals' => [
+                'sub_total' => number_format((float) ($purchaseOrder->sub_total ?? 0), 2, '.', ','),
+                'tax_total' => number_format((float) ($purchaseOrder->tax_total ?? 0), 2, '.', ','),
+                'discount_total' => number_format((float) ($purchaseOrder->discount_total ?? 0), 2, '.', ','),
+                'grand_total' => number_format((float) ($purchaseOrder->grand_total ?? 0), 2, '.', ','),
+            ],
+        ];
+    }
+
+    private function documentLogoDataUri(): ?string
+    {
+        return app(StaticDocumentBrandingResolver::class)->resolveLogoDataUri();
     }
 
     private function canAmendPurchaseOrder(Request $request): bool

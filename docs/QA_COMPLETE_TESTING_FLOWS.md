@@ -1,5 +1,128 @@
 # Complete QA Testing Flows
 
+## Manual Testing Flow (End-to-End ERP Closure)
+
+### Summary
+This is a business-user manual QA script to validate the full finance/procurement/inventory closure on staging or production after deploy. It is ordered so blockers surface early.
+
+### Manual Test Steps
+1. **Sanity + Access**
+   - Login as:
+     - finance approver
+     - procurement user
+     - admin (override role)
+   - Open screens load without errors:
+     - Journals
+     - Purchase Requisitions / Orders / GRN / Vendor Bills / Vendor Payments
+     - Purchase Returns
+     - Inventory Document Flows
+     - Supplier Advances
+     - Delivery Notes
+
+2. **Manual Journal Workflow**
+   - Create balanced manual journal in open period.
+   - Click `Submit for Approval`.
+   - Approve/Post from approver user.
+   - Expected:
+     - status visibly changes through workflow
+     - final status `posted`
+     - one journal only, balanced debit=credit
+
+3. **PR -> PO -> GRN Chain**
+   - Create PR with 2 lines, submit, approve.
+   - Convert PR to PO with partial quantities.
+   - Create GRN against PO partial receive, then complete receive.
+   - Expected:
+     - PR status moves `approved -> partially_converted -> converted_to_po`
+     - GRN cannot exceed PO remaining qty
+     - PO reflects partial/completed receive correctly
+
+4. **Vendor Bill Controls**
+   - Create bill from GRN lines.
+   - Try billing quantity above GRN remaining on one line.
+   - Expected: hard validation error on that line.
+   - Create valid bill and approve/post.
+   - Expected:
+     - bill posts once
+     - AP and inventory/GRNI postings are created per policy
+
+5. **Supplier Advance + Adjustment**
+   - Create supplier advance, submit, approve/post.
+   - Apply advance to an open vendor bill.
+   - Expected:
+     - advance status/remaining updates correctly
+     - bill outstanding reduces by applied amount
+     - no duplicate AP liability
+
+6. **Vendor Payment (Invoice-wise + Ledger-wise)**
+   - Create invoice-wise payment linked to bill (partial amount).
+   - Create second payment to settle remaining.
+   - Create ledger-wise payment for vendor.
+   - Expected:
+     - partial and final settlement update outstanding correctly
+     - overpayment blocked (or policy-handled explicitly)
+     - accounting posts `Dr AP/Supplier, Cr Bank/Cash`
+
+7. **Purchase Return**
+   - Create return against received/billed quantity within limit.
+   - Attempt second return that exceeds remaining eligible qty.
+   - Expected:
+     - first succeeds and posts inventory/AP reversal
+     - second fails with line-level over-return message
+
+8. **Inventory Doc Approve/Post Error Handling**
+   - Create inventory document with valid context -> submit -> approve/post.
+   - Create one with invalid stock/context and approve/post.
+   - Expected:
+     - valid posts
+     - invalid shows clear error, remains non-posted, no partial movement
+
+9. **Opening Balance Closure Check**
+   - Verify opening balance document list includes legacy case.
+   - Confirm journal link exists for previously failing document.
+   - Expected:
+     - no missing opening-balance journals
+     - journal amount equals opening amount
+
+10. **PO Amendment (Admin Prospective)**
+    - Try amend posted PO as non-admin.
+    - Expected: blocked.
+    - Amend as admin with reason.
+    - Expected:
+      - revision history record exists
+      - changes are prospective only (existing GRN/bill integrity preserved)
+
+11. **Traceability + Visibility**
+    - From vendor bill/payment/return/opening document, open linked journal.
+    - From journal, verify source document context is visible.
+    - Expected:
+      - bidirectional trace works
+      - no orphan posted document without source/journal context
+
+12. **Amount Formatting Regression**
+    - Spot-check comma formatting on:
+      - journal cards/lines
+      - procurement totals
+      - payment and bill totals
+    - Expected display style: `1,234.00` consistently.
+
+### Pass/Fail Criteria
+- Pass if:
+  - all above flows complete without blocking errors
+  - no duplicate posting
+  - quantities/caps enforced
+  - journal entries balanced and traceable
+- Fail if:
+  - any posted document lacks expected journal
+  - over-billing/over-return is allowed
+  - role restrictions bypassed
+  - workflow actions appear successful but state does not change
+
+### Assumptions
+- Accounting periods are open for test dates.
+- Payment accounts and COA mappings are active/postable.
+- Queue worker is running if posting is asynchronous.
+
 ## Purpose
 This runbook validates all major delivered changes end-to-end:
 - manual journal workflow fixes
@@ -258,4 +381,3 @@ Release candidate is considered verified when:
 - all mandatory negative controls fail safely with clear errors
 - all expected posting docs produce exactly one balanced journal (where enabled)
 - no critical regressions in PO->GRN->Bill->Payment and existing inventory operations
-

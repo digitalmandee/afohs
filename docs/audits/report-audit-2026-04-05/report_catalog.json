@@ -1,0 +1,2529 @@
+[
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/balance-sheet",
+        "name": "accounting.reports.balance-sheet",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@balanceSheet"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/balance-sheet/pdf",
+        "name": "accounting.reports.balance-sheet.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@balanceSheetPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/balance-sheet/print",
+        "name": "accounting.reports.balance-sheet.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@balanceSheetPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/bank-book",
+        "name": "accounting.reports.bank-book",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@bankBook"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/bank-book/pdf",
+        "name": "accounting.reports.bank-book.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@bankBookPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/bank-book/print",
+        "name": "accounting.reports.bank-book.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@bankBookPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/cash-book",
+        "name": "accounting.reports.cash-book",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@cashBook"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/cash-book/pdf",
+        "name": "accounting.reports.cash-book.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@cashBookPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/cash-book/print",
+        "name": "accounting.reports.cash-book.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@cashBookPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/day-book",
+        "name": "accounting.reports.day-book",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@dayBook"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/day-book/pdf",
+        "name": "accounting.reports.day-book.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@dayBookPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/day-book/print",
+        "name": "accounting.reports.day-book.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@dayBookPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/financial-statements",
+        "name": "accounting.reports.financial-statements",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@financialStatements"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/financial-statements/pdf",
+        "name": "accounting.reports.financial-statements.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@financialStatementsPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/financial-statements/print",
+        "name": "accounting.reports.financial-statements.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@financialStatementsPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/hub",
+        "name": "accounting.reports.hub",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@hub"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/management-pack",
+        "name": "accounting.reports.management-pack",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@managementPack"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/payables-aging",
+        "name": "accounting.reports.payables-aging",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@payablesAging"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/payables-aging/pdf",
+        "name": "accounting.reports.payables-aging.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@payablesAgingPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/payables-aging/print",
+        "name": "accounting.reports.payables-aging.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@payablesAgingPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/profit-loss",
+        "name": "accounting.reports.profit-loss",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@profitLoss"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/profit-loss/pdf",
+        "name": "accounting.reports.profit-loss.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@profitLossPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/profit-loss/print",
+        "name": "accounting.reports.profit-loss.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@profitLossPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-aging",
+        "name": "accounting.reports.receivables-aging",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesAging"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-aging/pdf",
+        "name": "accounting.reports.receivables-aging.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesAgingPdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-aging/print",
+        "name": "accounting.reports.receivables-aging.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesAgingPrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-by-source",
+        "name": "accounting.reports.receivables-by-source",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesAgingBySource"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-by-source/pdf",
+        "name": "accounting.reports.receivables-by-source.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesBySourcePdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/receivables-by-source/print",
+        "name": "accounting.reports.receivables-by-source.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@receivablesBySourcePrint"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/trial-balance",
+        "name": "accounting.reports.trial-balance",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@trialBalance"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/trial-balance/pdf",
+        "name": "accounting.reports.trial-balance.pdf",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@trialBalancePdf"
+    },
+    {
+        "module": "Accounting/Finance",
+        "method": "GET|HEAD",
+        "uri": "admin/accounting/reports/trial-balance/print",
+        "name": "accounting.reports.trial-balance.print",
+        "action": "App\\Http\\Controllers\\Accounting\\AccountingReportController@trialBalancePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/attendances/monthly/report",
+        "name": "employees.attendances.monthly.report",
+        "action": "App\\Http\\Controllers\\AttendanceController@monthlyReportPage"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/attendances/monthly/report/print",
+        "name": "employees.attendances.monthly.report.print",
+        "action": "App\\Http\\Controllers\\AttendanceController@monthlyReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/attendances/report",
+        "name": "employees.attendances.report",
+        "action": "App\\Http\\Controllers\\AttendanceController@reportPage"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/attendances/report/print",
+        "name": "employees.attendances.report.print",
+        "action": "App\\Http\\Controllers\\AttendanceController@attendanceReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/leaves/report",
+        "name": "employees.leaves.application.report",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@leaveReportPage"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/leaves/report/print",
+        "name": "employees.leaves.application.report.print",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@leaveReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/payroll/reports",
+        "name": "employees.payroll.reports",
+        "action": "App\\Http\\Controllers\\PayrollController@reports"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/payroll/reports/detailed/{periodId?}",
+        "name": "employees.payroll.reports.detailed",
+        "action": "App\\Http\\Controllers\\PayrollController@detailedReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/payroll/reports/detailed/{periodId}/print",
+        "name": "employees.payroll.reports.detailed.print",
+        "action": "App\\Http\\Controllers\\PayrollController@detailedReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/payroll/reports/summary/{periodId?}",
+        "name": "employees.payroll.reports.summary",
+        "action": "App\\Http\\Controllers\\PayrollController@summaryReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/payroll/reports/summary/{periodId}/print",
+        "name": "employees.payroll.reports.summary.print",
+        "action": "App\\Http\\Controllers\\PayrollController@summaryReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports",
+        "name": "employees.reports",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/advances",
+        "name": "employees.reports.advances",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@advances"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/advances/print",
+        "name": "employees.reports.advances.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@advancesPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/advances",
+        "name": "employees.reports.api.advances",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@advances"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/advances/export",
+        "name": "employees.reports.api.advances.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportAdvancesExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/bank-transfer",
+        "name": "employees.reports.api.bank-transfer",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@bankTransfer"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/bank-transfer/export",
+        "name": "employees.reports.api.bank-transfer.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportBankTransferExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/deductions",
+        "name": "employees.reports.api.deductions",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@deductions"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/deductions/export",
+        "name": "employees.reports.api.deductions.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportDeductionsExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/employee-details",
+        "name": "employees.reports.api.employee-details",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@employeeDetails"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/employee-details/export",
+        "name": "employees.reports.api.employee-details.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportEmployeeDetailsExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/increments",
+        "name": "employees.reports.api.increments",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@increments"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/increments/export",
+        "name": "employees.reports.api.increments.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportIncrementsExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/loans",
+        "name": "employees.reports.api.loans",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@loans"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/loans/export",
+        "name": "employees.reports.api.loans.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportLoansExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/new-hiring",
+        "name": "employees.reports.api.new-hiring",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@newHiring"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/new-hiring/export",
+        "name": "employees.reports.api.new-hiring.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportNewHiringExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/salary-sheet",
+        "name": "employees.reports.api.salary-sheet",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@salarySheet"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/api/salary-sheet/export",
+        "name": "employees.reports.api.salary-sheet.export",
+        "action": "App\\Http\\Controllers\\EmployeeReportApiController@exportSalarySheetExcel"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/bank-transfer",
+        "name": "employees.reports.bank-transfer",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@bankTransfer"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/bank-transfer/print",
+        "name": "employees.reports.bank-transfer.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@bankTransferPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/deductions",
+        "name": "employees.reports.deductions",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@deductions"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/deductions/print",
+        "name": "employees.reports.deductions.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@deductionsPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/employee-details",
+        "name": "employees.reports.employee-details",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@employeeDetails"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/employee-details/print",
+        "name": "employees.reports.employee-details.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@employeeDetailsPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/increments",
+        "name": "employees.reports.increments",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@increments"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/increments/print",
+        "name": "employees.reports.increments.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@incrementsPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/loans",
+        "name": "employees.reports.loans",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@loans"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/loans/print",
+        "name": "employees.reports.loans.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@loansPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/new-hiring",
+        "name": "employees.reports.new-hiring",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@newHiring"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/new-hiring/print",
+        "name": "employees.reports.new-hiring.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@newHiringPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/salary-sheet",
+        "name": "employees.reports.salary-sheet",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@salarySheet"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/employees/reports/salary-sheet/print",
+        "name": "employees.reports.salary-sheet.print",
+        "action": "App\\Http\\Controllers\\EmployeeReportController@salarySheetPrint"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "GET|HEAD",
+        "uri": "admin/inventory/audits",
+        "name": "inventory.audits.index",
+        "action": "App\\Http\\Controllers\\Inventory\\StockAuditController@index"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/audits",
+        "name": "inventory.audits.store",
+        "action": "App\\Http\\Controllers\\Inventory\\StockAuditController@store"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "GET|HEAD",
+        "uri": "admin/inventory/audits/create",
+        "name": "inventory.audits.create",
+        "action": "App\\Http\\Controllers\\Inventory\\StockAuditController@create"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/audits/{stockAudit}/approve",
+        "name": "inventory.audits.approve",
+        "action": "App\\Http\\Controllers\\Inventory\\StockAuditController@approve"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/audits/{stockAudit}/submit",
+        "name": "inventory.audits.submit",
+        "action": "App\\Http\\Controllers\\Inventory\\StockAuditController@submit"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "GET|HEAD",
+        "uri": "admin/inventory/documents",
+        "name": "inventory.documents.index",
+        "action": "App\\Http\\Controllers\\Inventory\\WarehouseController@documents"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "GET|HEAD",
+        "uri": "admin/inventory/operations",
+        "name": "inventory.operations.index",
+        "action": "App\\Http\\Controllers\\Inventory\\InventoryOperationController@index"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/operations/adjustments",
+        "name": "inventory.operations.adjustments.store",
+        "action": "App\\Http\\Controllers\\Inventory\\InventoryOperationController@storeAdjustment"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/operations/issues",
+        "name": "inventory.operations.issues.store",
+        "action": "App\\Http\\Controllers\\Inventory\\InventoryOperationController@storeIssue"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/operations/opening-balances",
+        "name": "inventory.operations.opening-balances.store",
+        "action": "App\\Http\\Controllers\\Inventory\\InventoryOperationController@storeOpeningBalance"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "POST",
+        "uri": "admin/inventory/operations/transfers",
+        "name": "inventory.operations.transfers.store",
+        "action": "App\\Http\\Controllers\\Inventory\\InventoryOperationController@storeTransfer"
+    },
+    {
+        "module": "Inventory/Store",
+        "method": "GET|HEAD",
+        "uri": "admin/inventory/valuation",
+        "name": "inventory.valuation.index",
+        "action": "App\\Http\\Controllers\\Inventory\\WarehouseController@valuation"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/add/guest",
+        "name": "membership.addguest",
+        "action": "Closure"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/all",
+        "name": "membership.members",
+        "action": "App\\Http\\Controllers\\MembershipController@allMembers"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/api/applied-members/search",
+        "name": "api.applied-members.search",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@search"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/applied-member",
+        "name": "applied-member.index",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/applied-member",
+        "name": "applied-member.store",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/applied-member/restore/{id}",
+        "name": "applied-member.restore",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/applied-member/trashed",
+        "name": "applied-member.trashed",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "PUT",
+        "uri": "admin/membership/applied-member/{id}",
+        "name": "applied-member.update",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@update"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/applied-member/{id}",
+        "name": "applied-member.destroy",
+        "action": "App\\Http\\Controllers\\AppliedMemberController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/cards",
+        "name": "cards.dashboard",
+        "action": "App\\Http\\Controllers\\CardController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/corporate-companies",
+        "name": "corporate-companies.index",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/corporate-companies",
+        "name": "corporate-companies.store",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/corporate-companies/create",
+        "name": "corporate-companies.create",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@create"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/corporate-companies/restore/{id}",
+        "name": "corporate-companies.restore",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/corporate-companies/trashed",
+        "name": "corporate-companies.trashed",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "PUT|PATCH",
+        "uri": "admin/membership/corporate-companies/{corporate_company}",
+        "name": "corporate-companies.update",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@update"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/corporate-companies/{corporate_company}",
+        "name": "corporate-companies.destroy",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/corporate-companies/{corporate_company}/edit",
+        "name": "corporate-companies.edit",
+        "action": "App\\Http\\Controllers\\CorporateCompanyController@edit"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/create",
+        "name": "membership.add",
+        "action": "App\\Http\\Controllers\\MembershipController@create"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/dashboard",
+        "name": "membership.dashboard",
+        "action": "App\\Http\\Controllers\\MembershipController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/edit/{id}",
+        "name": "membership.edit",
+        "action": "App\\Http\\Controllers\\MembershipController@edit"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/family-members-archive",
+        "name": "membership.family-members",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/family-members-archive/bulk-expire",
+        "name": "membership.family-expiry.bulk-expire",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@bulkExpire"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/family-members-archive/member/{member}/extend",
+        "name": "membership.family-expiry.show",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@show"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/family-members-archive/member/{member}/extend",
+        "name": "membership.family-expiry.extend",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@extendExpiry"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/family-members-archive/restore/{id}",
+        "name": "membership.family-members.restore",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/family-members-archive/search",
+        "name": "membership.family-members.search",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@search"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/family-members-archive/trashed",
+        "name": "membership.family-members.trashed",
+        "action": "App\\Http\\Controllers\\FamilyMembersArchiveConroller@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/finance",
+        "name": "membership.finance",
+        "action": "Closure"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/full/detail",
+        "name": "membership.detail2",
+        "action": "Closure"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/guest/history",
+        "name": "membership.guest",
+        "action": "Closure"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/maintanance-fee-revenue",
+        "name": "membership.maintanance-fee-revenue",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@maintenanceFeeRevenue"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/maintanance-fee-revenue/data",
+        "name": "membership.maintanance-fee-revenue.data",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@maintenanceFeeRevenueData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/maintanance-fee-revenue/print",
+        "name": "membership.maintanance-fee-revenue.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@maintenanceFeeRevenuePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-card-detail-report",
+        "name": "membership.member-card-detail-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@memberCardDetailReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-card-detail-report/data",
+        "name": "membership.member-card-detail-report.data",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@memberCardDetailReportData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-card-detail-report/print",
+        "name": "membership.member-card-detail-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@memberCardDetailReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-categories",
+        "name": "member-categories.index",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/member-categories",
+        "name": "member-categories.store",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-categories/create",
+        "name": "member-categories.create",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@create"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/member-categories/restore/{id}",
+        "name": "member-categories.restore",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-categories/trashed",
+        "name": "member-categories.trashed",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "PUT|PATCH",
+        "uri": "admin/membership/member-categories/{member_category}",
+        "name": "member-categories.update",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@update"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/member-categories/{member_category}",
+        "name": "member-categories.destroy",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-categories/{member_category}/edit",
+        "name": "member-categories.edit",
+        "action": "App\\Http\\Controllers\\MemberCategoryController@edit"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-types",
+        "name": "member-types.index",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/member-types/restore/{id}",
+        "name": "member-types.restore",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/member-types/store",
+        "name": "member-types.store",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/member-types/trashed",
+        "name": "member-types.trashed",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/member-types/{id}/delete",
+        "name": "member-types.destroy",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/member-types/{id}/update2",
+        "name": "member-types.update2",
+        "action": "App\\Http\\Controllers\\App\\MemberTypeController@update"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/monthly-maintenance-fee-report",
+        "name": "membership.monthly-maintenance-fee-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@monthlyMaintenanceFeeReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/monthly-maintenance-fee-report/print",
+        "name": "membership.monthly-maintenance-fee-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@monthlyMaintenanceFeeReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/new-year-eve-report",
+        "name": "membership.new-year-eve-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@newYearEveReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/new-year-eve-report/data",
+        "name": "membership.new-year-eve-report.data",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@newYearEveReportData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/new-year-eve-report/print",
+        "name": "membership.new-year-eve-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@newYearEveReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates",
+        "name": "admin.membership.partners-affiliates.index",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/partners-affiliates",
+        "name": "admin.membership.partners-affiliates.store",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates/create",
+        "name": "admin.membership.partners-affiliates.create",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@create"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/partners-affiliates/restore/{id}",
+        "name": "admin.membership.partners-affiliates.restore",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates/search",
+        "name": "admin.membership.partners-affiliates.search",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@search"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates/trashed",
+        "name": "admin.membership.partners-affiliates.trashed",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates/{partners_affiliate}",
+        "name": "admin.membership.partners-affiliates.show",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@show"
+    },
+    {
+        "module": "Operations",
+        "method": "PUT|PATCH",
+        "uri": "admin/membership/partners-affiliates/{partners_affiliate}",
+        "name": "admin.membership.partners-affiliates.update",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@update"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/partners-affiliates/{partners_affiliate}",
+        "name": "admin.membership.partners-affiliates.destroy",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/partners-affiliates/{partners_affiliate}/edit",
+        "name": "admin.membership.partners-affiliates.edit",
+        "action": "App\\Http\\Controllers\\Admin\\PartnerAffiliateController@edit"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/payment-order-data/{invoiceId}",
+        "name": "member.orderhistory.invoice",
+        "action": "App\\Http\\Controllers\\TransactionController@PaymentOrderData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/payments",
+        "name": "membership.allpayment",
+        "action": "App\\Http\\Controllers\\PaymentController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/payments/store",
+        "name": "membership.payment.store",
+        "action": "App\\Http\\Controllers\\PaymentController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-quarters-report",
+        "name": "membership.pending-maintenance-quarters-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceQuartersReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-quarters-report/print",
+        "name": "membership.pending-maintenance-quarters-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceQuartersReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-report",
+        "name": "membership.pending-maintenance-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-report/bulk-print",
+        "name": "membership.pending-maintenance-report.bulk-print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceBulkPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/pending-maintenance-report/bulk-status",
+        "name": "membership.pending-maintenance-report.bulk-status",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceBulkStatusChange"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-report/data",
+        "name": "membership.pending-maintenance-report.data",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceReportData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-report/export",
+        "name": "membership.pending-maintenance-report.export",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceReportExport"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/pending-maintenance-report/invoice",
+        "name": "membership.pending-maintenance-report.invoice",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceReportInvoice"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/pending-maintenance-report/print",
+        "name": "membership.pending-maintenance-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@pendingMaintenanceReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/profession-info",
+        "name": "membership.profession-info",
+        "action": "App\\Http\\Controllers\\MembershipController@saveProfessionInfo"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/profession-info/{id}",
+        "name": "membership.profession-info.get",
+        "action": "App\\Http\\Controllers\\MembershipController@getProfessionInfo"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/profile/{id}",
+        "name": "membership.profile",
+        "action": "App\\Http\\Controllers\\MembershipController@showMemberProfile"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/profile/{id}/all-family-members",
+        "name": "membership.members.all-family-members",
+        "action": "App\\Http\\Controllers\\MembershipController@getAllFamilyMembers"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/profile/{id}/family-members",
+        "name": "membership.profile.family-members",
+        "action": "App\\Http\\Controllers\\MembershipController@getMemberFamilyMembers"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/profile/{id}/order-history",
+        "name": "membership.profile.order-history",
+        "action": "App\\Http\\Controllers\\MembershipController@getMemberOrderHistory"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/reinstating-fee-report",
+        "name": "membership.reinstating-fee-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@reinstatingFeeReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/reinstating-fee-report/print",
+        "name": "membership.reinstating-fee-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@reinstatingFeeReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/reports",
+        "name": "membership.reports",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@reportsIndex"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/restore/{id}",
+        "name": "membership.restore",
+        "action": "App\\Http\\Controllers\\MembershipController@restore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/sleeping-members-report",
+        "name": "membership.sleeping-members-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@sleepingMembersReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/sleeping-members-report/print",
+        "name": "membership.sleeping-members-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@sleepingMembersReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/sports-subscriptions-report",
+        "name": "membership.sports-subscriptions-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@sportsSubscriptionsReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/sports-subscriptions-report/print",
+        "name": "membership.sports-subscriptions-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@sportsSubscriptionsReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/store",
+        "name": "membership.store",
+        "action": "App\\Http\\Controllers\\MembershipController@store"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/store-step-4",
+        "name": "membership.store-step-4",
+        "action": "App\\Http\\Controllers\\MembershipController@storeStep4"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/subscriptions-maintenance-summary",
+        "name": "membership.subscriptions-maintenance-summary",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@subscriptionsMaintenanceSummary"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/subscriptions-maintenance-summary/print",
+        "name": "membership.subscriptions-maintenance-summary.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@subscriptionsMaintenanceSummaryPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/supplementary-card-report",
+        "name": "membership.supplementary-card-report",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@supplementaryCardReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/supplementary-card-report/data",
+        "name": "membership.supplementary-card-report.data",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@supplementaryCardReportData"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/supplementary-card-report/print",
+        "name": "membership.supplementary-card-report.print",
+        "action": "App\\Http\\Controllers\\MemberFeeRevenueController@supplementaryCardReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/bulk-migration",
+        "name": "membership.transactions.bulk-migration",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@bulkMigration"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/transactions/bulk-store",
+        "name": "membership.transactions.bulk-store",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@bulkStore"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/dashboard",
+        "name": "membership.transactions.dashboard",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/manage",
+        "name": "membership.transactions.index",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@getAllTransactions"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/member/{memberId}",
+        "name": "membership.transactions.member",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@getMemberTransactions"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/search",
+        "name": "membership.transactions.search",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@searchMembers"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/transactions/show/{id}",
+        "name": "membership.transactions.show",
+        "action": "App\\Http\\Controllers\\MemberTransactionController@show"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/trashed",
+        "name": "membership.trashed",
+        "action": "App\\Http\\Controllers\\MembershipController@trashed"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/update-status",
+        "name": "membership.update-status",
+        "action": "App\\Http\\Controllers\\MembershipController@updateStatus"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "admin/membership/update/{id}",
+        "name": "membership.update",
+        "action": "App\\Http\\Controllers\\MembershipController@updateMember"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/membership/visit/detail",
+        "name": "membership.detail",
+        "action": "Closure"
+    },
+    {
+        "module": "Operations",
+        "method": "DELETE",
+        "uri": "admin/membership/{id}",
+        "name": "membership.destroy",
+        "action": "App\\Http\\Controllers\\MembershipController@destroy"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/approval-actions",
+        "name": "procurement.approval-actions.index",
+        "action": "App\\Http\\Controllers\\Procurement\\ApprovalActionController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/cash-purchases",
+        "name": "procurement.cash-purchases.index",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/cash-purchases",
+        "name": "procurement.cash-purchases.store",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/cash-purchases/create",
+        "name": "procurement.cash-purchases.create",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/cash-purchases/{cashPurchase}/approve",
+        "name": "procurement.cash-purchases.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/cash-purchases/{cashPurchase}/reject",
+        "name": "procurement.cash-purchases.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/cash-purchases/{cashPurchase}/submit",
+        "name": "procurement.cash-purchases.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\CashPurchaseController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/delivery-notes",
+        "name": "procurement.delivery-notes.index",
+        "action": "App\\Http\\Controllers\\Procurement\\DeliveryNoteController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/delivery-notes",
+        "name": "procurement.delivery-notes.store",
+        "action": "App\\Http\\Controllers\\Procurement\\DeliveryNoteController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/delivery-notes/create",
+        "name": "procurement.delivery-notes.create",
+        "action": "App\\Http\\Controllers\\Procurement\\DeliveryNoteController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/delivery-notes/{inventoryDocument}/print",
+        "name": "procurement.delivery-notes.print",
+        "action": "App\\Http\\Controllers\\Procurement\\DeliveryNoteController@print"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/goods-receipts",
+        "name": "procurement.goods-receipts.index",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/goods-receipts",
+        "name": "procurement.goods-receipts.store",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/goods-receipts/create",
+        "name": "procurement.goods-receipts.create",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/goods-receipts/{goodsReceipt}/accept",
+        "name": "procurement.goods-receipts.accept",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@accept"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/goods-receipts/{goodsReceipt}/pdf",
+        "name": "procurement.goods-receipts.pdf",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@pdf"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/goods-receipts/{goodsReceipt}/print",
+        "name": "procurement.goods-receipts.print",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@print"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/goods-receipts/{goodsReceipt}/view",
+        "name": "procurement.goods-receipts.view",
+        "action": "App\\Http\\Controllers\\Procurement\\GoodsReceiptController@view"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/insights/discrepancies",
+        "name": "procurement.insights.discrepancies",
+        "action": "App\\Http\\Controllers\\Procurement\\ProcurementInsightsController@discrepancies"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/payment-run",
+        "name": "procurement.payment-run.index",
+        "action": "App\\Http\\Controllers\\Procurement\\ProcurementInsightsController@paymentRun"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/payment-run",
+        "name": "procurement.payment-run.execute",
+        "action": "App\\Http\\Controllers\\Procurement\\ProcurementInsightsController@executePaymentRun"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/policy",
+        "name": "procurement.policy.show",
+        "action": "App\\Http\\Controllers\\Procurement\\ProcurementPolicyController@show"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/policy",
+        "name": "procurement.policy.update",
+        "action": "App\\Http\\Controllers\\Procurement\\ProcurementPolicyController@update"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders",
+        "name": "procurement.purchase-orders.index",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-orders",
+        "name": "procurement.purchase-orders.store",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders/create",
+        "name": "procurement.purchase-orders.create",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/amend",
+        "name": "procurement.purchase-orders.amend",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@amend"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/approve",
+        "name": "procurement.purchase-orders.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/pdf",
+        "name": "procurement.purchase-orders.pdf",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@pdf"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/print",
+        "name": "procurement.purchase-orders.print",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@print"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/reject",
+        "name": "procurement.purchase-orders.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/revisions",
+        "name": "procurement.purchase-orders.revisions",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@revisions"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/submit",
+        "name": "procurement.purchase-orders.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-orders/{purchaseOrder}/view",
+        "name": "procurement.purchase-orders.view",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseOrderController@view"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-requisitions",
+        "name": "procurement.purchase-requisitions.index",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-requisitions",
+        "name": "procurement.purchase-requisitions.store",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-requisitions/create",
+        "name": "procurement.purchase-requisitions.create",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-requisitions/{purchaseRequisition}/approve",
+        "name": "procurement.purchase-requisitions.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-requisitions/{purchaseRequisition}/convert-to-po",
+        "name": "procurement.purchase-requisitions.convert-to-po",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@convertToPo"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-requisitions/{purchaseRequisition}/reject",
+        "name": "procurement.purchase-requisitions.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-requisitions/{purchaseRequisition}/submit",
+        "name": "procurement.purchase-requisitions.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseRequisitionController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-returns",
+        "name": "procurement.purchase-returns.index",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-returns",
+        "name": "procurement.purchase-returns.store",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-returns/create",
+        "name": "procurement.purchase-returns.create",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/purchase-returns/source/grn/{goodsReceipt}",
+        "name": "procurement.purchase-returns.source.grn",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@sourceFromGrn"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-returns/{purchaseReturn}/approve",
+        "name": "procurement.purchase-returns.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-returns/{purchaseReturn}/reject",
+        "name": "procurement.purchase-returns.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/purchase-returns/{purchaseReturn}/submit",
+        "name": "procurement.purchase-returns.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\PurchaseReturnController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/supplier-advances",
+        "name": "procurement.supplier-advances.index",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/supplier-advances",
+        "name": "procurement.supplier-advances.store",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/supplier-advances/{supplierAdvance}/apply",
+        "name": "procurement.supplier-advances.apply",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@apply"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/supplier-advances/{supplierAdvance}/approve",
+        "name": "procurement.supplier-advances.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/supplier-advances/{supplierAdvance}/reject",
+        "name": "procurement.supplier-advances.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/supplier-advances/{supplierAdvance}/submit",
+        "name": "procurement.supplier-advances.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\SupplierAdvanceController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-bills",
+        "name": "procurement.vendor-bills.index",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-bills",
+        "name": "procurement.vendor-bills.store",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-bills/create",
+        "name": "procurement.vendor-bills.create",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "PUT",
+        "uri": "admin/procurement/vendor-bills/{vendorBill}",
+        "name": "procurement.vendor-bills.update",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@update"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-bills/{vendorBill}/approve",
+        "name": "procurement.vendor-bills.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-bills/{vendorBill}/edit",
+        "name": "procurement.vendor-bills.edit",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@edit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-bills/{vendorBill}/reject",
+        "name": "procurement.vendor-bills.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-bills/{vendorBill}/submit",
+        "name": "procurement.vendor-bills.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorBillController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-payments",
+        "name": "procurement.vendor-payments.index",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-payments",
+        "name": "procurement.vendor-payments.store",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-payments/create",
+        "name": "procurement.vendor-payments.create",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@create"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "PUT",
+        "uri": "admin/procurement/vendor-payments/{vendorPayment}",
+        "name": "procurement.vendor-payments.update",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@update"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-payments/{vendorPayment}/approve",
+        "name": "procurement.vendor-payments.approve",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@approve"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendor-payments/{vendorPayment}/edit",
+        "name": "procurement.vendor-payments.edit",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@edit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-payments/{vendorPayment}/reject",
+        "name": "procurement.vendor-payments.reject",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@reject"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendor-payments/{vendorPayment}/submit",
+        "name": "procurement.vendor-payments.submit",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorPaymentController@submit"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendors",
+        "name": "procurement.vendors.index",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorController@index"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "POST",
+        "uri": "admin/procurement/vendors",
+        "name": "procurement.vendors.store",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorController@store"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "GET|HEAD",
+        "uri": "admin/procurement/vendors/{vendor}",
+        "name": "procurement.vendors.show",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorController@show"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "PUT",
+        "uri": "admin/procurement/vendors/{vendor}",
+        "name": "procurement.vendors.update",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorController@update"
+    },
+    {
+        "module": "Procurement/Purchase",
+        "method": "DELETE",
+        "uri": "admin/procurement/vendors/{vendor}",
+        "name": "procurement.vendors.destroy",
+        "action": "App\\Http\\Controllers\\Procurement\\VendorController@destroy"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/all",
+        "name": "admin.reports.pos.all",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/closing-sales",
+        "name": "admin.reports.pos.closing-sales",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@closingSales"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/daily-dump-items-report",
+        "name": "admin.reports.pos.daily-dump-items-report",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dailyDumpItemsReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/daily-dump-items-report/print",
+        "name": "admin.reports.pos.daily-dump-items-report.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dailyDumpItemsReportPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/daily-sales-list-cashier-wise",
+        "name": "admin.reports.pos.daily-sales-list-cashier-wise",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dailySalesListCashierWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/daily-sales-list-cashier-wise/print",
+        "name": "admin.reports.pos.daily-sales-list-cashier-wise.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dailySalesListCashierWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/dish-breakdown-price",
+        "name": "admin.reports.pos.dish-breakdown-price",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dishBreakdownPrice"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/dish-breakdown-quantity",
+        "name": "admin.reports.pos.dish-breakdown-quantity",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@dishBreakdownQuantity"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/graphical",
+        "name": "admin.reports.pos.graphical",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@graphical"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/monthly-employee-food-bills",
+        "name": "admin.reports.pos.monthly-employee-food-bills",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@monthlyEmployeeFoodBills"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/restaurant-wise",
+        "name": "admin.reports.pos.restaurant-wise",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@restaurantWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/restaurant-wise/print",
+        "name": "admin.reports.pos.restaurant-wise.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@restaurantWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/running-sales-orders",
+        "name": "admin.reports.pos.running-sales-orders",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@runningSalesOrders"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/running-sales-orders/print",
+        "name": "admin.reports.pos.running-sales-orders.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@runningSalesOrdersPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/sales-summary-with-items",
+        "name": "admin.reports.pos.sales-summary-with-items",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@salesSummaryWithItems"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/sales-summary-with-items/print",
+        "name": "admin.reports.pos.sales-summary-with-items.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@salesSummaryWithItemsPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/single/{tenantId}",
+        "name": "admin.reports.pos.single",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@singleRestaurant"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "admin/reports/pos/single/{tenantId}/print",
+        "name": "admin.reports.pos.single.print",
+        "action": "App\\Http\\Controllers\\AdminPosReportController@printSingle"
+    },
+    {
+        "module": "Operations",
+        "method": "POST",
+        "uri": "api/attendances/all/report",
+        "name": "api.attendances.all.report",
+        "action": "App\\Http\\Controllers\\AttendanceController@allEmployeesReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/attendances/leaves/reports/monthly",
+        "name": "api.attendances.leaves.reports.monthly",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@leaveReportMonthly"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/attendances/leaves/reports/monthly/export",
+        "name": "api.attendances.leaves.reports.monthly.export",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@exportMonthlyReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/attendances/profile/report/{employeeId}",
+        "name": "api.attendances.profile.report",
+        "action": "App\\Http\\Controllers\\AttendanceController@profileReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/attendances/reports",
+        "name": "api.attendances.reports",
+        "action": "App\\Http\\Controllers\\AttendanceController@attendanceReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/attendances/reports/export",
+        "name": "api.attendances.reports.export",
+        "action": "App\\Http\\Controllers\\AttendanceController@exportAttendanceReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/employees/leaves/reports",
+        "name": "api.leave-reports",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@leaveReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/employees/leaves/reports/export",
+        "name": "api.leave-reports.export",
+        "action": "App\\Http\\Controllers\\LeaveApplicationController@exportLeaveReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/payroll/reports/detailed/{periodId}",
+        "name": "api.payroll.reports.detailed",
+        "action": "App\\Http\\Controllers\\PayrollApiController@getDetailedReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/payroll/reports/employee/{employeeId}",
+        "name": "api.payroll.reports.employee",
+        "action": "App\\Http\\Controllers\\PayrollApiController@getEmployeePayrollHistory"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "api/payroll/reports/summary/{periodId}",
+        "name": "api.payroll.reports.summary",
+        "action": "App\\Http\\Controllers\\PayrollApiController@getSummaryReport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports",
+        "name": "events.reports",
+        "action": "App\\Http\\Controllers\\EventReportController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/addons",
+        "name": "events.reports.addons",
+        "action": "App\\Http\\Controllers\\EventReportController@addOns"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/addons/export",
+        "name": "events.reports.addons.export",
+        "action": "App\\Http\\Controllers\\EventReportController@addOnsExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/addons/print",
+        "name": "events.reports.addons.print",
+        "action": "App\\Http\\Controllers\\EventReportController@addOnsPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/booking",
+        "name": "events.reports.booking",
+        "action": "App\\Http\\Controllers\\EventReportController@booking"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/booking/export",
+        "name": "events.reports.booking.export",
+        "action": "App\\Http\\Controllers\\EventReportController@bookingExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/booking/print",
+        "name": "events.reports.booking.print",
+        "action": "App\\Http\\Controllers\\EventReportController@bookingPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/cancelled",
+        "name": "events.reports.cancelled",
+        "action": "App\\Http\\Controllers\\EventReportController@cancelled"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/cancelled/export",
+        "name": "events.reports.cancelled.export",
+        "action": "App\\Http\\Controllers\\EventReportController@cancelledExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/cancelled/print",
+        "name": "events.reports.cancelled.print",
+        "action": "App\\Http\\Controllers\\EventReportController@cancelledPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/complementary",
+        "name": "events.reports.complementary",
+        "action": "App\\Http\\Controllers\\EventReportController@complementary"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/complementary/export",
+        "name": "events.reports.complementary.export",
+        "action": "App\\Http\\Controllers\\EventReportController@complementaryExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/complementary/print",
+        "name": "events.reports.complementary.print",
+        "action": "App\\Http\\Controllers\\EventReportController@complementaryPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/completed",
+        "name": "events.reports.completed",
+        "action": "App\\Http\\Controllers\\EventReportController@completed"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/completed/export",
+        "name": "events.reports.completed.export",
+        "action": "App\\Http\\Controllers\\EventReportController@completedExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/completed/print",
+        "name": "events.reports.completed.print",
+        "action": "App\\Http\\Controllers\\EventReportController@completedPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/day-wise",
+        "name": "events.reports.day-wise",
+        "action": "App\\Http\\Controllers\\EventReportController@dayWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/day-wise/export",
+        "name": "events.reports.day-wise.export",
+        "action": "App\\Http\\Controllers\\EventReportController@dayWiseExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/day-wise/print",
+        "name": "events.reports.day-wise.print",
+        "action": "App\\Http\\Controllers\\EventReportController@dayWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/menu-wise",
+        "name": "events.reports.menu-wise",
+        "action": "App\\Http\\Controllers\\EventReportController@menuWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/menu-wise/export",
+        "name": "events.reports.menu-wise.export",
+        "action": "App\\Http\\Controllers\\EventReportController@menuWiseExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/menu-wise/print",
+        "name": "events.reports.menu-wise.print",
+        "action": "App\\Http\\Controllers\\EventReportController@menuWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/payment-history",
+        "name": "events.reports.payment-history",
+        "action": "App\\Http\\Controllers\\EventReportController@paymentHistory"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/payment-history/export",
+        "name": "events.reports.payment-history.export",
+        "action": "App\\Http\\Controllers\\EventReportController@paymentHistoryExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/payment-history/print",
+        "name": "events.reports.payment-history.print",
+        "action": "App\\Http\\Controllers\\EventReportController@paymentHistoryPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/venue-wise",
+        "name": "events.reports.venue-wise",
+        "action": "App\\Http\\Controllers\\EventReportController@venueWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/venue-wise/export",
+        "name": "events.reports.venue-wise.export",
+        "action": "App\\Http\\Controllers\\EventReportController@venueWiseExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/events/reports/venue-wise/print",
+        "name": "events.reports.venue-wise.print",
+        "action": "App\\Http\\Controllers\\EventReportController@venueWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports",
+        "name": "rooms.reports",
+        "action": "App\\Http\\Controllers\\RoomReportController@index"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/booking",
+        "name": "rooms.reports.booking",
+        "action": "App\\Http\\Controllers\\RoomReportController@booking"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/booking/export",
+        "name": "rooms.reports.booking.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@bookingExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/booking/print",
+        "name": "rooms.reports.booking.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@bookingPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/cancelled",
+        "name": "rooms.reports.cancelled",
+        "action": "App\\Http\\Controllers\\RoomReportController@cancelled"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/cancelled/export",
+        "name": "rooms.reports.cancelled.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@cancelledExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/cancelled/print",
+        "name": "rooms.reports.cancelled.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@cancelledPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-in",
+        "name": "rooms.reports.check-in",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkIn"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-in/export",
+        "name": "rooms.reports.check-in.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkInExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-in/print",
+        "name": "rooms.reports.check-in.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkInPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-out",
+        "name": "rooms.reports.check-out",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkOut"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-out/export",
+        "name": "rooms.reports.check-out.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkOutExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/check-out/print",
+        "name": "rooms.reports.check-out.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@checkOutPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/complementary",
+        "name": "rooms.reports.complementary",
+        "action": "App\\Http\\Controllers\\RoomReportController@complementary"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/complementary/export",
+        "name": "rooms.reports.complementary.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@complementaryExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/complementary/print",
+        "name": "rooms.reports.complementary.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@complementaryPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/day-wise",
+        "name": "rooms.reports.day-wise",
+        "action": "App\\Http\\Controllers\\RoomReportController@dayWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/day-wise/export",
+        "name": "rooms.reports.day-wise.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@dayWiseExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/day-wise/print",
+        "name": "rooms.reports.day-wise.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@dayWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/member-wise",
+        "name": "rooms.reports.member-wise",
+        "action": "App\\Http\\Controllers\\RoomReportController@memberWise"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/member-wise/export",
+        "name": "rooms.reports.member-wise.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@memberWiseExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/member-wise/print",
+        "name": "rooms.reports.member-wise.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@memberWisePrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/mini-bar",
+        "name": "rooms.reports.mini-bar",
+        "action": "App\\Http\\Controllers\\RoomReportController@miniBar"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/mini-bar/export",
+        "name": "rooms.reports.mini-bar.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@miniBarExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/mini-bar/print",
+        "name": "rooms.reports.mini-bar.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@miniBarPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/payment-history",
+        "name": "rooms.reports.payment-history",
+        "action": "App\\Http\\Controllers\\RoomReportController@paymentHistory"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/payment-history/export",
+        "name": "rooms.reports.payment-history.export",
+        "action": "App\\Http\\Controllers\\RoomReportController@paymentHistoryExport"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/payment-history/print",
+        "name": "rooms.reports.payment-history.print",
+        "action": "App\\Http\\Controllers\\RoomReportController@paymentHistoryPrint"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "booking-management/rooms/reports/receivables",
+        "name": "rooms.reports.receivables",
+        "action": "App\\Http\\Controllers\\RoomReportController@receivables"
+    },
+    {
+        "module": "Operations",
+        "method": "GET|HEAD",
+        "uri": "employee/monthly/attendance/report",
+        "name": "employee.monthlyreport",
+        "action": "Closure"
+    }
+]

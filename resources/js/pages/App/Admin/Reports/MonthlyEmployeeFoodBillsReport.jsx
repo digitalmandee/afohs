@@ -65,7 +65,13 @@ export default function MonthlyEmployeeFoodBillsReport({ startDate, endDate, fil
                 </Grid>
 
                 <SurfaceCard title="Report Filters" subtitle="Choose a date range and employee search term before running the report.">
-                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Select period and employee scope, then Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <DateRangeFilterFields
                                 startLabel="Start Date"

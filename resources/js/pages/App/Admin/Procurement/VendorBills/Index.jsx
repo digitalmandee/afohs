@@ -3,7 +3,6 @@ import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
 import {
-    Box,
     Button,
     Chip,
     Dialog,
@@ -17,15 +16,20 @@ import {
     TextField,
     Typography,
 } from '@mui/material';
+import { CheckCircle, Close, EditOutlined, History as HistoryIcon, OpenInNew, PictureAsPdf, Print, Send } from '@mui/icons-material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
+import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
 import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ bills, filters, summary = {}, vendors = [], tenants = [] }) {
+    const mutation = useMutationAction();
     const rows = bills?.data || [];
     const columns = [
         { key: 'bill_no', label: 'Bill No' },
@@ -35,7 +39,7 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
         { key: 'approval', label: 'Approval' },
         { key: 'gl', label: 'GL' },
         { key: 'total', label: 'Total', align: 'right' },
-        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 240 } },
+        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 280 } },
     ];
     const [historyOpen, setHistoryOpen] = React.useState(false);
     const [historyRows, setHistoryRows] = React.useState([]);
@@ -166,7 +170,13 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search, choose vendor/status, or adjust dates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine bills by search, status, vendor, restaurant, and bill date range."
+                >
                     <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} md={3}>
                             <TextField
@@ -248,8 +258,18 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
                             <TableCell>{bill.latest_approval_action?.action || '-'}</TableCell>
                             <TableCell>
                                 <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(bill.accounting_status || (bill.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    {bill.posting_hint || '-'}
+                                </Typography>
                                 {bill.accounting_failure_reason ? (
-                                    <Typography variant="body2" color="error.main">{bill.accounting_failure_reason}</Typography>
+                                    <>
+                                        <Typography variant="body2" color="error.main">{bill.accounting_failure_reason}</Typography>
+                                        {bill.accounting_correlation_id ? (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                                Correlation: {bill.accounting_correlation_id}
+                                            </Typography>
+                                        ) : null}
+                                    </>
                                 ) : (
                                     <Chip
                                         size="small"
@@ -261,15 +281,72 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(bill.grand_total)}</TableCell>
                             <TableCell align="right">
-                                {bill.status === 'draft' && (
-                                    <>
-                                        <Button size="small" component={Link} href={route('procurement.vendor-bills.edit', bill.id)}>Edit</Button>
-                                        <Button size="small" onClick={() => router.post(route('procurement.vendor-bills.submit', bill.id))}>Submit</Button>
-                                        <Button size="small" color="success" onClick={() => router.post(route('procurement.vendor-bills.approve', bill.id))}>Approve</Button>
-                                        <Button size="small" color="error" onClick={() => router.post(route('procurement.vendor-bills.reject', bill.id))}>Reject</Button>
-                                    </>
-                                )}
-                                <Button size="small" onClick={() => openHistory(bill)}>History</Button>
+                                <AdminRowActionGroup justify="flex-end">
+                                    <AdminIconAction title="View Bill" onClick={() => window.open(route('procurement.vendor-bills.view', bill.id), '_blank', 'noopener,noreferrer')}>
+                                        <OpenInNew fontSize="inherit" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Print Bill" onClick={() => window.open(route('procurement.vendor-bills.print', bill.id), '_blank', 'noopener,noreferrer')}>
+                                        <Print fontSize="inherit" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Download PDF" onClick={() => window.open(route('procurement.vendor-bills.pdf', bill.id), '_blank', 'noopener,noreferrer')}>
+                                        <PictureAsPdf fontSize="inherit" />
+                                    </AdminIconAction>
+                                    {bill.status === 'draft' ? (
+                                        <>
+                                            <AdminIconAction title="Edit Bill" onClick={() => router.visit(route('procurement.vendor-bills.edit', bill.id))}>
+                                                <EditOutlined fontSize="inherit" />
+                                            </AdminIconAction>
+                                            <AdminIconAction title="Submit Bill" onClick={() => mutation.runRouterAction({
+                                                key: `vb-submit-${bill.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-bills.submit', bill.id),
+                                                successMessage: 'Vendor bill submitted.',
+                                                errorMessage: 'Failed to submit vendor bill.',
+                                                confirmConfig: {
+                                                    title: 'Submit Vendor Bill',
+                                                    message: 'Submit this vendor bill for approval?',
+                                                    confirmLabel: 'Submit',
+                                                    severity: 'warning',
+                                                },
+                                            })}>
+                                                <Send fontSize="inherit" />
+                                            </AdminIconAction>
+                                            <AdminIconAction title="Approve/Post Bill" color="success" onClick={() => mutation.runRouterAction({
+                                                key: `vb-approve-${bill.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-bills.approve', bill.id),
+                                                successMessage: 'Vendor bill approved.',
+                                                errorMessage: 'Failed to approve vendor bill.',
+                                                confirmConfig: {
+                                                    title: 'Approve Vendor Bill',
+                                                    message: 'Approve and post this vendor bill?',
+                                                    confirmLabel: 'Approve',
+                                                    severity: 'critical',
+                                                },
+                                            })}>
+                                                <CheckCircle fontSize="inherit" />
+                                            </AdminIconAction>
+                                            <AdminIconAction title="Reject Bill" color="error" onClick={() => mutation.runRouterAction({
+                                                key: `vb-reject-${bill.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-bills.reject', bill.id),
+                                                successMessage: 'Vendor bill rejected.',
+                                                errorMessage: 'Failed to reject vendor bill.',
+                                                confirmConfig: {
+                                                    title: 'Reject Vendor Bill',
+                                                    message: 'Reject this vendor bill?',
+                                                    confirmLabel: 'Reject',
+                                                    severity: 'danger',
+                                                },
+                                            })}>
+                                                <Close fontSize="inherit" />
+                                            </AdminIconAction>
+                                        </>
+                                    ) : null}
+                                    <AdminIconAction title="History" onClick={() => openHistory(bill)}>
+                                        <HistoryIcon fontSize="inherit" />
+                                    </AdminIconAction>
+                                </AdminRowActionGroup>
                             </TableCell>
                         </TableRow>
                     )}
@@ -306,6 +383,7 @@ export default function Index({ bills, filters, summary = {}, vendors = [], tena
                     <Button onClick={() => setHistoryOpen(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

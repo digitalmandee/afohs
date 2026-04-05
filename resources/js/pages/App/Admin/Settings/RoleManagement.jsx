@@ -46,6 +46,10 @@ const RoleManagement = () => {
         router.get(route('admin.roles.index'), { search }, { preserveState: true });
     };
 
+    const applyFilters = () => {
+        router.get(route('admin.roles.index'), { search }, { preserveState: true });
+    };
+
     const handleCreateRole = () => {
         router.post(route('admin.roles.store'), newRole, {
             onSuccess: () => {
@@ -196,7 +200,13 @@ const RoleManagement = () => {
                 </Grid>
 
                 <SurfaceCard title="Find Roles" subtitle="Search the role register and manage access without leaving the standardized settings workspace.">
-                    <FilterToolbar onReset={() => { setSearch(''); router.get(route('admin.roles.index'), {}, { preserveState: true }); }}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Search roles and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={() => { setSearch(''); router.get(route('admin.roles.index'), {}, { preserveState: true }); }}
+                    >
                         <Box component="form" onSubmit={handleSearch}>
                             <TextField
                                 placeholder="Search roles..."

@@ -1,19 +1,26 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Button, Card, CardContent, Chip, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, Grid, MenuItem, TextField, Typography, Alert } from '@mui/material';
+import { useSnackbar } from 'notistack';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
 import AppPage from '@/components/App/ui/AppPage';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useMutationAction from '@/hooks/useMutationAction';
 
-export default function Create({ purchaseOrder, purchaseOrders }) {
+export default function Create({ purchaseOrder, purchaseOrders, prefillError = null, acceptanceWorkflowEnabled = true }) {
+  const { enqueueSnackbar } = useSnackbar();
+  const mutation = useMutationAction();
   const selectedOrder = purchaseOrder || null;
   const defaultItems = selectedOrder?.items?.map((item) => ({
     purchase_order_item_id: item.id,
-    inventory_item_id: item.inventory_item_id || item.product_id,
+    inventory_item_id: item.resolved_inventory_item_id || item.inventory_item_id || item.product_id || '',
     qty_ordered: item.qty_ordered || 0,
     qty_received_before: item.qty_received || 0,
     qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
     unit_cost: item.unit_cost,
     product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
+    mapping_issue: item.mapping_issue || '',
   })) || [];
 
   const { data, setData, post, processing, errors } = useForm({
@@ -35,12 +42,13 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     const nextOrder = orders.find((order) => String(order.id) === String(value));
     const nextItems = (nextOrder?.items || []).map((item) => ({
       purchase_order_item_id: item.id,
-      inventory_item_id: item.inventory_item_id || item.product_id,
+      inventory_item_id: item.resolved_inventory_item_id || item.inventory_item_id || item.product_id || '',
       qty_ordered: item.qty_ordered || 0,
       qty_received_before: item.qty_received || 0,
       qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
       unit_cost: item.unit_cost,
       product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
+      mapping_issue: item.mapping_issue || '',
     }));
 
     setData('purchase_order_id', value);
@@ -58,16 +66,64 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
     (sum, item) => sum + Number(item.qty_received || 0) * Number(item.unit_cost || 0),
     0
   );
+  const unresolvedLines = data.items.filter((item) => !item.inventory_item_id || item.mapping_issue);
 
-  const submit = (e) => {
-    e.preventDefault();
-    post(route('procurement.goods-receipts.store'));
-  };
+  React.useEffect(() => {
+    if (prefillError) {
+      enqueueSnackbar(prefillError, { variant: 'warning' });
+    }
+  }, [enqueueSnackbar, prefillError]);
 
   return (
     <AppPage eyebrow="Procurement" title="Create Goods Receipt" subtitle="Receive stock into a restaurant warehouse and internal location while preserving procurement and accounting linkage.">
       <SurfaceCard title="Receipt Details" subtitle="Select the purchase order, warehouse location, and actual received quantities.">
-          <form onSubmit={submit}>
+          {orders.length === 0 && (
+            <Box sx={{ py: 3 }}>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                No approved purchase orders are available for receiving yet.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                Approve a purchase order first, then return here to create the GRN.
+              </Typography>
+            </Box>
+          )}
+          {orders.length > 0 && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              mutation.runAction({
+                key: 'grn-create',
+                requireConfirm: true,
+                confirmConfig: {
+                  title: 'Submit GRN',
+                  message: 'Submit this GRN for requester acceptance?',
+                  confirmLabel: 'Submit',
+                  severity: 'warning',
+                },
+                action: ({ onSuccess, onError, onFinish }) => {
+                  post(route('procurement.goods-receipts.store'), {
+                    onSuccess: () => {
+                      onSuccess();
+                      enqueueSnackbar('GRN submitted for acceptance.', { variant: 'success' });
+                    },
+                    onError: (formErrors) => {
+                      const firstMessage = Object.values(formErrors || {}).flat().find((msg) => typeof msg === 'string' && msg.trim().length > 0);
+                      enqueueSnackbar(firstMessage || 'Failed to create GRN. Please review the form.', { variant: 'error' });
+                      onError(formErrors);
+                    },
+                    onFinish,
+                  });
+                },
+              });
+            }}
+          >
+            {prefillError ? <Alert severity="warning" sx={{ mb: 2 }}>{prefillError}</Alert> : null}
+            {errors.error ? <Alert severity="error" sx={{ mb: 2 }}>{errors.error}</Alert> : null}
+            {unresolvedLines.length > 0 ? (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {unresolvedLines.length} PO line(s) have invalid inventory mapping. Fix mapping before GRN submission.
+              </Alert>
+            ) : null}
             <Grid container spacing={2}>
               <Grid item xs={12} md={7}>
                 <TextField
@@ -119,7 +175,7 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
               <Grid item xs={12} md={2}>
                 <TextField
                   label="Status"
-                  value="received"
+                  value={acceptanceWorkflowEnabled ? 'pending_acceptance' : 'received'}
                   fullWidth
                   disabled
                 />
@@ -215,6 +271,11 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
                       fullWidth
                     />
                   </Grid>
+                  {item.mapping_issue ? (
+                    <Grid item xs={12}>
+                      <Alert severity="warning">{item.mapping_issue}</Alert>
+                    </Grid>
+                  ) : null}
                 </Grid>
               ))}
             </Box>
@@ -229,12 +290,20 @@ export default function Create({ purchaseOrder, purchaseOrders }) {
             </Card>
 
             <Box sx={{ mt: 3 }}>
-              <Button type="submit" variant="contained" disabled={processing || !data.purchase_order_id || data.items.length === 0}>
-                Save GRN
-              </Button>
+              <AppLoadingButton
+                type="submit"
+                variant="contained"
+                loading={processing || mutation.isPending('grn-create')}
+                loadingLabel="Submitting..."
+                disabled={!data.purchase_order_id || data.items.length === 0 || unresolvedLines.length > 0}
+              >
+                Submit GRN
+              </AppLoadingButton>
             </Box>
           </form>
+          )}
       </SurfaceCard>
+      <ConfirmActionDialog {...mutation.confirmDialogProps} />
     </AppPage>
   );
 }

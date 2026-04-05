@@ -56,7 +56,13 @@ export default function ManagementPack({ filters, cashFlow = {}, workingCapital 
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period while keeping all management views in the same premium shell.">
-                <FilterToolbar onReset={() => applyFilters({ from: '', to: '' })}>
+                <FilterToolbar
+                    onReset={() => applyFilters({ from: '', to: '' })}
+                    onApply={() => applyFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Set reporting period for management pack outputs."
+                >
                     <Grid container spacing={2}>
                         <DateRangeFilterFields
                             startValue={localFilters.from}

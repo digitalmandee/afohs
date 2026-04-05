@@ -136,7 +136,13 @@ export default function Index({ accounts, filters = {} }) {
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter payment accounts by account name, method, or status without the older apply/reset workflow.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Search payment accounts by name, method, and status."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField

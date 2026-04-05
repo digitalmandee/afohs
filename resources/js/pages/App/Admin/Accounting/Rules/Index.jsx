@@ -312,7 +312,13 @@ export default function Index({ rules, coaAccounts = [], filters, standardRules 
                 </SurfaceCard>
 
                 <SurfaceCard title="Live Filters" subtitle="Filter posting rules by code, name, and activation status without using a manual search step.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine accounting rules by search, status, and event scope."
+                    >
                         <Grid container spacing={1.25}>
                             <Grid item xs={12} md={8}>
                                 <TextField

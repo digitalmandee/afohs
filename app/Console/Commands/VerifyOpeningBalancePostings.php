@@ -65,6 +65,7 @@ class VerifyOpeningBalancePostings extends Command
             $status = 'ok';
             $latestQueueStatus = '-';
             $latestQueueError = '-';
+            $latestQueueCorrelation = '-';
             if (!$journal) {
                 $status = 'missing_journal';
                 $missingJournal++;
@@ -72,10 +73,11 @@ class VerifyOpeningBalancePostings extends Command
                     ->where('source_type', InventoryDocument::class)
                     ->where('source_id', $document->id)
                     ->latest('id')
-                    ->first(['status', 'error_message']);
+                    ->first(['status', 'error_message', 'payload']);
                 if ($latestQueue) {
                     $latestQueueStatus = (string) ($latestQueue->status ?? '-');
                     $latestQueueError = (string) ($latestQueue->error_message ?? '-');
+                    $latestQueueCorrelation = (string) (($latestQueue->payload['correlation_id'] ?? '-') ?: '-');
                 }
             } elseif (abs($docAmount - $journalAmount) > 0.01) {
                 $status = 'amount_mismatch';
@@ -91,11 +93,12 @@ class VerifyOpeningBalancePostings extends Command
                 'status' => $status,
                 'queue_status' => $latestQueueStatus,
                 'queue_error' => $latestQueueError,
+                'queue_correlation_id' => $latestQueueCorrelation,
             ];
         }
 
         $this->table(
-            ['document_no', 'date', 'doc_amount', 'journal_entry', 'journal_amount', 'status', 'queue_status', 'queue_error'],
+            ['document_no', 'date', 'doc_amount', 'journal_entry', 'journal_amount', 'status', 'queue_status', 'queue_error', 'queue_correlation_id'],
             $rows
         );
 

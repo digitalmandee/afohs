@@ -1,15 +1,22 @@
 import React from 'react';
 import { Link, router } from '@inertiajs/react';
-import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { Button, Chip, Grid, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import debounce from 'lodash.debounce';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
 import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useMutationAction from '@/hooks/useMutationAction';
 
-export default function Index({ receipts, filters, summary = {}, vendors = [], warehouses = [], warehouseLocations = [], tenants = [] }) {
+export default function Index({ receipts, filters, summary = {}, vendors = [], warehouses = [], warehouseLocations = [], tenants = [], authUserId = null }) {
+    const mutation = useMutationAction();
     const data = receipts?.data || [];
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
@@ -109,6 +116,7 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
         { key: 'received_date', label: 'Date', minWidth: 120 },
         { key: 'status', label: 'Status', minWidth: 120 },
         { key: 'gl', label: 'Accounting', minWidth: 150 },
+        { key: 'actions', label: 'Actions', minWidth: 220, align: 'right' },
     ];
 
     return (
@@ -124,13 +132,20 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
         >
             <Grid container spacing={2.25}>
                 <Grid item xs={12} md={3}><StatCard label="Receipts" value={summary.count || 0} /></Grid>
-                <Grid item xs={12} md={3}><StatCard label="Received" value={summary.received || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Pending Acceptance" value={summary.pending_acceptance || 0} tone="light" /></Grid>
+                <Grid item xs={12} md={3}><StatCard label="Accepted" value={summary.accepted || 0} tone="light" /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="Draft" value={summary.draft || 0} tone="light" /></Grid>
                 <Grid item xs={12} md={3}><StatCard label="Cancelled" value={summary.cancelled || 0} tone="muted" /></Grid>
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter by restaurant, warehouse, vendor, and date range with immediate updates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine goods receipts by search, status, vendor, warehouse, restaurant, and date."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField label="Search GRN or vendor" value={localFilters.search} onChange={(e) => updateFilters({ search: e.target.value })} fullWidth />
@@ -139,7 +154,9 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                             <TextField select label="Status" value={localFilters.status} onChange={(e) => updateFilters({ status: e.target.value }, { immediate: true })} fullWidth>
                                 <MenuItem value="">All</MenuItem>
                                 <MenuItem value="draft">Draft</MenuItem>
-                                <MenuItem value="received">Received</MenuItem>
+                                <MenuItem value="pending_acceptance">Pending Acceptance</MenuItem>
+                                <MenuItem value="accepted">Accepted</MenuItem>
+                                <MenuItem value="received">Accepted (Legacy)</MenuItem>
                                 <MenuItem value="cancelled">Cancelled</MenuItem>
                             </TextField>
                         </Grid>
@@ -202,12 +219,24 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                 </TableCell>
                                 <TableCell>{grn.received_date}</TableCell>
                                 <TableCell>
-                                    <Chip size="small" label={grn.status} color={grn.status === 'received' ? 'success' : 'default'} variant="outlined" />
+                                    <Chip
+                                        size="small"
+                                        label={String(grn.status || '-').replaceAll('_', ' ')}
+                                        color={grn.status === 'accepted' || grn.status === 'received' ? 'success' : grn.status === 'pending_acceptance' ? 'warning' : 'default'}
+                                        variant="outlined"
+                                    />
                                 </TableCell>
                                 <TableCell>
                                     <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(grn.accounting_status || (grn.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
                                     {grn.accounting_failure_reason ? (
-                                        <Typography variant="body2" color="error.main">{grn.accounting_failure_reason}</Typography>
+                                        <>
+                                            <Typography variant="body2" color="error.main">{grn.accounting_failure_reason}</Typography>
+                                            {grn.accounting_correlation_id ? (
+                                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                                    Correlation: {grn.accounting_correlation_id}
+                                                </Typography>
+                                            ) : null}
+                                        </>
                                     ) : (
                                         <Chip
                                             size="small"
@@ -217,11 +246,53 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                         />
                                     )}
                                 </TableCell>
+                                <TableCell align="right">
+                                    <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                                        <Tooltip title="View GRN">
+                                            <IconButton size="small" component="a" href={route('procurement.goods-receipts.view', grn.id)} target="_blank" rel="noreferrer">
+                                                <VisibilityOutlinedIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Print GRN">
+                                            <IconButton size="small" component="a" href={route('procurement.goods-receipts.print', grn.id)} target="_blank" rel="noreferrer">
+                                                <PrintOutlinedIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Download PDF">
+                                            <IconButton size="small" component="a" href={route('procurement.goods-receipts.pdf', grn.id)}>
+                                                <PictureAsPdfOutlinedIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                        {(grn.status === 'pending_acceptance' || grn.status === 'draft') && (Number(grn.verifier_user_id) === Number(authUserId)) && (
+                                            <AppLoadingButton
+                                                size="small"
+                                                loading={mutation.isPending(`grn-accept-${grn.id}`)}
+                                                loadingLabel="Accepting..."
+                                                onClick={() => mutation.runRouterAction({
+                                                    key: `grn-accept-${grn.id}`,
+                                                    method: 'post',
+                                                    url: route('procurement.goods-receipts.accept', grn.id),
+                                                    successMessage: 'GRN accepted and posted.',
+                                                    errorMessage: 'Failed to accept GRN.',
+                                                    confirmConfig: {
+                                                        title: 'Accept GRN',
+                                                        message: 'Accept this GRN and post inventory?',
+                                                        confirmLabel: 'Accept',
+                                                        severity: 'critical',
+                                                    },
+                                                })}
+                                            >
+                                                Accept
+                                            </AppLoadingButton>
+                                        )}
+                                    </Stack>
+                                </TableCell>
                             </TableRow>
                         );
                     }}
                 />
             </SurfaceCard>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

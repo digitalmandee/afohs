@@ -21,15 +21,22 @@ import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import { compactDateActionBar, compactDateFieldSx, compactDateTextFieldProps } from '@/components/App/ui/dateFieldStyles';
 
-export default function Create({ vendors, warehouses, products, inventorySummary = {} }) {
-    const { data, setData, post, processing, errors } = useForm({
-        vendor_id: '',
-        warehouse_id: '',
-        order_date: new Date().toISOString().slice(0, 10),
-        expected_date: '',
-        currency: 'PKR',
-        remarks: '',
-        items: [{ inventory_item_id: '', qty_ordered: 1, unit_cost: 0 }],
+export default function Create({ vendors, warehouses, products, inventorySummary = {}, purchaseOrder = null }) {
+    const isEditMode = Boolean(purchaseOrder?.id);
+    const { data, setData, post, put, processing, errors } = useForm({
+        vendor_id: purchaseOrder?.vendor_id ? String(purchaseOrder.vendor_id) : '',
+        warehouse_id: purchaseOrder?.warehouse_id ? String(purchaseOrder.warehouse_id) : '',
+        order_date: purchaseOrder?.order_date || new Date().toISOString().slice(0, 10),
+        expected_date: purchaseOrder?.expected_date || '',
+        currency: purchaseOrder?.currency || 'PKR',
+        remarks: purchaseOrder?.remarks || '',
+        items: (purchaseOrder?.items?.length
+            ? purchaseOrder.items.map((item) => ({
+                inventory_item_id: item.inventory_item_id ? String(item.inventory_item_id) : '',
+                qty_ordered: Number(item.qty_ordered || 0) || 1,
+                unit_cost: Number(item.unit_cost || 0),
+            }))
+            : [{ inventory_item_id: '', qty_ordered: 1, unit_cost: 0 }]),
     });
 
     const productMap = React.useMemo(() => {
@@ -80,6 +87,10 @@ export default function Create({ vendors, warehouses, products, inventorySummary
 
     const submit = (event) => {
         event.preventDefault();
+        if (isEditMode) {
+            put(route('procurement.purchase-orders.update', purchaseOrder.id));
+            return;
+        }
         post(route('procurement.purchase-orders.store'));
     };
 
@@ -87,8 +98,10 @@ export default function Create({ vendors, warehouses, products, inventorySummary
         <LocalizationProvider dateAdapter={AdapterDayjs}>
             <AppPage
                 eyebrow="Procurement"
-                title="Create Purchase Order"
-                subtitle="Create a draft purchase order from inventory-controlled stock items with clearer procurement context and cleaner item entry."
+                title={isEditMode ? `Edit Purchase Order ${purchaseOrder?.po_no || ''}` : 'Create Purchase Order'}
+                subtitle={isEditMode
+                    ? 'Update purchase order details and lines before final downstream processing.'
+                    : 'Create a draft purchase order from inventory-controlled stock items with clearer procurement context and cleaner item entry.'}
                 actions={[
                     <Button key="back" component={Link} href={route('procurement.purchase-orders.index')} variant="outlined">
                         Back to Orders
@@ -357,7 +370,7 @@ export default function Create({ vendors, warehouses, products, inventorySummary
                                         Cancel
                                     </Button>
                                     <Button type="submit" variant="contained" disabled={processing}>
-                                        {processing ? 'Saving…' : 'Save PO'}
+                                        {processing ? 'Saving…' : isEditMode ? 'Update PO' : 'Save PO'}
                                     </Button>
                                 </Stack>
                             </Stack>

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Accounting\StrictAccountingSyncService;
 
 class VendorPaymentController extends Controller
 {
@@ -99,6 +100,7 @@ class VendorPaymentController extends Controller
             $payment->gl_posted = (bool) ($postedLookup[$payment->id] ?? false);
             $payment->accounting_status = $event?->status ?? ($payment->gl_posted ? 'posted' : 'pending');
             $payment->accounting_failure_reason = $event?->error_message;
+            $payment->accounting_correlation_id = (string) ($event?->payload['correlation_id'] ?? '');
             $payment->latest_approval_action = $action ? [
                 'action' => $action->action,
                 'remarks' => $action->remarks,
@@ -124,7 +126,7 @@ class VendorPaymentController extends Controller
             'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
             'openVendorBills' => VendorBill::query()
                 ->whereIn('status', ['posted', 'partially_paid'])
-                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount'])
+                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount', 'return_applied_amount'])
                 ->orderByDesc('id')
                 ->limit(500)
                 ->get(),
@@ -143,7 +145,7 @@ class VendorPaymentController extends Controller
             'paymentAccounts' => PaymentAccount::orderBy('name')->get(['id', 'name', 'payment_method', 'coa_account_id', 'tenant_id']),
             'openVendorBills' => VendorBill::query()
                 ->whereIn('status', ['posted', 'partially_paid'])
-                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount'])
+                ->select(['id', 'bill_no', 'vendor_id', 'grand_total', 'paid_amount', 'advance_applied_amount', 'return_applied_amount'])
                 ->orderByDesc('id')
                 ->limit(500)
                 ->get(),
@@ -178,7 +180,7 @@ class VendorPaymentController extends Controller
                     'vendor_bill_id' => 'Selected bill does not belong to selected vendor.',
                 ])->withInput();
             }
-            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount - (float) $bill->return_applied_amount);
             if ((float) $data['amount'] > $outstanding + 0.01) {
                 return redirect()->back()->withErrors([
                     'amount' => "Payment amount exceeds bill outstanding ({$outstanding}).",
@@ -273,7 +275,7 @@ class VendorPaymentController extends Controller
                     'vendor_bill_id' => 'Selected bill does not belong to selected vendor.',
                 ])->withInput();
             }
-            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+            $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount - (float) $bill->return_applied_amount);
             if ((float) $data['amount'] > $outstanding + 0.01) {
                 return redirect()->back()->withErrors([
                     'amount' => "Payment amount exceeds bill outstanding ({$outstanding}).",
@@ -369,7 +371,7 @@ class VendorPaymentController extends Controller
                         'source_document_id' => 'Linked vendor bill was not found for invoice-wise payment.',
                     ]);
                 }
-                $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+                $outstanding = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount - (float) $bill->return_applied_amount);
                 if ((float) $vendorPayment->amount > $outstanding + 0.01) {
                     throw ValidationException::withMessages([
                         'amount' => 'Payment amount exceeds bill outstanding at approval time.',
@@ -385,12 +387,12 @@ class VendorPaymentController extends Controller
                     ]
                 );
                 $bill->paid_amount = (float) $bill->paid_amount + (float) $vendorPayment->amount;
-                $billOutstandingAfter = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount);
+                $billOutstandingAfter = max(0, (float) $bill->grand_total - (float) $bill->paid_amount - (float) $bill->advance_applied_amount - (float) $bill->return_applied_amount);
                 $bill->status = $billOutstandingAfter <= 0.01 ? 'paid' : 'partially_paid';
                 $bill->save();
             }
 
-            app(AccountingEventDispatcher::class)->dispatch(
+            $event = app(AccountingEventDispatcher::class)->dispatch(
                 'vendor_payment_posted',
                 VendorPayment::class,
                 (int) $vendorPayment->id,
@@ -403,6 +405,8 @@ class VendorPaymentController extends Controller
                 $request->user()?->id,
                 $vendorPayment->tenant_id
             );
+
+            app(StrictAccountingSyncService::class)->enforceOrFail($event, "Vendor Payment {$vendorPayment->payment_no}");
 
             ApprovalAction::create([
                 'document_type' => 'vendor_payment',

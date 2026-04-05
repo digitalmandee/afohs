@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\PartnerAffiliateController;
+use App\Http\Controllers\Admin\OperationalLogController;
 use App\Http\Controllers\Accounting\CoaAccountController;
 use App\Http\Controllers\Accounting\AccountingReportController;
+use App\Http\Controllers\Reporting\ModuleReportController;
 use App\Http\Controllers\Accounting\AccountingEventController;
 use App\Http\Controllers\Accounting\AccountingRuleController;
 use App\Http\Controllers\Accounting\AccountingDashboardController;
@@ -178,6 +180,14 @@ Route::prefix('pos')->middleware('web')->group(function () {
         Route::get('reservations', [\App\Http\Controllers\ReservationController::class, 'index'])->name('pos.reservations.index');
         Route::get('tables/{table}/available-times', [\App\Http\Controllers\ReservationController::class, 'availableTimes'])->name('pos.tables.available-times');
 
+        // Inventory master operations are Admin-owned. Redirect legacy POS inventory URLs safely.
+        Route::any('inventory/{section}/{tail?}', function () {
+            return redirect()
+                ->route('pos.dashboard')
+                ->with('error', 'Inventory management is available in Admin only.');
+        })->where('section', 'items|ingredients|units|manufacturers|category|sub-categories')
+            ->where('tail', '.*');
+
         Route::get('inventory/category', [\App\Http\Controllers\CategoryController::class, 'index'])->name('pos.inventory.category');
         Route::get('inventory/category/trashed', [\App\Http\Controllers\CategoryController::class, 'trashed'])->name('pos.category.trashed');
         Route::post('inventory/category', [\App\Http\Controllers\CategoryController::class, 'store'])->name('pos.inventory.category.store');
@@ -314,7 +324,8 @@ Route::get('/members/{id}', [MembershipController::class, 'viewProfile'])->name(
 Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(function () {
     // admin dashboard routes
     Route::get('dashboard', [AdminController::class, 'index'])->name('dashboard')->middleware('super.admin:dashboard.view');
-    Route::get('activity-log', [App\Http\Controllers\Admin\ActivityController::class, 'index'])->name('activity-log');
+Route::get('activity-log', [App\Http\Controllers\Admin\ActivityController::class, 'index'])->name('activity-log');
+Route::get('admin/operations/logs', [OperationalLogController::class, 'index'])->name('admin.operations.logs.index');
     Route::get('api/employee-logs', [\App\Http\Controllers\EmployeeController::class, 'employeeLog'])->name('admin.api.employee-logs');
     Route::post('notifications/{id}/read', [AdminController::class, 'markNotificationRead'])->name('notifications.read');
     Route::get('dashboard/print', [AdminController::class, 'printDashboard'])->name('dashboard.print')->middleware('super.admin:dashboard.view');
@@ -1439,7 +1450,7 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
     });
 
     // Admin POS Reports Routes
-    Route::prefix('admin/reports')->middleware('super.admin:reports.pos.view')->group(function () {
+Route::prefix('admin/reports')->middleware('super.admin:reports.pos.view')->group(function () {
         Route::get('pos/all', [AdminPosReportController::class, 'index'])->name('admin.reports.pos.all');
         Route::get('pos/restaurant-wise', [AdminPosReportController::class, 'restaurantWise'])->name('admin.reports.pos.restaurant-wise')->middleware('super.admin:reports.pos.restaurant-wise');
         Route::get('pos/restaurant-wise/print', [AdminPosReportController::class, 'restaurantWisePrint'])->name('admin.reports.pos.restaurant-wise.print')->middleware('super.admin:reports.pos.restaurant-wise');
@@ -1459,6 +1470,24 @@ Route::middleware(['auth:web', 'verified', 'permission:admin.access'])->group(fu
         Route::get('pos/monthly-employee-food-bills', [AdminPosReportController::class, 'monthlyEmployeeFoodBills'])->name('admin.reports.pos.monthly-employee-food-bills');
         Route::get('pos/graphical', [AdminPosReportController::class, 'graphical'])->name('admin.reports.pos.graphical');
     });
+
+Route::prefix('admin/reports')->middleware(['auth'])->group(function () {
+    Route::get('{domain}/{report}', [ModuleReportController::class, 'index'])
+        ->whereIn('domain', ['procurement', 'inventory'])
+        ->name('module-reports.index');
+    Route::get('{domain}/{report}/print', [ModuleReportController::class, 'print'])
+        ->whereIn('domain', ['procurement', 'inventory'])
+        ->name('module-reports.print');
+    Route::get('{domain}/{report}/pdf', [ModuleReportController::class, 'pdf'])
+        ->whereIn('domain', ['procurement', 'inventory'])
+        ->name('module-reports.pdf');
+    Route::get('{domain}/{report}/csv', [ModuleReportController::class, 'csv'])
+        ->whereIn('domain', ['procurement', 'inventory'])
+        ->name('module-reports.csv');
+    Route::get('{domain}/{report}/xlsx', [ModuleReportController::class, 'xlsx'])
+        ->whereIn('domain', ['procurement', 'inventory'])
+        ->name('module-reports.xlsx');
+});
 
     // Voucher Management Routes
     Route::prefix('admin/vouchers')->middleware('super.admin:finance.vouchers.view')->group(function () {
@@ -1618,30 +1647,90 @@ Route::prefix('admin/accounting')->middleware(['auth'])->group(function () {
     Route::get('reports/payables-aging/pdf', [AccountingReportController::class, 'payablesAgingPdf'])->name('accounting.reports.payables-aging.pdf');
     Route::post('events/{event}/retry', [AccountingEventController::class, 'retry'])->name('accounting.events.retry');
     Route::post('events/retry-all', [AccountingEventController::class, 'retryAll'])->name('accounting.events.retry-all');
+
+    Route::get('vouchers', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'index'])->name('accounting.vouchers.index');
+    Route::get('vouchers/create', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'create'])->name('accounting.vouchers.create');
+    Route::post('vouchers', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'store'])->name('accounting.vouchers.store');
+    Route::post('vouchers/preview', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'preview'])->name('accounting.vouchers.preview');
+    Route::get('vouchers/open-invoices', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'openInvoices'])->name('accounting.vouchers.open-invoices');
+    Route::get('vouchers/templates', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'templates'])->name('accounting.vouchers.templates');
+    Route::get('vouchers/templates/{template}', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'templatePayload'])->name('accounting.vouchers.template');
+    Route::get('vouchers/last-defaults', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'lastDefaults'])->name('accounting.vouchers.last-defaults');
+    Route::get('vouchers/mappings', [\App\Http\Controllers\Accounting\AccountingVoucherMappingController::class, 'index'])->name('accounting.vouchers.mappings.index');
+    Route::post('vouchers/mappings/entity', [\App\Http\Controllers\Accounting\AccountingVoucherMappingController::class, 'upsertEntityMapping'])->name('accounting.vouchers.mappings.entity');
+    Route::post('vouchers/mappings/expense-type', [\App\Http\Controllers\Accounting\AccountingVoucherMappingController::class, 'upsertExpenseType'])->name('accounting.vouchers.mappings.expense-type');
+    Route::put('vouchers/mappings/defaults', [\App\Http\Controllers\Accounting\AccountingVoucherMappingController::class, 'updateDefaults'])->name('accounting.vouchers.mappings.defaults');
+    Route::get('vouchers/{voucher}', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'show'])->name('accounting.vouchers.show');
+    Route::get('vouchers/{voucher}/edit', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'edit'])->name('accounting.vouchers.edit');
+    Route::put('vouchers/{voucher}', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'update'])->name('accounting.vouchers.update');
+    Route::post('vouchers/{voucher}/submit', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'submit'])->name('accounting.vouchers.submit');
+    Route::post('vouchers/{voucher}/approve', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'approve'])->name('accounting.vouchers.approve');
+    Route::post('vouchers/{voucher}/reject', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'reject'])->name('accounting.vouchers.reject');
+    Route::post('vouchers/{voucher}/cancel', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'cancel'])->name('accounting.vouchers.cancel');
+    Route::post('vouchers/{voucher}/reverse', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'reverse'])->name('accounting.vouchers.reverse');
+    Route::delete('vouchers/{voucher}/attachments/{media}', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'removeAttachment'])->name('accounting.vouchers.attachments.delete');
+
+    Route::get('reports/hub', [AccountingReportController::class, 'hub'])->name('accounting.reports.hub');
+    Route::get('reports/day-book', [AccountingReportController::class, 'dayBook'])->name('accounting.reports.day-book');
+    Route::get('reports/day-book/print', [AccountingReportController::class, 'dayBookPrint'])->name('accounting.reports.day-book.print');
+    Route::get('reports/day-book/pdf', [AccountingReportController::class, 'dayBookPdf'])->name('accounting.reports.day-book.pdf');
+    Route::get('reports/cash-book', [AccountingReportController::class, 'cashBook'])->name('accounting.reports.cash-book');
+    Route::get('reports/cash-book/print', [AccountingReportController::class, 'cashBookPrint'])->name('accounting.reports.cash-book.print');
+    Route::get('reports/cash-book/pdf', [AccountingReportController::class, 'cashBookPdf'])->name('accounting.reports.cash-book.pdf');
+    Route::get('reports/bank-book', [AccountingReportController::class, 'bankBook'])->name('accounting.reports.bank-book');
+    Route::get('reports/bank-book/print', [AccountingReportController::class, 'bankBookPrint'])->name('accounting.reports.bank-book.print');
+    Route::get('reports/bank-book/pdf', [AccountingReportController::class, 'bankBookPdf'])->name('accounting.reports.bank-book.pdf');
+
+    Route::get('vouchers/{voucher}/print', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'print'])->name('accounting.vouchers.print');
+    Route::get('vouchers/{voucher}/pdf', [\App\Http\Controllers\Accounting\AccountingVoucherController::class, 'pdf'])->name('accounting.vouchers.pdf');
 });
 
 Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
     Route::get('vendors', [VendorController::class, 'index'])->name('procurement.vendors.index');
+    Route::get('vendors/{vendor}', [VendorController::class, 'show'])->name('procurement.vendors.show');
     Route::post('vendors', [VendorController::class, 'store'])->name('procurement.vendors.store');
     Route::put('vendors/{vendor}', [VendorController::class, 'update'])->name('procurement.vendors.update');
     Route::delete('vendors/{vendor}', [VendorController::class, 'destroy'])->name('procurement.vendors.destroy');
+    Route::post('vendors/{vendor}/profile-image', [VendorController::class, 'uploadProfileImage'])->name('procurement.vendors.profile-image.upload');
+    Route::delete('vendors/{vendor}/profile-image', [VendorController::class, 'removeProfileImage'])->name('procurement.vendors.profile-image.remove');
+    Route::post('vendors/{vendor}/contacts', [VendorController::class, 'storeContact'])->name('procurement.vendors.contacts.store');
+    Route::put('vendors/{vendor}/contacts/{contact}', [VendorController::class, 'updateContact'])->name('procurement.vendors.contacts.update');
+    Route::delete('vendors/{vendor}/contacts/{contact}', [VendorController::class, 'destroyContact'])->name('procurement.vendors.contacts.destroy');
+    Route::post('vendors/{vendor}/bank-accounts', [VendorController::class, 'storeBankAccount'])->name('procurement.vendors.bank-accounts.store');
+    Route::put('vendors/{vendor}/bank-accounts/{bankAccount}', [VendorController::class, 'updateBankAccount'])->name('procurement.vendors.bank-accounts.update');
+    Route::delete('vendors/{vendor}/bank-accounts/{bankAccount}', [VendorController::class, 'destroyBankAccount'])->name('procurement.vendors.bank-accounts.destroy');
+    Route::post('vendors/{vendor}/item-mappings', [VendorController::class, 'storeItemMapping'])->name('procurement.vendors.item-mappings.store');
+    Route::put('vendors/{vendor}/item-mappings/{itemMapping}', [VendorController::class, 'updateItemMapping'])->name('procurement.vendors.item-mappings.update');
+    Route::delete('vendors/{vendor}/item-mappings/{itemMapping}', [VendorController::class, 'destroyItemMapping'])->name('procurement.vendors.item-mappings.destroy');
 
     Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->name('procurement.purchase-orders.index');
     Route::get('purchase-orders/create', [PurchaseOrderController::class, 'create'])->name('procurement.purchase-orders.create');
+    Route::get('purchase-orders/{purchaseOrder}/edit', [PurchaseOrderController::class, 'edit'])->name('procurement.purchase-orders.edit');
     Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->name('procurement.purchase-orders.store');
+    Route::put('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update'])->name('procurement.purchase-orders.update');
     Route::post('purchase-orders/{purchaseOrder}/submit', [PurchaseOrderController::class, 'submit'])->name('procurement.purchase-orders.submit');
     Route::post('purchase-orders/{purchaseOrder}/approve', [PurchaseOrderController::class, 'approve'])->name('procurement.purchase-orders.approve');
     Route::post('purchase-orders/{purchaseOrder}/reject', [PurchaseOrderController::class, 'reject'])->name('procurement.purchase-orders.reject');
+    Route::get('purchase-orders/{purchaseOrder}/view', [PurchaseOrderController::class, 'view'])->name('procurement.purchase-orders.view');
+    Route::get('purchase-orders/{purchaseOrder}/print', [PurchaseOrderController::class, 'print'])->name('procurement.purchase-orders.print');
+    Route::get('purchase-orders/{purchaseOrder}/pdf', [PurchaseOrderController::class, 'pdf'])->name('procurement.purchase-orders.pdf');
     Route::get('purchase-orders/{purchaseOrder}/revisions', [PurchaseOrderController::class, 'revisions'])->name('procurement.purchase-orders.revisions');
     Route::post('purchase-orders/{purchaseOrder}/amend', [PurchaseOrderController::class, 'amend'])->name('procurement.purchase-orders.amend');
 
     Route::get('goods-receipts', [GoodsReceiptController::class, 'index'])->name('procurement.goods-receipts.index');
     Route::get('goods-receipts/create', [GoodsReceiptController::class, 'create'])->name('procurement.goods-receipts.create');
+    Route::get('goods-receipts/{goodsReceipt}/view', [GoodsReceiptController::class, 'view'])->name('procurement.goods-receipts.view');
+    Route::get('goods-receipts/{goodsReceipt}/print', [GoodsReceiptController::class, 'print'])->name('procurement.goods-receipts.print');
+    Route::get('goods-receipts/{goodsReceipt}/pdf', [GoodsReceiptController::class, 'pdf'])->name('procurement.goods-receipts.pdf');
     Route::post('goods-receipts', [GoodsReceiptController::class, 'store'])->name('procurement.goods-receipts.store');
+    Route::post('goods-receipts/{goodsReceipt}/accept', [GoodsReceiptController::class, 'accept'])->name('procurement.goods-receipts.accept');
 
     Route::get('vendor-bills', [VendorBillController::class, 'index'])->name('procurement.vendor-bills.index');
     Route::get('vendor-bills/create', [VendorBillController::class, 'create'])->name('procurement.vendor-bills.create');
     Route::get('vendor-bills/{vendorBill}/edit', [VendorBillController::class, 'edit'])->name('procurement.vendor-bills.edit');
+    Route::get('vendor-bills/{vendorBill}/view', [VendorBillController::class, 'view'])->name('procurement.vendor-bills.view');
+    Route::get('vendor-bills/{vendorBill}/print', [VendorBillController::class, 'print'])->name('procurement.vendor-bills.print');
+    Route::get('vendor-bills/{vendorBill}/pdf', [VendorBillController::class, 'pdf'])->name('procurement.vendor-bills.pdf');
     Route::post('vendor-bills', [VendorBillController::class, 'store'])->name('procurement.vendor-bills.store');
     Route::put('vendor-bills/{vendorBill}', [VendorBillController::class, 'update'])->name('procurement.vendor-bills.update');
     Route::post('vendor-bills/{vendorBill}/submit', [VendorBillController::class, 'submit'])->name('procurement.vendor-bills.submit');
@@ -1667,6 +1756,7 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
 
     Route::get('purchase-requisitions', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'index'])->name('procurement.purchase-requisitions.index');
     Route::get('purchase-requisitions/create', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'create'])->name('procurement.purchase-requisitions.create');
+    Route::get('purchase-requisitions/{purchaseRequisition}', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'show'])->name('procurement.purchase-requisitions.show');
     Route::post('purchase-requisitions', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'store'])->name('procurement.purchase-requisitions.store');
     Route::post('purchase-requisitions/{purchaseRequisition}/submit', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'submit'])->name('procurement.purchase-requisitions.submit');
     Route::post('purchase-requisitions/{purchaseRequisition}/approve', [\App\Http\Controllers\Procurement\PurchaseRequisitionController::class, 'approve'])->name('procurement.purchase-requisitions.approve');
@@ -1689,6 +1779,7 @@ Route::prefix('admin/procurement')->middleware(['auth'])->group(function () {
 
     Route::get('purchase-returns', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'index'])->name('procurement.purchase-returns.index');
     Route::get('purchase-returns/create', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'create'])->name('procurement.purchase-returns.create');
+    Route::get('purchase-returns/source/grn/{goodsReceipt}', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'sourceFromGrn'])->name('procurement.purchase-returns.source.grn');
     Route::post('purchase-returns', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'store'])->name('procurement.purchase-returns.store');
     Route::post('purchase-returns/{purchaseReturn}/submit', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'submit'])->name('procurement.purchase-returns.submit');
     Route::post('purchase-returns/{purchaseReturn}/approve', [\App\Http\Controllers\Procurement\PurchaseReturnController::class, 'approve'])->name('procurement.purchase-returns.approve');

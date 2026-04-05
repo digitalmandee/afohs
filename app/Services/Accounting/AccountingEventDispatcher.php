@@ -10,11 +10,14 @@ use App\Services\Accounting\Adapters\FinancialInvoicePostingAdapter;
 use App\Services\Accounting\Adapters\FinancialReceiptPostingAdapter;
 use App\Services\Accounting\Adapters\GoodsReceiptPostingAdapter;
 use App\Services\Accounting\Adapters\InventoryDocumentPostingAdapter;
+use App\Services\Accounting\Adapters\AccountingVoucherPostingAdapter;
 use App\Services\Accounting\Adapters\SupplierAdvancePostingAdapter;
 use App\Services\Accounting\Adapters\VendorBillPostingAdapter;
 use App\Services\Accounting\Adapters\VendorPaymentPostingAdapter;
 use App\Services\Accounting\Contracts\PostingAdapter;
+use App\Services\OperationalAuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AccountingEventDispatcher
 {
@@ -30,7 +33,9 @@ class AccountingEventDispatcher
         VendorPaymentPostingAdapter $vendorPaymentPostingAdapter,
         GoodsReceiptPostingAdapter $goodsReceiptPostingAdapter,
         InventoryDocumentPostingAdapter $inventoryDocumentPostingAdapter,
-        SupplierAdvancePostingAdapter $supplierAdvancePostingAdapter
+        SupplierAdvancePostingAdapter $supplierAdvancePostingAdapter,
+        AccountingVoucherPostingAdapter $accountingVoucherPostingAdapter,
+        private readonly OperationalAuditLogger $operationalAuditLogger
     )
     {
         $this->adapters = [
@@ -41,6 +46,7 @@ class AccountingEventDispatcher
             $goodsReceiptPostingAdapter,
             $inventoryDocumentPostingAdapter,
             $supplierAdvancePostingAdapter,
+            $accountingVoucherPostingAdapter,
         ];
     }
 
@@ -50,11 +56,19 @@ class AccountingEventDispatcher
         int $sourceId,
         ?array $payload = null,
         ?int $createdBy = null,
-        ?int $restaurantId = null
+        ?int $restaurantId = null,
+        ?string $correlationId = null
     ): AccountingEventQueue
     {
         $idempotencyKey = "{$eventType}|{$sourceType}|{$sourceId}";
         $createdBy = $this->resolveCreatedBy($createdBy);
+        $correlationId = $correlationId
+            ?: request()?->attributes->get('correlation_id')
+            ?: request()?->header('X-Correlation-ID');
+        $payload = $payload ?? [];
+        if ($correlationId && empty($payload['correlation_id'])) {
+            $payload['correlation_id'] = (string) $correlationId;
+        }
 
         $event = AccountingEventQueue::firstOrCreate(
             ['idempotency_key' => $idempotencyKey],
@@ -68,6 +82,23 @@ class AccountingEventDispatcher
                 'created_by' => $createdBy,
             ]
         );
+
+        $this->operationalAuditLogger->record([
+            'correlation_id' => (string) ($payload['correlation_id'] ?? ''),
+            'module' => 'accounting',
+            'entity_type' => 'accounting_event_queue',
+            'entity_id' => (string) $event->id,
+            'action' => 'accounting.event.dispatch.attempted',
+            'status' => 'attempted',
+            'severity' => 'info',
+            'message' => 'Accounting event dispatched.',
+            'context' => [
+                'event_type' => $eventType,
+                'source_type' => $sourceType,
+                'source_id' => $sourceId,
+                'idempotency_key' => $idempotencyKey,
+            ],
+        ]);
 
         if ($event->status === 'pending' || $event->status === 'failed') {
             $this->process($event->fresh());
@@ -87,10 +118,32 @@ class AccountingEventDispatcher
 
     public function process(AccountingEventQueue $event): AccountingEventQueue
     {
+        $correlationId = (string) ($event->payload['correlation_id'] ?? '');
+        if ($correlationId !== '') {
+            Log::withContext(['correlation_id' => $correlationId]);
+        }
+
         $event->update([
             'status' => 'processing',
             'retry_count' => $event->retry_count + 1,
             'last_attempt_at' => now(),
+        ]);
+
+        $this->operationalAuditLogger->record([
+            'correlation_id' => $correlationId,
+            'module' => 'accounting',
+            'entity_type' => 'accounting_event_queue',
+            'entity_id' => (string) $event->id,
+            'action' => 'accounting.event.process.attempted',
+            'status' => 'attempted',
+            'severity' => 'info',
+            'message' => 'Accounting event processing started.',
+            'context' => [
+                'event_type' => $event->event_type,
+                'source_type' => $event->source_type,
+                'source_id' => $event->source_id,
+                'retry_count' => $event->retry_count,
+            ],
         ]);
 
         try {
@@ -113,6 +166,22 @@ class AccountingEventDispatcher
                         'status' => 'failed',
                         'message' => 'No posting adapter mapped for this event.',
                         'payload' => $event->payload,
+                    ]);
+
+                    $this->operationalAuditLogger->record([
+                        'correlation_id' => (string) ($event->payload['correlation_id'] ?? ''),
+                        'module' => 'accounting',
+                        'entity_type' => 'accounting_event_queue',
+                        'entity_id' => (string) $event->id,
+                        'action' => 'accounting.event.process.failed',
+                        'status' => 'failed',
+                        'severity' => 'error',
+                        'message' => 'No posting adapter mapped for event.',
+                        'context' => [
+                            'event_type' => $event->event_type,
+                            'source_type' => $event->source_type,
+                            'source_id' => $event->source_id,
+                        ],
                     ]);
 
                     return $event->fresh();
@@ -143,6 +212,23 @@ class AccountingEventDispatcher
                     'payload' => $event->payload,
                 ]);
 
+                $this->operationalAuditLogger->record([
+                    'correlation_id' => (string) ($event->payload['correlation_id'] ?? ''),
+                    'module' => 'accounting',
+                    'entity_type' => 'accounting_event_queue',
+                    'entity_id' => (string) $event->id,
+                    'action' => 'accounting.event.process.posted',
+                    'status' => 'posted',
+                    'severity' => 'info',
+                    'message' => 'Accounting event posted successfully.',
+                    'context' => [
+                        'journal_entry_id' => $entry?->id,
+                        'event_type' => $event->event_type,
+                        'source_type' => $event->source_type,
+                        'source_id' => $event->source_id,
+                    ],
+                ]);
+
                 return $event->fresh();
             });
         } catch (\Throwable $e) {
@@ -162,6 +248,22 @@ class AccountingEventDispatcher
                 'status' => 'failed',
                 'message' => $e->getMessage(),
                 'payload' => $event->payload,
+            ]);
+
+            $this->operationalAuditLogger->record([
+                'correlation_id' => (string) ($event->payload['correlation_id'] ?? ''),
+                'module' => 'accounting',
+                'entity_type' => 'accounting_event_queue',
+                'entity_id' => (string) $event->id,
+                'action' => 'accounting.event.process.failed',
+                'status' => 'failed',
+                'severity' => 'error',
+                'message' => $e->getMessage(),
+                'context' => [
+                    'event_type' => $event->event_type,
+                    'source_type' => $event->source_type,
+                    'source_id' => $event->source_id,
+                ],
             ]);
 
             report($e);

@@ -27,8 +27,6 @@ import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import EventSeatRoundedIcon from '@mui/icons-material/EventSeatRounded';
 import TableRestaurantRoundedIcon from '@mui/icons-material/TableRestaurantRounded';
 import RestaurantMenuRoundedIcon from '@mui/icons-material/RestaurantMenuRounded';
-import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded';
-import ScaleRoundedIcon from '@mui/icons-material/ScaleRounded';
 import CakeRoundedIcon from '@mui/icons-material/CakeRounded';
 import PrintRoundedIcon from '@mui/icons-material/PrintRounded';
 import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
@@ -39,10 +37,6 @@ import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import MenuOpenRoundedIcon from '@mui/icons-material/MenuOpenRounded';
-import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded';
-import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
-import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
-import PrecisionManufacturingRoundedIcon from '@mui/icons-material/PrecisionManufacturingRounded';
 import LoginActivityScreen from './Activity';
 import ShiftActivityScreen from './ShiftActivity';
 import LogoutScreen from './Logout';
@@ -208,39 +202,9 @@ const buildMenuGroups = (pathname) => ([
         label: 'Catalog',
         items: [
             {
-                text: 'Inventory Items',
-                icon: <InventoryRoundedIcon />,
-                path: safeRouteForContext('inventory.index', pathname),
-            },
-            {
                 text: 'Products & Menu',
                 icon: <RestaurantMenuRoundedIcon />,
                 path: safeRouteForContext('products.index', pathname),
-            },
-            {
-                text: 'Categories',
-                icon: <CategoryRoundedIcon />,
-                path: safeRouteForContext('inventory.category', pathname),
-            },
-            {
-                text: 'Sub Categories',
-                icon: <AccountTreeRoundedIcon />,
-                path: safeRouteForContext('sub-categories.index', pathname),
-            },
-            {
-                text: 'Ingredients',
-                icon: <Inventory2RoundedIcon />,
-                path: safeRouteForContext('ingredients.index', pathname),
-            },
-            {
-                text: 'Units',
-                icon: <ScaleRoundedIcon />,
-                path: safeRouteForContext('units.index', pathname),
-            },
-            {
-                text: 'Manufacturers',
-                icon: <PrecisionManufacturingRoundedIcon />,
-                path: safeRouteForContext('manufacturers.index', pathname),
             },
         ],
     },

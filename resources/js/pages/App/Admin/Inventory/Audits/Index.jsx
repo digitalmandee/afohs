@@ -3,12 +3,16 @@ import { Link, router } from '@inertiajs/react';
 import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ audits, summary = {}, filters = {} }) {
+    const mutation = useMutationAction();
     const rows = audits?.data || [];
     const [status, setStatus] = React.useState(filters.status || '');
     const perPage = filters.per_page || audits?.per_page || 25;
@@ -39,10 +43,16 @@ export default function Index({ audits, summary = {}, filters = {} }) {
             </Grid>
 
             <SurfaceCard title="Filter">
-                <FilterToolbar onReset={() => {
-                    setStatus('');
-                    router.get(route('inventory.audits.index'), { per_page: perPage }, { replace: true, preserveScroll: true });
-                }}>
+                <FilterToolbar
+                    onReset={() => {
+                        setStatus('');
+                        router.get(route('inventory.audits.index'), { per_page: perPage }, { replace: true, preserveScroll: true });
+                    }}
+                    onApply={() => applyFilters(status)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Filter stock audits by workflow status."
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={3}>
                             <TextField
@@ -92,10 +102,49 @@ export default function Index({ audits, summary = {}, filters = {} }) {
                                 <TableCell><Chip size="small" label={row.status} /></TableCell>
                                 <TableCell align="right">
                                     {row.status === 'draft' ? (
-                                        <Button size="small" onClick={() => router.post(route('inventory.audits.submit', row.id))}>Submit</Button>
+                                        <AppLoadingButton
+                                            size="small"
+                                            loading={mutation.isPending(`audit-submit-${row.id}`)}
+                                            loadingLabel="Submitting..."
+                                            onClick={() => mutation.runRouterAction({
+                                                key: `audit-submit-${row.id}`,
+                                                method: 'post',
+                                                url: route('inventory.audits.submit', row.id),
+                                                successMessage: 'Stock audit submitted.',
+                                                errorMessage: 'Failed to submit stock audit.',
+                                                confirmConfig: {
+                                                    title: 'Submit Stock Audit',
+                                                    message: 'Submit this stock audit for approval?',
+                                                    confirmLabel: 'Submit',
+                                                    severity: 'warning',
+                                                },
+                                            })}
+                                        >
+                                            Submit
+                                        </AppLoadingButton>
                                     ) : null}
                                     {['draft', 'submitted'].includes(row.status) ? (
-                                        <Button size="small" color="success" onClick={() => router.post(route('inventory.audits.approve', row.id))}>Approve/Post</Button>
+                                        <AppLoadingButton
+                                            size="small"
+                                            color="success"
+                                            loading={mutation.isPending(`audit-approve-${row.id}`)}
+                                            loadingLabel="Posting..."
+                                            onClick={() => mutation.runRouterAction({
+                                                key: `audit-approve-${row.id}`,
+                                                method: 'post',
+                                                url: route('inventory.audits.approve', row.id),
+                                                successMessage: 'Stock audit approved and posted.',
+                                                errorMessage: 'Failed to approve/post stock audit.',
+                                                confirmConfig: {
+                                                    title: 'Approve/Post Stock Audit',
+                                                    message: 'Post variance adjustments for this audit?',
+                                                    confirmLabel: 'Approve/Post',
+                                                    severity: 'critical',
+                                                },
+                                            })}
+                                        >
+                                            Approve/Post
+                                        </AppLoadingButton>
                                     ) : null}
                                 </TableCell>
                             </TableRow>
@@ -103,7 +152,7 @@ export default function Index({ audits, summary = {}, filters = {} }) {
                     }}
                 />
             </SurfaceCard>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }
-

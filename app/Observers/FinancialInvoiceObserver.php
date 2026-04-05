@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\FinancialInvoice;
 use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Accounting\StrictAccountingSyncService;
 use App\Services\Accounting\Support\RestaurantContextResolver;
 
 class FinancialInvoiceObserver
@@ -12,7 +13,7 @@ class FinancialInvoiceObserver
     {
         $restaurantId = app(RestaurantContextResolver::class)->forInvoice($financialInvoice);
 
-        app(AccountingEventDispatcher::class)->dispatch(
+        $event = app(AccountingEventDispatcher::class)->dispatch(
             'invoice_created',
             FinancialInvoice::class,
             (int) $financialInvoice->id,
@@ -24,5 +25,7 @@ class FinancialInvoiceObserver
             $financialInvoice->created_by,
             $restaurantId
         );
+
+        app(StrictAccountingSyncService::class)->enforceOrFail($event, "Invoice {$financialInvoice->invoice_no}");
     }
 }

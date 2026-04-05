@@ -126,7 +126,13 @@ export default function ReceivablesBySource({ rows, summary = {}, sourceOptions 
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter by source, bucket, period, or party without using the older manual report form.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine receivables by source module, status, and date range."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField label="Search invoice or party" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />

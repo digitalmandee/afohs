@@ -123,7 +123,13 @@ export default function PaymentRun({ bills, summary = {}, vendors = [], paymentA
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Narrow the payable queue by vendor, due date, minimum age, and aging bucket with immediate updates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine payment run queue by search, vendor, due date, age, and bucket."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField label="Search bill or vendor" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />

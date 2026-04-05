@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\AccountingEventQueue;
+use App\Models\AccountingEntityAccountMapping;
+use App\Models\AccountingExpenseType;
 use App\Models\AccountingPeriod;
 use App\Models\AccountingPostingLog;
 use App\Models\AccountingRule;
@@ -31,6 +33,7 @@ class VerifyAccountingModule extends Command
             'payment_accounts',
             'bank_reconciliation_sessions',
             'bank_reconciliation_lines',
+            'accounting_voucher_allocations',
         ];
 
         $optionalTables = [
@@ -180,6 +183,50 @@ class VerifyAccountingModule extends Command
             }
         }
 
+        $recentFailedEvents = AccountingEventQueue::query()
+            ->where('status', 'failed')
+            ->latest('id')
+            ->limit($limit)
+            ->get(['id', 'event_type', 'source_type', 'source_id', 'error_message', 'payload']);
+
+        if ($recentFailedEvents->isNotEmpty()) {
+            $this->newLine();
+            $this->warn('Recent failed queue events (with correlation IDs)');
+            foreach ($recentFailedEvents as $event) {
+                $this->line(sprintf(
+                    '- #%d %s %s#%d [corr=%s] :: %s',
+                    $event->id,
+                    (string) $event->event_type,
+                    class_basename((string) $event->source_type),
+                    (int) $event->source_id,
+                    (string) (($event->payload['correlation_id'] ?? '-') ?: '-'),
+                    (string) ($event->error_message ?: '-')
+                ));
+            }
+        }
+
+        $this->newLine();
+        $this->info('Voucher Mapping Health');
+        $voucherDefaults = Setting::getGroup('accounting_voucher_defaults');
+        $defaultPayableId = (int) ($voucherDefaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $defaultReceivableId = (int) ($voucherDefaults['default_receivable_account_id'] ?? config('accounting.vouchers.default_receivable_account_id', 0));
+
+        $entityMappings = AccountingEntityAccountMapping::query()->with('account:id,is_active,is_postable')->get();
+        $inactiveMappings = $entityMappings->filter(fn ($mapping) => !$mapping->account || !$mapping->account->is_active || !$mapping->account->is_postable)->count();
+        $missingExpenseMappings = AccountingExpenseType::query()
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('expense_account_id')
+                    ->orWhereNotIn('expense_account_id', CoaAccount::query()->where('is_active', true)->where('is_postable', true)->select('id'));
+            })
+            ->count();
+
+        $this->line('Entity account mappings: ' . $entityMappings->count());
+        $this->line('Invalid/inactive mapping accounts: ' . $inactiveMappings);
+        $this->line('Active expense types missing valid account map: ' . $missingExpenseMappings);
+        $this->line('Default payable fallback: ' . ($defaultPayableId > 0 ? ('set #' . $defaultPayableId) : 'missing'));
+        $this->line('Default receivable fallback: ' . ($defaultReceivableId > 0 ? ('set #' . $defaultReceivableId) : 'missing'));
+
         $this->newLine();
         $this->info('Periods and Bank Accounts');
 
@@ -243,6 +290,10 @@ class VerifyAccountingModule extends Command
             || !empty($inactiveRules)
             || !empty($invalidRuleTargets)
             || ($queueCounts['failed'] ?? 0) > 0
+            || $inactiveMappings > 0
+            || $missingExpenseMappings > 0
+            || $defaultPayableId <= 0
+            || $defaultReceivableId <= 0
             || $levelMismatches > 0
             || $codeMismatches > 0
             || $parentMismatches > 0

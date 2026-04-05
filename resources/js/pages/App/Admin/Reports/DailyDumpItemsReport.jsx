@@ -137,7 +137,13 @@ export default function DailyDumpItemsReport({
                 </Grid>
 
                 <SurfaceCard title="Report Filters" subtitle="Keep the richer dump-report criteria while replacing the older legacy screen shell.">
-                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Pick report criteria and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <DateRangeFilterFields
                                 startLabel="Start Date"

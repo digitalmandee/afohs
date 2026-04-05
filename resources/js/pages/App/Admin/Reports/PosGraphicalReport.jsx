@@ -71,7 +71,13 @@ export default function PosGraphicalReport({ startDate, endDate, filters = {}, r
                 </Grid>
 
                 <SurfaceCard title="Report Filters" subtitle="Apply a reporting window before refreshing the chart and supporting totals.">
-                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Set report dates and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <DateRangeFilterFields
                                 startLabel="Start Date"

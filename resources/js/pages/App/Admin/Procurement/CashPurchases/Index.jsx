@@ -3,12 +3,16 @@ import { Link, router } from '@inertiajs/react';
 import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ cashPurchases, summary = {}, filters = {} }) {
+    const mutation = useMutationAction();
     const rows = cashPurchases?.data || [];
     const [search, setSearch] = React.useState(filters.search || '');
     const [status, setStatus] = React.useState(filters.status || '');
@@ -45,11 +49,17 @@ export default function Index({ cashPurchases, summary = {}, filters = {} }) {
             </Grid>
 
             <SurfaceCard title="Filter">
-                <FilterToolbar onReset={() => {
-                    setSearch('');
-                    setStatus('');
-                    router.get(route('procurement.cash-purchases.index'), { per_page: perPage }, { replace: true, preserveScroll: true });
-                }}>
+                <FilterToolbar
+                    onReset={() => {
+                        setSearch('');
+                        setStatus('');
+                        router.get(route('procurement.cash-purchases.index'), { per_page: perPage }, { replace: true, preserveScroll: true });
+                    }}
+                    onApply={() => applyFilters({ search, status })}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine cash purchases by search and status."
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={4}>
                             <TextField
@@ -114,20 +124,79 @@ export default function Index({ cashPurchases, summary = {}, filters = {} }) {
                             <TableCell><Chip size="small" label={row.status} /></TableCell>
                             <TableCell align="right">
                                 {row.status === 'draft' ? (
-                                    <Button size="small" onClick={() => router.post(route('procurement.cash-purchases.submit', row.id))}>Submit</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        loading={mutation.isPending(`cp-submit-${row.id}`)}
+                                        loadingLabel="Submitting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `cp-submit-${row.id}`,
+                                            method: 'post',
+                                            url: route('procurement.cash-purchases.submit', row.id),
+                                            successMessage: 'Cash purchase submitted.',
+                                            errorMessage: 'Failed to submit cash purchase.',
+                                            confirmConfig: {
+                                                title: 'Submit Cash Purchase',
+                                                message: 'Submit this cash purchase for approval?',
+                                                confirmLabel: 'Submit',
+                                                severity: 'warning',
+                                            },
+                                        })}
+                                    >
+                                        Submit
+                                    </AppLoadingButton>
                                 ) : null}
                                 {['draft', 'submitted'].includes(row.status) ? (
-                                    <Button size="small" color="success" onClick={() => router.post(route('procurement.cash-purchases.approve', row.id))}>Approve/Post</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        color="success"
+                                        loading={mutation.isPending(`cp-approve-${row.id}`)}
+                                        loadingLabel="Posting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `cp-approve-${row.id}`,
+                                            method: 'post',
+                                            url: route('procurement.cash-purchases.approve', row.id),
+                                            successMessage: 'Cash purchase approved and posted.',
+                                            errorMessage: 'Failed to approve/post cash purchase.',
+                                            confirmConfig: {
+                                                title: 'Approve/Post Cash Purchase',
+                                                message: 'This action will post inventory and accounting impact. Continue?',
+                                                confirmLabel: 'Approve/Post',
+                                                severity: 'critical',
+                                            },
+                                        })}
+                                    >
+                                        Approve/Post
+                                    </AppLoadingButton>
                                 ) : null}
                                 {['draft', 'submitted'].includes(row.status) ? (
-                                    <Button size="small" color="error" onClick={() => router.post(route('procurement.cash-purchases.reject', row.id))}>Reject</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        color="error"
+                                        loading={mutation.isPending(`cp-reject-${row.id}`)}
+                                        loadingLabel="Rejecting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `cp-reject-${row.id}`,
+                                            method: 'post',
+                                            url: route('procurement.cash-purchases.reject', row.id),
+                                            successMessage: 'Cash purchase rejected.',
+                                            errorMessage: 'Failed to reject cash purchase.',
+                                            confirmConfig: {
+                                                title: 'Reject Cash Purchase',
+                                                message: 'Reject this cash purchase?',
+                                                confirmLabel: 'Reject',
+                                                severity: 'danger',
+                                            },
+                                        })}
+                                    >
+                                        Reject
+                                    </AppLoadingButton>
                                 ) : null}
                             </TableCell>
                         </TableRow>
                     )}
                 />
             </SurfaceCard>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }
-

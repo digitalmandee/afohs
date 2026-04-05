@@ -95,7 +95,13 @@ export default function DailySalesListCashierWise({
                 </Grid>
 
                 <SurfaceCard title="Report Filters" subtitle="Set the cashier scope and reporting window before refreshing or printing the cashier register.">
-                    <FilterToolbar onReset={resetFilters} actions={<Button variant="contained" onClick={applyFilters}>Apply</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Set cashier/date filters and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <DateRangeFilterFields
                                 startLabel="Start Date"

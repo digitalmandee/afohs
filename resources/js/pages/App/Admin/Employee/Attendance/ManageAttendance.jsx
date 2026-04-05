@@ -232,6 +232,11 @@ const ManageAttendance = () => {
                 >
                     <Box sx={{ mb: 2 }}>
                         <FilterToolbar
+                            title="Filters"
+                            subtitle="Adjust attendance criteria and click Apply."
+                            lowChrome
+                            onApply={() => getAttendances(1)}
+                            showApply={false}
                             onReset={handleClearSearch}
                             actions={(
                                 <Button

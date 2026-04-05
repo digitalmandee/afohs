@@ -24,6 +24,7 @@ const BranchIndex = ({ branches: initialData }) => {
     // Form States
     const [formData, setFormData] = useState({
         name: '',
+        branch_code: '',
         address: '',
         status: true,
     });
@@ -47,7 +48,7 @@ const BranchIndex = ({ branches: initialData }) => {
     };
 
     const handleOpen = () => {
-        setFormData({ name: '', address: '', status: true });
+        setFormData({ name: '', branch_code: '', address: '', status: true });
         setEditMode(false);
         setOpenAddModal(true);
     };
@@ -55,6 +56,7 @@ const BranchIndex = ({ branches: initialData }) => {
     const handleEdit = (branch) => {
         setFormData({
             name: branch.name,
+            branch_code: branch.branch_code || '',
             address: branch.address || '',
             status: branch.status,
         });
@@ -70,8 +72,8 @@ const BranchIndex = ({ branches: initialData }) => {
     };
 
     const handleSubmit = () => {
-        if (!formData.name) {
-            enqueueSnackbar('Name is required', { variant: 'error' });
+        if (!formData.name || !formData.branch_code) {
+            enqueueSnackbar('Name and branch code are required', { variant: 'error' });
             return;
         }
 
@@ -161,8 +163,9 @@ const BranchIndex = ({ branches: initialData }) => {
                         <TableHead style={{ backgroundColor: '#063455' }}>
                             <TableRow>
                                 <TableCell style={{ color: '#fff', fontWeight: '600', }}>Name</TableCell>
-                                <TableCell style={{ color: '#fff', fontWeight: '600', }}>Address</TableCell>
-                                <TableCell style={{ color: '#fff', fontWeight: '600', }}>Status</TableCell>
+                        <TableCell style={{ color: '#fff', fontWeight: '600', }}>Branch Code</TableCell>
+                        <TableCell style={{ color: '#fff', fontWeight: '600', }}>Address</TableCell>
+                        <TableCell style={{ color: '#fff', fontWeight: '600', }}>Status</TableCell>
                                 <TableCell style={{ color: '#fff', fontWeight: '600', }} >
                                     Action
                                 </TableCell>
@@ -172,7 +175,7 @@ const BranchIndex = ({ branches: initialData }) => {
                         <TableBody>
                             {branchesData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={4} align="center">
+                                    <TableCell colSpan={5} align="center">
                                         No branches found
                                     </TableCell>
                                 </TableRow>
@@ -180,6 +183,7 @@ const BranchIndex = ({ branches: initialData }) => {
                                 branchesData.map((item, index) => (
                                     <TableRow key={index}>
                                         <TableCell style={{ fontSize: '14px', color: '#7f7f7f' }}>{item.name}</TableCell>
+                                        <TableCell style={{ fontSize: '14px', color: '#7f7f7f', fontWeight: 600 }}>{item.branch_code || '-'}</TableCell>
                                         <TableCell style={{ fontSize: '14px', color: '#7f7f7f' }}>{item.address || '-'}</TableCell>
                                         <TableCell style={{ fontSize: '14px', color: item.status ? 'green' : 'red' }}>{item.status ? 'Active' : 'Inactive'}</TableCell>
                                         <TableCell>
@@ -211,6 +215,18 @@ const BranchIndex = ({ branches: initialData }) => {
                             Name
                         </Typography>
                         <TextField fullWidth value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} variant="outlined" sx={{ mb: 2 }} />
+
+                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                            Branch Code
+                        </Typography>
+                        <TextField
+                            fullWidth
+                            value={formData.branch_code}
+                            onChange={(e) => setFormData({ ...formData, branch_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                            variant="outlined"
+                            sx={{ mb: 2 }}
+                            helperText="Used in procurement document numbers (e.g. AFOHSLHR-PO-2604-0001)"
+                        />
 
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
                             Address

@@ -1,0 +1,1325 @@
+import React from 'react';
+import { router, useForm } from '@inertiajs/react';
+import {
+    Alert,
+    Autocomplete,
+    Box,
+    Button,
+    Checkbox,
+    Chip,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    FormControlLabel,
+    Grid,
+    IconButton,
+    MenuItem,
+    Stack,
+    TableCell,
+    TableRow,
+    TextField,
+    Typography,
+} from '@mui/material';
+import { Add, ArrowDownward, ArrowUpward, ContentCopy, Delete, Preview, Refresh } from '@mui/icons-material';
+import AppPage from '@/components/App/ui/AppPage';
+import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
+import { formatAmount } from '@/lib/formatting';
+
+const VOUCHER_TYPES = ['CPV', 'CRV', 'BPV', 'BRV', 'JV'];
+const CASH_METHODS = ['cash', 'cash_in_hand', 'cash_hand', 'petty_cash'];
+const BANK_METHODS = ['bank', 'bank_transfer', 'online', 'cheque', 'debit_card', 'credit_card'];
+
+const emptyLine = () => ({
+    account_id: '',
+    department_id: '',
+    debit: '',
+    credit: '',
+    description: '',
+    reference_type: '',
+    reference_id: '',
+    tax_code: '',
+    tax_amount: '',
+});
+
+const paymentLabelMap = {
+    CPV: 'Cash Account',
+    CRV: 'Cash Account',
+    BPV: 'Bank Account',
+    BRV: 'Bank Account',
+};
+
+export default function VoucherForm({
+    mode = 'create',
+    voucher = null,
+    accounts = [],
+    paymentAccounts = [],
+    tenants = [],
+    departments = [],
+    vendors = [],
+    customers = [],
+    members = [],
+    corporateMembers = [],
+    expenseTypes = [],
+    entryModes = ['smart', 'manual'],
+    canSetPaymentAccountDefault = false,
+    canSetVendorCounterpartyDefault = false,
+    baseCurrency = 'PKR',
+}) {
+    const normalizedVoucherMode = voucher?.voucher_type === 'JV'
+        ? 'manual'
+        : 'smart';
+
+    const initialLines = voucher?.lines?.filter((line) => !line.is_system_generated)?.length
+        ? voucher.lines.filter((line) => !line.is_system_generated).map((line) => ({
+            account_id: String(line.account_id || ''),
+            department_id: String(line.department_id || ''),
+            debit: line.debit || '',
+            credit: line.credit || '',
+            description: line.description || '',
+            reference_type: line.reference_type || '',
+            reference_id: line.reference_id || '',
+            tax_code: line.tax_code || '',
+            tax_amount: line.tax_amount || '',
+        }))
+        : [emptyLine(), emptyLine()];
+
+    const intentRef = React.useRef('draft');
+    const { data, setData, post, put, processing, errors, transform } = useForm({
+        voucher_type: voucher?.voucher_type || 'JV',
+        entry_mode: normalizedVoucherMode,
+        payment_for: ['CPV', 'BPV'].includes(voucher?.voucher_type || '') ? (voucher?.party_type === 'vendor' ? 'vendor_payment' : 'expense') : 'expense',
+        payment_mode: ['CPV', 'BPV'].includes(voucher?.voucher_type || '') ? (voucher?.invoice_id ? 'against_invoice' : 'direct') : 'direct',
+        party_type: voucher?.party_type || 'none',
+        party_id: String(voucher?.party_id || ''),
+        vendor_id: String(voucher?.party_type === 'vendor' ? (voucher?.party_id || '') : ''),
+        invoice_type: voucher?.invoice_type || '',
+        invoice_id: String(voucher?.invoice_id || ''),
+        expense_type_id: String(voucher?.expense_type_id || ''),
+        template_id: String(voucher?.template_id || ''),
+        amount: voucher?.amount || '',
+        voucher_date: voucher?.voucher_date || new Date().toISOString().slice(0, 10),
+        posting_date: voucher?.posting_date || voucher?.voucher_date || new Date().toISOString().slice(0, 10),
+        tenant_id: String(voucher?.tenant_id || ''),
+        department_id: String(voucher?.department_id || ''),
+        reference_no: voucher?.reference_no || '',
+        external_reference_no: voucher?.external_reference_no || '',
+        currency_code: voucher?.currency_code || baseCurrency,
+        exchange_rate: voucher?.exchange_rate || '1',
+        payment_account_id: String(voucher?.payment_account_id || ''),
+        instrument_type: voucher?.instrument_type || '',
+        instrument_no: voucher?.instrument_no || '',
+        instrument_date: voucher?.instrument_date || '',
+        bank_reference: voucher?.bank_reference || '',
+        deposit_reference: voucher?.deposit_reference || '',
+        clearing_date: voucher?.clearing_date || '',
+        remarks: voucher?.remarks || '',
+        set_payment_account_as_default: false,
+        counterparty_account_id: '',
+        set_vendor_counterparty_default: false,
+        save_template: false,
+        template_name: '',
+        template_scope: 'user',
+        attachments: [],
+        lines: initialLines,
+    });
+
+    const [previewOpen, setPreviewOpen] = React.useState(false);
+    const [confirmState, setConfirmState] = React.useState({ open: false, intent: 'draft' });
+    const [templates, setTemplates] = React.useState([]);
+    const [openInvoices, setOpenInvoices] = React.useState([]);
+    const [loadingInvoices, setLoadingInvoices] = React.useState(false);
+    const [serverPreview, setServerPreview] = React.useState(null);
+
+    const isJournalVoucher = data.voucher_type === 'JV';
+    const isPaymentVoucher = ['CPV', 'BPV'].includes(data.voucher_type);
+    const isReceiptVoucher = ['CRV', 'BRV'].includes(data.voucher_type);
+    const isCashVoucher = ['CPV', 'CRV'].includes(data.voucher_type);
+    const paymentLabel = isJournalVoucher ? '' : paymentLabelMap[data.voucher_type];
+    const isManualEntry = data.entry_mode === 'manual' || isJournalVoucher;
+    const isSmartMode = !isJournalVoucher && data.entry_mode === 'smart';
+    const isSmartPaymentVoucher = isSmartMode && isPaymentVoucher;
+    const showPaymentFor = isSmartPaymentVoucher;
+    const showVendorPayee = isSmartPaymentVoucher && data.payment_for === 'vendor_payment';
+    const allowedPartyTypeOptions = isPaymentVoucher
+        ? [{ value: 'vendor', label: 'Vendor' }, { value: 'none', label: 'None (Expense Context)' }]
+        : (isReceiptVoucher
+            ? [
+                { value: 'customer', label: 'Customer' },
+                { value: 'member', label: 'Member' },
+                { value: 'corporate_member', label: 'Corporate Member' },
+            ]
+            : []);
+    const showParty = isSmartMode && isReceiptVoucher;
+    const showInvoice = isSmartMode && (
+        isPaymentVoucher
+            ? (data.payment_mode === 'against_invoice' && data.vendor_id)
+            : (data.party_type !== 'none' && data.party_id)
+    );
+    const showExpense = isSmartPaymentVoucher && data.payment_for === 'expense';
+    const counterpartyResolution = serverPreview?.counterparty_resolution || null;
+    const requiresCounterpartySelection = isSmartPaymentVoucher
+        && data.voucher_type === 'CPV'
+        && data.payment_for === 'vendor_payment'
+        && Boolean(counterpartyResolution?.requires_selection);
+    const counterpartyRoleLabel = counterpartyResolution?.account_role || (data.payment_mode === 'against_invoice' ? 'Payable Account' : 'Advance Account');
+
+    const filteredPaymentAccounts = paymentAccounts.filter((account) => {
+        const belongsToSelectedTenant = String(account.tenant_id || '') === String(data.tenant_id || '');
+        const isSharedAccount = !account.tenant_id;
+        if (!belongsToSelectedTenant && !isSharedAccount) {
+            return false;
+        }
+        const method = String(account.payment_method || '').toLowerCase();
+        if (isJournalVoucher) return false;
+        if (isCashVoucher) return CASH_METHODS.includes(method);
+        return BANK_METHODS.includes(method);
+    });
+    const defaultSmartPaymentAccount = filteredPaymentAccounts.find((account) => Boolean(Number(account.is_default || 0)));
+    const selectedPaymentAccount = paymentAccounts.find((account) => String(account.id) === String(data.payment_account_id));
+    const effectivePaymentAccount = isSmartMode
+        ? (defaultSmartPaymentAccount || selectedPaymentAccount || null)
+        : (selectedPaymentAccount || null);
+    const selectedPaymentCoa = accounts.find((account) => String(account.id) === String(effectivePaymentAccount?.coa_account_id || ''));
+    const selectedTemplate = templates.find((template) => String(template.id) === String(data.template_id));
+    const selectedInvoice = openInvoices.find((invoice) => String(invoice.id) === String(data.invoice_id) && String(invoice.invoice_type) === String(data.invoice_type));
+    const selectedVendor = vendors.find((vendor) => String(vendor.id) === String(data.vendor_id));
+    const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(data.tenant_id));
+
+    const getPartyOptions = React.useMemo(() => {
+        if (data.party_type === 'vendor') return vendors;
+        if (data.party_type === 'customer') return customers;
+        if (data.party_type === 'member') return members;
+        if (data.party_type === 'corporate_member') return corporateMembers;
+        return [];
+    }, [data.party_type, vendors, customers, members, corporateMembers]);
+
+    const autoNarration = React.useMemo(() => {
+        const remarks = (data.remarks || '').trim();
+        if (data.voucher_type === 'CPV' && isSmartMode) {
+            const cashAccountName = effectivePaymentAccount?.name || 'cash account';
+            const expense = expenseTypes.find((item) => String(item.id) === String(data.expense_type_id));
+            const expenseLabel = expense ? `${expense.code || ''} ${expense.name || ''}`.trim() : null;
+            let sentence = `Cash payment via ${cashAccountName}`;
+
+            if (data.payment_for === 'vendor_payment') {
+                const vendorName = selectedVendor?.name || 'vendor';
+                if (data.payment_mode === 'against_invoice' && selectedInvoice?.number) {
+                    sentence = `Cash payment to ${vendorName} against bill ${selectedInvoice.number} via ${cashAccountName}`;
+                } else {
+                    sentence = `Cash payment to ${vendorName} via ${cashAccountName}`;
+                }
+            } else if (data.payment_for === 'expense') {
+                sentence = expenseLabel
+                    ? `Cash expense payment for ${expenseLabel} via ${cashAccountName}`
+                    : `Cash expense payment via ${cashAccountName}`;
+            }
+
+            return remarks ? `${sentence}. ${remarks}` : sentence;
+        }
+
+        const type = data.voucher_type || 'Voucher';
+        const mode = data.entry_mode === 'manual' ? 'Manual' : 'Smart';
+        const parts = [type, mode];
+        if (selectedInvoice?.number) {
+            parts.push(`Ref: ${selectedInvoice.number}`);
+        }
+        if (effectivePaymentAccount?.name) {
+            parts.push(`Via ${effectivePaymentAccount.name}`);
+        }
+        if (remarks) {
+            parts.push(remarks);
+        }
+
+        return parts.join(' | ');
+    }, [
+        data.voucher_type,
+        data.entry_mode,
+        data.payment_for,
+        data.payment_mode,
+        data.vendor_id,
+        data.expense_type_id,
+        data.party_id,
+        data.remarks,
+        isSmartPaymentVoucher,
+        isReceiptVoucher,
+        isSmartMode,
+        showVendorPayee,
+        showExpense,
+        selectedVendor?.name,
+        selectedInvoice?.number,
+        effectivePaymentAccount?.name,
+        expenseTypes,
+        isSmartMode,
+    ]);
+
+    React.useEffect(() => {
+        fetch(route('accounting.vouchers.templates'))
+            .then((response) => response.json())
+            .then((json) => setTemplates(json.data || []))
+            .catch(() => setTemplates([]));
+    }, []);
+
+    React.useEffect(() => {
+        if (isJournalVoucher && data.entry_mode !== 'manual') {
+            setData('entry_mode', 'manual');
+        }
+        if (!isJournalVoucher && data.entry_mode !== 'smart') {
+            setData('entry_mode', 'smart');
+        }
+    }, [isJournalVoucher, data.entry_mode]);
+
+    React.useEffect(() => {
+        if (!isSmartMode) return;
+
+        if (isPaymentVoucher) {
+            if (!['expense', 'vendor_payment'].includes(data.payment_for)) {
+                setData('payment_for', 'expense');
+            }
+            if (!['direct', 'against_invoice'].includes(data.payment_mode)) {
+                setData('payment_mode', 'direct');
+            }
+
+            if (data.payment_for === 'expense') {
+                if (data.vendor_id) setData('vendor_id', '');
+                if (data.party_type !== 'none') setData('party_type', 'none');
+                if (data.party_id) setData('party_id', '');
+                if (data.invoice_id) setData('invoice_id', '');
+                if (data.invoice_type) setData('invoice_type', '');
+                if (data.payment_mode === 'against_invoice') setData('payment_mode', 'direct');
+                if (data.counterparty_account_id) setData('counterparty_account_id', '');
+                if (data.set_vendor_counterparty_default) setData('set_vendor_counterparty_default', false);
+            } else {
+                if (data.party_type !== 'vendor') setData('party_type', 'vendor');
+                if (data.vendor_id && String(data.party_id) !== String(data.vendor_id)) {
+                    setData('party_id', String(data.vendor_id));
+                }
+            }
+        } else if (isReceiptVoucher) {
+            if (!['customer', 'member', 'corporate_member'].includes(data.party_type)) {
+                setData('party_type', 'customer');
+                setData('party_id', '');
+            }
+            if (data.expense_type_id) {
+                setData('expense_type_id', '');
+            }
+            if (data.vendor_id) {
+                setData('vendor_id', '');
+            }
+            if (data.payment_for !== 'expense') {
+                setData('payment_for', 'expense');
+            }
+            if (data.payment_mode !== 'direct') {
+                setData('payment_mode', 'direct');
+            }
+            if (data.counterparty_account_id) {
+                setData('counterparty_account_id', '');
+            }
+            if (data.set_vendor_counterparty_default) {
+                setData('set_vendor_counterparty_default', false);
+            }
+        }
+    }, [
+        isSmartMode,
+        isPaymentVoucher,
+        isReceiptVoucher,
+        data.party_type,
+        data.party_id,
+        data.vendor_id,
+        data.payment_for,
+        data.payment_mode,
+        data.invoice_id,
+        data.invoice_type,
+        data.expense_type_id,
+        data.counterparty_account_id,
+        data.set_vendor_counterparty_default,
+    ]);
+
+    React.useEffect(() => {
+        if (isJournalVoucher && data.payment_account_id) {
+            setData('payment_account_id', '');
+        }
+    }, [isJournalVoucher]);
+
+    React.useEffect(() => {
+        if (isJournalVoucher) return;
+
+        if (isSmartMode) {
+            if (defaultSmartPaymentAccount) {
+                const nextId = String(defaultSmartPaymentAccount.id);
+                if (String(data.payment_account_id || '') !== nextId) {
+                    setData('payment_account_id', nextId);
+                }
+            }
+            return;
+        }
+
+        if (!data.payment_account_id && filteredPaymentAccounts.length === 1) {
+            setData('payment_account_id', String(filteredPaymentAccounts[0].id));
+        }
+    }, [
+        isJournalVoucher,
+        isSmartMode,
+        defaultSmartPaymentAccount?.id,
+        data.payment_account_id,
+        filteredPaymentAccounts.length,
+    ]);
+
+    React.useEffect(() => {
+        if (!showInvoice) {
+            setOpenInvoices([]);
+            setData('invoice_id', '');
+            setData('invoice_type', '');
+            return;
+        }
+
+        setLoadingInvoices(true);
+        const partyType = isPaymentVoucher ? 'vendor' : data.party_type;
+        const partyId = isPaymentVoucher ? data.vendor_id : data.party_id;
+        fetch(`${route('accounting.vouchers.open-invoices')}?party_type=${encodeURIComponent(partyType)}&party_id=${encodeURIComponent(partyId)}`)
+            .then((response) => response.json())
+            .then((json) => {
+                const rows = json.data || [];
+                setOpenInvoices(rows);
+            })
+            .catch(() => setOpenInvoices([]))
+            .finally(() => setLoadingInvoices(false));
+    }, [showInvoice, data.party_type, data.party_id, data.vendor_id, isPaymentVoucher]);
+
+    React.useEffect(() => {
+        if (!selectedInvoice) return;
+        if (!data.amount || Number(data.amount) <= 0) {
+            setData('amount', String(selectedInvoice.outstanding || ''));
+        }
+        if (!data.reference_no) {
+            setData('reference_no', selectedInvoice.number || '');
+        }
+    }, [selectedInvoice?.id]);
+
+    React.useEffect(() => {
+        const controller = new AbortController();
+        const shouldSkip = !data.voucher_type || !data.voucher_date || !data.posting_date || !data.tenant_id || (!isJournalVoucher && !data.payment_account_id);
+        if (shouldSkip) {
+            setServerPreview(null);
+            return () => controller.abort();
+        }
+
+        const timeout = setTimeout(() => {
+            fetch(route('accounting.vouchers.preview'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ ...data, intent: 'draft' }),
+                signal: controller.signal,
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error('preview failed');
+                    }
+                    return response.json();
+                })
+                .then((json) => setServerPreview(json?.data || null))
+                .catch(() => setServerPreview(null));
+        }, 250);
+
+        return () => {
+            clearTimeout(timeout);
+            controller.abort();
+        };
+    }, [
+        data.voucher_type,
+        data.entry_mode,
+        data.payment_for,
+        data.payment_mode,
+        data.party_type,
+        data.party_id,
+        data.vendor_id,
+        data.invoice_type,
+        data.invoice_id,
+        data.expense_type_id,
+        data.counterparty_account_id,
+        data.set_vendor_counterparty_default,
+        data.amount,
+        data.voucher_date,
+        data.posting_date,
+        data.tenant_id,
+        data.department_id,
+        data.payment_account_id,
+        data.currency_code,
+        data.exchange_rate,
+        data.remarks,
+        JSON.stringify(data.lines),
+        isJournalVoucher,
+    ]);
+
+    const fallbackPreviewLines = buildPreviewLines({
+        data,
+        accounts,
+        selectedPaymentCoa,
+        selectedInvoice,
+        selectedExpenseType: expenseTypes.find((item) => String(item.id) === String(data.expense_type_id)),
+        isManualEntry,
+        lines: data.lines,
+    });
+    const previewLines = (serverPreview?.effective_lines || fallbackPreviewLines).map((line) => ({
+        ...line,
+        account_label: line.account_label || accountLabel(accounts, line.account_id),
+    }));
+
+    const totals = (serverPreview?.totals || previewLines.reduce((acc, line) => {
+        acc.debit += Number(line.debit || 0);
+        acc.credit += Number(line.credit || 0);
+        return acc;
+    }, { debit: 0, credit: 0 }));
+    const difference = Math.abs(totals.debit - totals.credit);
+    const lineWarnings = buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount: effectivePaymentAccount });
+
+    const canPost = (() => {
+        if (!data.voucher_date || !data.posting_date || !data.tenant_id) return false;
+        if (!isJournalVoucher && !data.payment_account_id) return false;
+        if (isManualEntry) return difference < 0.0001 && previewLines.length >= 2;
+        if (!data.amount || Number(data.amount) <= 0) return false;
+        if (!isSmartMode) return false;
+        if ((data.invoice_type && !data.invoice_id) || (data.invoice_id && !data.invoice_type)) return false;
+
+        if (isPaymentVoucher) {
+            if (!['expense', 'vendor_payment'].includes(data.payment_for)) return false;
+            if (data.payment_for === 'expense' && !data.expense_type_id) return false;
+            if (data.payment_for === 'vendor_payment' && !data.vendor_id) return false;
+            if (data.payment_mode === 'against_invoice' && !data.invoice_id) return false;
+            if (requiresCounterpartySelection && !data.counterparty_account_id) return false;
+        }
+        if (showParty && data.party_type !== 'none' && !data.party_id) return false;
+        if (isReceiptVoucher && (!data.party_type || data.party_type === 'none' || !data.party_id)) return false;
+        if (!data.expense_type_id && !data.invoice_id && !data.party_id && !data.vendor_id) return false;
+        return true;
+    })();
+
+    const addLine = () => setData('lines', [...data.lines, emptyLine()]);
+    const duplicateLine = (index) => setData('lines', [...data.lines.slice(0, index + 1), { ...data.lines[index] }, ...data.lines.slice(index + 1)]);
+    const removeLine = (index) => {
+        if (data.lines.length <= 2) return;
+        setData('lines', data.lines.filter((_, i) => i !== index));
+    };
+    const moveLine = (index, direction) => {
+        const next = [...data.lines];
+        const target = index + direction;
+        if (target < 0 || target >= next.length) return;
+        [next[index], next[target]] = [next[target], next[index]];
+        setData('lines', next);
+    };
+    const updateLine = (index, key, value) => {
+        const next = data.lines.map((line, i) => (i === index ? { ...line, [key]: value } : line));
+        setData('lines', next);
+    };
+
+    const applyTemplate = async () => {
+        if (!selectedTemplate) return;
+        try {
+            const response = await fetch(route('accounting.vouchers.template', selectedTemplate.id));
+            const json = await response.json();
+            if (json.data) {
+                Object.entries(json.data).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null) {
+                        if (key === 'entry_mode') {
+                            setData('entry_mode', String(value).toLowerCase() === 'manual' ? 'manual' : 'smart');
+                            return;
+                        }
+                        setData(key, typeof value === 'number' ? String(value) : value);
+                    }
+                });
+            }
+        } catch (error) {
+            // best-effort load
+        }
+    };
+
+    const loadLastDefaults = async () => {
+        try {
+            const response = await fetch(`${route('accounting.vouchers.last-defaults')}?entry_mode=${encodeURIComponent(data.entry_mode)}&voucher_type=${encodeURIComponent(data.voucher_type)}`);
+            const json = await response.json();
+            if (!json.data) return;
+            Object.entries(json.data).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    if (key === 'entry_mode') {
+                        setData('entry_mode', String(value).toLowerCase() === 'manual' ? 'manual' : 'smart');
+                        return;
+                    }
+                    setData(key, typeof value === 'number' ? String(value) : value);
+                }
+            });
+        } catch (error) {
+            // best-effort load
+        }
+    };
+
+    const focusNextField = (event) => {
+        if (event.key !== 'Enter') return;
+        const form = event.currentTarget.form;
+        if (!form) return;
+        const elements = Array.from(form.querySelectorAll('input, textarea')).filter((el) => !el.disabled && el.type !== 'hidden');
+        const currentIndex = elements.indexOf(event.currentTarget);
+        if (currentIndex >= 0 && elements[currentIndex + 1]) {
+            event.preventDefault();
+            elements[currentIndex + 1].focus();
+        }
+    };
+
+    const submitForm = (intent) => {
+        intentRef.current = intent;
+        transform((current) => ({ ...current, intent }));
+        const url = mode === 'edit' ? route('accounting.vouchers.update', voucher.id) : route('accounting.vouchers.store');
+        const method = mode === 'edit' ? put : post;
+        method(url, {
+            forceFormData: true,
+            onFinish: () => setConfirmState({ open: false, intent: 'draft' }),
+        });
+    };
+
+    return (
+        <AppPage
+            eyebrow="Accounting"
+            title={mode === 'edit' ? `Edit ${voucher?.voucher_no || 'Voucher'}` : 'Create Intelligent Voucher'}
+            subtitle="Entity-led accounting workflow with system-generated entries."
+            actions={[
+                <Chip key="status" label={`Status: ${voucher?.status || 'draft'}`} color={voucher?.status === 'posted' ? 'success' : voucher?.status === 'submitted' ? 'warning' : 'default'} />,
+                <Chip key="number" label={`Voucher No: ${voucher?.voucher_no || 'Auto on save'}`} variant="outlined" />,
+            ]}
+        >
+            <form onSubmit={(e) => e.preventDefault()}>
+                <SurfaceCard title="Voucher Header" subtitle="Choose mode, business entity, and posting context.">
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Voucher Type" value={data.voucher_type} onChange={(e) => setData('voucher_type', e.target.value)} fullWidth size="small" disabled={mode === 'edit'}>
+                                {VOUCHER_TYPES.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Entry Mode" value={data.entry_mode} onChange={(e) => setData('entry_mode', e.target.value)} fullWidth size="small" disabled={mode === 'edit'}>
+                                {entryModes
+                                    .filter((entryMode) => isJournalVoucher ? entryMode === 'manual' : entryMode === 'smart')
+                                    .map((entryMode) => (
+                                        <MenuItem key={entryMode} value={entryMode}>
+                                            {entryMode === 'smart' ? 'Smart' : 'Manual'}
+                                        </MenuItem>
+                                    ))}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="Voucher Number" value={voucher?.voucher_no || 'Auto-generated'} fullWidth size="small" InputProps={{ readOnly: true }} />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField type="date" label="Voucher Date" value={data.voucher_date} onChange={(e) => setData('voucher_date', e.target.value)} fullWidth size="small" InputLabelProps={{ shrink: true }} onKeyDown={focusNextField} error={!!errors.voucher_date} helperText={errors.voucher_date} />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField type="date" label="Posting Date" value={data.posting_date} onChange={(e) => setData('posting_date', e.target.value)} fullWidth size="small" InputLabelProps={{ shrink: true }} onKeyDown={focusNextField} error={!!errors.posting_date} helperText={errors.posting_date} />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Branch / Business Unit" value={data.tenant_id} onChange={(e) => setData('tenant_id', e.target.value)} fullWidth size="small" error={!!errors.tenant_id} helperText={errors.tenant_id}>
+                                {tenants.map((tenant) => <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>)}
+                            </TextField>
+                        </Grid>
+
+                        <Grid item xs={12} md={2}>
+                            <TextField select label="Cost Center" value={data.department_id} onChange={(e) => setData('department_id', e.target.value)} fullWidth size="small" error={!!errors.department_id} helperText={errors.department_id}>
+                                <MenuItem value="">None</MenuItem>
+                                {departments.map((department) => <MenuItem key={department.id} value={department.id}>{department.name}</MenuItem>)}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="Reference No" value={data.reference_no} onChange={(e) => setData('reference_no', e.target.value)} fullWidth size="small" onKeyDown={focusNextField} error={!!errors.reference_no} helperText={errors.reference_no} />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="External Ref No" value={data.external_reference_no} onChange={(e) => setData('external_reference_no', e.target.value)} fullWidth size="small" onKeyDown={focusNextField} error={!!errors.external_reference_no} helperText={errors.external_reference_no} />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <TextField label="Currency" value={data.currency_code} onChange={(e) => setData('currency_code', e.target.value.toUpperCase())} fullWidth size="small" onKeyDown={focusNextField} />
+                        </Grid>
+                        {String(data.currency_code || '').toUpperCase() !== String(baseCurrency).toUpperCase() ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField type="number" label="Exchange Rate" value={data.exchange_rate} onChange={(e) => setData('exchange_rate', e.target.value)} fullWidth size="small" inputProps={{ min: 0, step: '0.000001' }} error={!!errors.exchange_rate} helperText={errors.exchange_rate} />
+                            </Grid>
+                        ) : null}
+
+                        {!isJournalVoucher ? (
+                            <Grid item xs={12} md={showParty || showVendorPayee ? 4 : 6}>
+                                {isSmartMode ? (
+                                    defaultSmartPaymentAccount ? (
+                                        <TextField
+                                            label={paymentLabel}
+                                            value={defaultSmartPaymentAccount?.name || ''}
+                                            fullWidth
+                                            size="small"
+                                            InputProps={{ readOnly: true }}
+                                            error={!!errors.payment_account_id}
+                                            helperText={errors.payment_account_id || `Recommended for ${selectedTenant?.name || 'selected branch'} and system-controlled in Smart mode.`}
+                                        />
+                                    ) : (
+                                        <TextField
+                                            select
+                                            label={paymentLabel}
+                                            value={data.payment_account_id}
+                                            onChange={(e) => setData('payment_account_id', e.target.value)}
+                                            fullWidth
+                                            size="small"
+                                            error={!!errors.payment_account_id}
+                                            helperText={errors.payment_account_id || `No default ${paymentLabel?.toLowerCase()} configured for ${selectedTenant?.name || 'this branch'}. Select one and optionally save as default.`}
+                                        >
+                                            <MenuItem value="">Select account</MenuItem>
+                                            {filteredPaymentAccounts.map((account) => (
+                                                <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
+                                            ))}
+                                        </TextField>
+                                    )
+                                ) : (
+                                    <TextField
+                                        select
+                                        label={paymentLabel}
+                                        value={data.payment_account_id}
+                                        onChange={(e) => setData('payment_account_id', e.target.value)}
+                                        fullWidth
+                                        size="small"
+                                        error={!!errors.payment_account_id}
+                                        helperText={errors.payment_account_id || (filteredPaymentAccounts.length === 0 ? `No valid ${paymentLabel?.toLowerCase()} configured.` : `${paymentLabel} is required.`)}
+                                    >
+                                        {filteredPaymentAccounts.map((account) => (
+                                            <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
+                            </Grid>
+                        ) : null}
+
+                        {showPaymentFor ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    select
+                                    label="Payment For"
+                                    value={data.payment_for}
+                                    onChange={(e) => {
+                                        const next = e.target.value;
+                                        setData('payment_for', next);
+                                        setData('invoice_id', '');
+                                        setData('invoice_type', '');
+                                        if (next === 'expense') {
+                                            setData('vendor_id', '');
+                                            setData('party_type', 'none');
+                                            setData('party_id', '');
+                                            setData('payment_mode', 'direct');
+                                        } else {
+                                            setData('party_type', 'vendor');
+                                        }
+                                    }}
+                                    fullWidth
+                                    size="small"
+                                >
+                                    <MenuItem value="expense">Expense</MenuItem>
+                                    <MenuItem value="vendor_payment">Vendor Payment</MenuItem>
+                                </TextField>
+                            </Grid>
+                        ) : null}
+
+                        {showVendorPayee ? (
+                            <Grid item xs={12} md={4}>
+                                <Autocomplete
+                                    options={vendors}
+                                    size="small"
+                                    value={vendors.find((option) => String(option.id) === String(data.vendor_id)) || null}
+                                    onChange={(_, value) => {
+                                        const id = value ? String(value.id) : '';
+                                        setData('vendor_id', id);
+                                        setData('party_type', id ? 'vendor' : 'none');
+                                        setData('party_id', id);
+                                        setData('invoice_id', '');
+                                        setData('invoice_type', '');
+                                        setData('counterparty_account_id', '');
+                                        setData('set_vendor_counterparty_default', false);
+                                    }}
+                                    getOptionLabel={(option) => option.name || ''}
+                                    renderInput={(params) => <TextField {...params} label="Vendor / Payee" error={!!errors.vendor_id} helperText={errors.vendor_id} />}
+                                />
+                            </Grid>
+                        ) : null}
+
+                        {showPaymentFor ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    select
+                                    label="Payment Mode"
+                                    value={data.payment_mode}
+                                    onChange={(e) => {
+                                        const modeValue = e.target.value;
+                                        setData('payment_mode', modeValue);
+                                        setData('invoice_id', '');
+                                        setData('invoice_type', '');
+                                        setData('counterparty_account_id', '');
+                                        setData('set_vendor_counterparty_default', false);
+                                    }}
+                                    fullWidth
+                                    size="small"
+                                >
+                                    <MenuItem value="direct">Direct</MenuItem>
+                                    <MenuItem value="against_invoice" disabled={data.payment_for !== 'vendor_payment'}>
+                                        Against Invoice
+                                    </MenuItem>
+                                </TextField>
+                            </Grid>
+                        ) : null}
+
+                        {showParty ? (
+                            <>
+                                <Grid item xs={12} md={2}>
+                                    <TextField select label="Party Type" value={data.party_type} onChange={(e) => {
+                                        setData('party_type', e.target.value);
+                                        setData('party_id', '');
+                                        setData('invoice_id', '');
+                                        setData('invoice_type', '');
+                                    }} fullWidth size="small" error={!!errors.party_type} helperText={errors.party_type}>
+                                        {allowedPartyTypeOptions.map((option) => (
+                                            <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                        ))}
+                                    </TextField>
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <Autocomplete
+                                        options={getPartyOptions}
+                                        size="small"
+                                        value={getPartyOptions.find((option) => String(option.id) === String(data.party_id)) || null}
+                                        onChange={(_, value) => {
+                                            setData('party_id', value ? String(value.id) : '');
+                                            setData('invoice_id', '');
+                                            setData('invoice_type', '');
+                                        }}
+                                        getOptionLabel={(option) => option.name || ''}
+                                        renderInput={(params) => <TextField {...params} label="Party" error={!!errors.party_id} helperText={errors.party_id} />}
+                                    />
+                                </Grid>
+                            </>
+                        ) : null}
+
+                        {showInvoice ? (
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label={loadingInvoices ? 'Loading invoices...' : (isPaymentVoucher ? 'Against Invoice' : 'Against Invoice (Optional)')}
+                                    value={data.invoice_id ? `${data.invoice_type}:${data.invoice_id}` : ''}
+                                    onChange={(e) => {
+                                        const [invoiceType, invoiceId] = String(e.target.value).split(':');
+                                        setData('invoice_type', invoiceType || '');
+                                        setData('invoice_id', invoiceId || '');
+                                    }}
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.invoice_id}
+                                    helperText={errors.invoice_id}
+                                >
+                                    <MenuItem value="">Select invoice</MenuItem>
+                                    {openInvoices.map((invoice) => (
+                                        <MenuItem key={`${invoice.invoice_type}:${invoice.id}`} value={`${invoice.invoice_type}:${invoice.id}`}>
+                                            {invoice.number} | Outstanding {formatAmount(invoice.outstanding)}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                        ) : null}
+
+                        {showExpense ? (
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label="Expense Type"
+                                    value={data.expense_type_id}
+                                    onChange={(e) => setData('expense_type_id', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.expense_type_id}
+                                    helperText={
+                                        errors.expense_type_id
+                                        || (expenseTypes.length === 0
+                                            ? 'No active expense types configured. Add mappings from Voucher Mappings first.'
+                                            : '')
+                                    }
+                                >
+                                    <MenuItem value="">Select expense type</MenuItem>
+                                    {expenseTypes.length === 0 ? (
+                                        <MenuItem value="" disabled>No expense types available</MenuItem>
+                                    ) : null}
+                                    {expenseTypes.map((item) => <MenuItem key={item.id} value={item.id}>{item.code} - {item.name}</MenuItem>)}
+                                </TextField>
+                                {expenseTypes.length === 0 ? (
+                                    <Button
+                                        size="small"
+                                        sx={{ mt: 1 }}
+                                        onClick={() => router.visit(route('accounting.vouchers.mappings.index'))}
+                                    >
+                                        Open Expense Type Mapping
+                                    </Button>
+                                ) : null}
+                            </Grid>
+                        ) : null}
+
+                        {isSmartPaymentVoucher && data.voucher_type === 'CPV' && data.payment_for === 'vendor_payment' && (requiresCounterpartySelection || !!errors.counterparty_account_id || !!data.counterparty_account_id) ? (
+                            <Grid item xs={12} md={4}>
+                                <TextField
+                                    select
+                                    label={counterpartyRoleLabel}
+                                    value={data.counterparty_account_id}
+                                    onChange={(e) => setData('counterparty_account_id', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    error={!!errors.counterparty_account_id}
+                                    helperText={
+                                        errors.counterparty_account_id
+                                        || counterpartyResolution?.message
+                                        || `${counterpartyRoleLabel} is auto-resolved from vendor/default mapping.`
+                                    }
+                                    required={requiresCounterpartySelection}
+                                >
+                                    <MenuItem value="">
+                                        {requiresCounterpartySelection ? `Select ${counterpartyRoleLabel}` : `Auto (${counterpartyRoleLabel})`}
+                                    </MenuItem>
+                                    {accounts.map((account) => (
+                                        <MenuItem key={account.id} value={account.id}>
+                                            {account.full_code} - {account.name}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                                {requiresCounterpartySelection ? (
+                                    <FormControlLabel
+                                        sx={{ mt: 0.5 }}
+                                        control={
+                                            <Checkbox
+                                                checked={Boolean(data.set_vendor_counterparty_default)}
+                                                onChange={(e) => setData('set_vendor_counterparty_default', e.target.checked)}
+                                                disabled={!canSetVendorCounterpartyDefault}
+                                            />
+                                        }
+                                        label={`Save as vendor ${data.payment_mode === 'against_invoice' ? 'payable' : 'advance'} default`}
+                                    />
+                                ) : null}
+                            </Grid>
+                        ) : null}
+
+                        {!isManualEntry ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField
+                                    type="number"
+                                    label="Amount"
+                                    value={data.amount}
+                                    onChange={(e) => setData('amount', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    inputProps={{ min: 0, step: '0.01' }}
+                                    error={!!errors.amount}
+                                    helperText={errors.amount}
+                                />
+                            </Grid>
+                        ) : null}
+
+                        <Grid item xs={12}>
+                            <TextField label="Remarks / Narration" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth multiline minRows={2} size="small" error={!!errors.remarks} helperText={errors.remarks || 'Narration is auto-generated in business language and can include your remarks.'} />
+                        </Grid>
+
+                        {isSmartMode && !defaultSmartPaymentAccount ? (
+                            <Grid item xs={12}>
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={Boolean(data.set_payment_account_as_default)}
+                                            onChange={(e) => setData('set_payment_account_as_default', e.target.checked)}
+                                            disabled={!canSetPaymentAccountDefault}
+                                        />
+                                    }
+                                    label="Set selected payment account as branch default"
+                                />
+                            </Grid>
+                        ) : null}
+
+                        <Grid item xs={12} md={4}>
+                            <Button component="label" variant="outlined" fullWidth>
+                                Attach Supporting Documents
+                                <input hidden multiple type="file" onChange={(e) => setData('attachments', Array.from(e.target.files || []))} />
+                            </Button>
+                        </Grid>
+                        <Grid item xs={12} md={8}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                {(data.attachments || []).map((file, index) => <Chip key={`${file.name}-${index}`} label={file.name} variant="outlined" />)}
+                                {(voucher?.media || []).map((file) => (
+                                    <Chip
+                                        key={`existing-${file.id}`}
+                                        label={file.file_name}
+                                        color="success"
+                                        variant="outlined"
+                                        component={file.file_path ? 'a' : 'div'}
+                                        clickable={!!file.file_path}
+                                        href={file.file_path ? `/storage/${file.file_path}` : undefined}
+                                        target={file.file_path ? '_blank' : undefined}
+                                        rel={file.file_path ? 'noopener noreferrer' : undefined}
+                                        onDelete={mode === 'edit' ? () => router.delete(route('accounting.vouchers.attachments.delete', { voucher: voucher.id, media: file.id }), { preserveScroll: true }) : undefined}
+                                    />
+                                ))}
+                            </Stack>
+                        </Grid>
+                    </Grid>
+                </SurfaceCard>
+
+                <SurfaceCard title="Smart Defaults & Templates" subtitle="Apply previous defaults and reusable voucher templates.">
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={4}>
+                            <TextField select label="Template" value={data.template_id} onChange={(e) => setData('template_id', e.target.value)} fullWidth size="small">
+                                <MenuItem value="">Select template</MenuItem>
+                                {templates.map((template) => (
+                                    <MenuItem key={template.id} value={template.id}>{template.name} ({template.scope})</MenuItem>
+                                ))}
+                            </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={8}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                <Button variant="outlined" onClick={applyTemplate} disabled={!selectedTemplate}>Apply Template</Button>
+                                <Button variant="outlined" startIcon={<Refresh />} onClick={loadLastDefaults}>Use Last Defaults</Button>
+                                <FormControlLabel
+                                    control={<Checkbox checked={Boolean(data.save_template)} onChange={(e) => setData('save_template', e.target.checked)} />}
+                                    label="Save as template"
+                                />
+                            </Stack>
+                        </Grid>
+                        {data.save_template ? (
+                            <>
+                                <Grid item xs={12} md={4}>
+                                    <TextField label="Template Name" value={data.template_name} onChange={(e) => setData('template_name', e.target.value)} fullWidth size="small" error={!!errors.template_name} helperText={errors.template_name} />
+                                </Grid>
+                                <Grid item xs={12} md={3}>
+                                    <TextField select label="Template Scope" value={data.template_scope} onChange={(e) => setData('template_scope', e.target.value)} fullWidth size="small">
+                                        <MenuItem value="user">My Template</MenuItem>
+                                        <MenuItem value="global">Global Template</MenuItem>
+                                    </TextField>
+                                </Grid>
+                            </>
+                        ) : null}
+                    </Grid>
+                </SurfaceCard>
+
+                {lineWarnings.length > 0 ? (
+                    <SurfaceCard lowChrome>
+                        <Stack spacing={1}>
+                            {lineWarnings.map((warning) => (
+                                <Alert key={warning} severity="warning">{warning}</Alert>
+                            ))}
+                        </Stack>
+                    </SurfaceCard>
+                ) : null}
+
+                {isManualEntry ? (
+                    <SurfaceCard
+                        title="Voucher Lines"
+                        subtitle={isJournalVoucher ? 'Manual debit and credit lines for journal entries.' : 'Manual entry mode is active for this voucher.'}
+                        actions={<Button variant="outlined" size="small" startIcon={<Add />} onClick={addLine}>Add Line</Button>}
+                    >
+                        <Box sx={{ position: 'sticky', top: 0, zIndex: 1, bgcolor: 'rgba(255,255,255,0.98)', borderBottom: '1px solid rgba(15,23,42,0.08)', mb: 1, py: 1 }}>
+                            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={1}>
+                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                    <Chip label={`Debit ${formatAmount(totals.debit)}`} color="primary" variant="outlined" />
+                                    <Chip label={`Credit ${formatAmount(totals.credit)}`} color="primary" variant="outlined" />
+                                    <Chip label={`Difference ${formatAmount(difference)}`} color={difference < 0.0001 ? 'success' : 'error'} />
+                                </Stack>
+                            </Stack>
+                        </Box>
+                        <AdminDataTable
+                            columns={[
+                                { key: 'account', label: 'Account', minWidth: 260 },
+                                { key: 'department', label: 'Cost Center', minWidth: 180 },
+                                { key: 'debit', label: 'Debit', minWidth: 120 },
+                                { key: 'credit', label: 'Credit', minWidth: 120 },
+                                { key: 'description', label: 'Narration', minWidth: 220 },
+                                { key: 'reference', label: 'Reference', minWidth: 180 },
+                                { key: 'actions', label: 'Actions', minWidth: 140, align: 'right' },
+                            ]}
+                            rows={data.lines}
+                            pagination={null}
+                            emptyMessage="No voucher lines."
+                            tableMinWidth={1320}
+                            renderRow={(line, index) => (
+                                <TableRow key={index}>
+                                    <TableCell sx={{ minWidth: 260 }}>
+                                        <Autocomplete
+                                            options={accounts}
+                                            size="small"
+                                            value={accounts.find((account) => String(account.id) === String(line.account_id)) || null}
+                                            onChange={(_, value) => updateLine(index, 'account_id', value ? String(value.id) : '')}
+                                            getOptionLabel={(option) => `${option.full_code} - ${option.name}`}
+                                            renderInput={(params) => <TextField {...params} placeholder="Search account" error={!!errors[`lines.${index}.account_id`]} helperText={errors[`lines.${index}.account_id`]} />}
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        <TextField select size="small" value={line.department_id} onChange={(e) => updateLine(index, 'department_id', e.target.value)} fullWidth>
+                                            <MenuItem value="">Default</MenuItem>
+                                            {departments.map((department) => <MenuItem key={department.id} value={department.id}>{department.name}</MenuItem>)}
+                                        </TextField>
+                                    </TableCell>
+                                    <TableCell><TextField type="number" size="small" value={line.debit} onChange={(e) => updateLine(index, 'debit', e.target.value)} fullWidth inputProps={{ min: 0, step: '0.01' }} /></TableCell>
+                                    <TableCell><TextField type="number" size="small" value={line.credit} onChange={(e) => updateLine(index, 'credit', e.target.value)} fullWidth inputProps={{ min: 0, step: '0.01' }} /></TableCell>
+                                    <TableCell><TextField size="small" value={line.description} onChange={(e) => updateLine(index, 'description', e.target.value)} fullWidth onKeyDown={focusNextField} /></TableCell>
+                                    <TableCell>
+                                        <Stack spacing={0.75}>
+                                            <TextField size="small" value={line.reference_type} onChange={(e) => updateLine(index, 'reference_type', e.target.value)} fullWidth placeholder="Type" />
+                                            <TextField size="small" value={line.reference_id} onChange={(e) => updateLine(index, 'reference_id', e.target.value)} fullWidth placeholder="ID" />
+                                        </Stack>
+                                    </TableCell>
+                                    <TableCell align="right">
+                                        <IconButton size="small" onClick={() => moveLine(index, -1)} disabled={index === 0}><ArrowUpward fontSize="inherit" /></IconButton>
+                                        <IconButton size="small" onClick={() => moveLine(index, 1)} disabled={index === data.lines.length - 1}><ArrowDownward fontSize="inherit" /></IconButton>
+                                        <IconButton size="small" onClick={() => duplicateLine(index)}><ContentCopy fontSize="inherit" /></IconButton>
+                                        <IconButton size="small" color="error" onClick={() => removeLine(index)} disabled={data.lines.length <= 2}><Delete fontSize="inherit" /></IconButton>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        />
+                        {errors.lines ? <Alert severity="error" sx={{ mt: 1 }}>{errors.lines}</Alert> : null}
+                    </SurfaceCard>
+                ) : (
+                    <SurfaceCard title="System-Generated Entries" subtitle="Lines will be generated from mode, entity mappings, and voucher type rules.">
+                        <Alert severity="info">
+                            Counterparty and cash/bank lines are generated by the posting engine from your business inputs.
+                        </Alert>
+                        {counterpartyResolution?.requires_selection ? (
+                            <Alert severity="warning" sx={{ mt: 1 }}>
+                                {counterpartyResolution?.message || `${counterpartyRoleLabel} mapping is missing. Select an account to continue.`}
+                            </Alert>
+                        ) : null}
+                        {!isJournalVoucher ? (
+                            <Box sx={{ mt: 1.25, px: 1.25, py: 1, border: '1px solid rgba(15,23,42,0.1)', borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.6)' }}>
+                                <Typography variant="caption" color="text.secondary">Narration to Post</Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>{autoNarration || '-'}</Typography>
+                            </Box>
+                        ) : null}
+                        <Box sx={{ mt: 1.5 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                                Posting Preview
+                            </Typography>
+                            {previewLines.length > 0 ? (
+                                <Stack spacing={0.75}>
+                                    {previewLines.map((line, index) => {
+                                        const debit = Number(line.debit || 0);
+                                        const credit = Number(line.credit || 0);
+                                        const side = debit > 0 ? 'Debit' : 'Credit';
+                                        const amount = debit > 0 ? debit : credit;
+
+                                        return (
+                                            <Box
+                                                key={`generated-line-${index}`}
+                                                sx={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: { xs: '1fr', md: '120px 1fr 160px' },
+                                                    gap: 1,
+                                                    px: 1.25,
+                                                    py: 1,
+                                                    border: '1px solid rgba(15,23,42,0.1)',
+                                                    borderRadius: 1.5,
+                                                    bgcolor: 'rgba(255,255,255,0.6)',
+                                                }}
+                                            >
+                                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{side}</Typography>
+                                                <Typography variant="body2">{line.account_label || '-'}</Typography>
+                                                <Typography variant="body2" sx={{ fontWeight: 700, textAlign: { xs: 'left', md: 'right' } }}>
+                                                    {formatAmount(amount)}
+                                                </Typography>
+                                            </Box>
+                                        );
+                                    })}
+                                </Stack>
+                            ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                    Complete Payment For, amount, and cash account to see generated debit and credit entries.
+                                </Typography>
+                            )}
+                        </Box>
+                        <Box sx={{ mt: 1.25 }}>
+                            <Chip label={`Debit ${formatAmount(totals.debit)}`} color="primary" variant="outlined" sx={{ mr: 1 }} />
+                            <Chip label={`Credit ${formatAmount(totals.credit)}`} color="primary" variant="outlined" sx={{ mr: 1 }} />
+                            <Chip label={`Difference ${formatAmount(difference)}`} color={difference < 0.0001 ? 'success' : 'error'} />
+                        </Box>
+                    </SurfaceCard>
+                )}
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
+                    <Button variant="outlined" startIcon={<Preview />} onClick={() => setPreviewOpen(true)}>
+                        Preview
+                    </Button>
+                    <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+                        <Button variant="outlined" href={route('accounting.vouchers.index')}>Cancel</Button>
+                        {mode === 'edit' && voucher?.status !== 'posted' ? (
+                            <Button color="warning" variant="outlined" onClick={() => setConfirmState({ open: true, intent: 'cancel' })}>
+                                Cancel Voucher
+                            </Button>
+                        ) : null}
+                        <AppLoadingButton variant="outlined" loading={processing && intentRef.current === 'draft'} onClick={() => submitForm('draft')}>
+                            Save Draft
+                        </AppLoadingButton>
+                        <AppLoadingButton variant="outlined" loading={processing && intentRef.current === 'submit'} onClick={() => submitForm('submit')} disabled={!canPost}>
+                            Submit for Approval
+                        </AppLoadingButton>
+                        <AppLoadingButton variant="contained" loading={processing && intentRef.current === 'post'} onClick={() => setConfirmState({ open: true, intent: 'post' })} disabled={!canPost}>
+                            Post Voucher
+                        </AppLoadingButton>
+                    </Stack>
+                </Box>
+            </form>
+
+            <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+                <DialogTitle>Voucher Preview</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={1.5}>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            <Chip label={`Type: ${data.voucher_type}`} />
+                            <Chip label={`Mode: ${data.entry_mode === 'manual' ? 'Manual' : 'Smart'}`} />
+                            <Chip label={`Voucher Date: ${data.voucher_date || '-'}`} />
+                            <Chip label={`Posting Date: ${data.posting_date || '-'}`} />
+                            <Chip label={`Branch: ${tenants.find((tenant) => String(tenant.id) === String(data.tenant_id))?.name || '-'}`} />
+                            {!isJournalVoucher ? <Chip label={`${paymentLabel}: ${effectivePaymentAccount?.name || '-'}`} /> : null}
+                            <Chip label={`Amount: ${formatAmount(data.amount || 0)}`} />
+                        </Stack>
+                        {serverPreview?.allocation || selectedInvoice ? (
+                            <Alert severity="info">
+                                Remaining {(serverPreview?.allocation?.invoice_type || selectedInvoice?.invoice_type) === 'vendor_bill' ? 'Payable' : 'Receivable'}:{' '}
+                                {formatAmount(serverPreview?.allocation?.original_outstanding ?? selectedInvoice?.outstanding ?? 0)}
+                                {serverPreview?.allocation ? ` · Allocating ${formatAmount(serverPreview.allocation.allocated_now)} · After post ${formatAmount(serverPreview.allocation.remaining_after)}` : ''}
+                            </Alert>
+                        ) : null}
+                        <Alert severity={difference < 0.0001 ? 'success' : 'error'}>
+                            Debit {formatAmount(totals.debit)} | Credit {formatAmount(totals.credit)} | Difference {formatAmount(difference)}
+                        </Alert>
+                        <AdminDataTable
+                            columns={[
+                                { key: 'account', label: 'Account', minWidth: 300 },
+                                { key: 'description', label: 'Narration', minWidth: 260 },
+                                { key: 'debit', label: 'Debit', minWidth: 120, align: 'right' },
+                                { key: 'credit', label: 'Credit', minWidth: 120, align: 'right' },
+                            ]}
+                            rows={previewLines}
+                            pagination={null}
+                            emptyMessage="No lines."
+                            tableMinWidth={920}
+                            renderRow={(line, index) => (
+                                <TableRow key={`preview-${index}`}>
+                                    <TableCell>{line.account_label}</TableCell>
+                                    <TableCell>{line.description || '-'}</TableCell>
+                                    <TableCell align="right">{formatAmount(line.debit)}</TableCell>
+                                    <TableCell align="right">{formatAmount(line.credit)}</TableCell>
+                                </TableRow>
+                            )}
+                        />
+                    </Stack>
+                </DialogContent>
+            </Dialog>
+
+            <ConfirmActionDialog
+                open={confirmState.open}
+                title={confirmState.intent === 'post' ? 'Post voucher?' : 'Cancel voucher?'}
+                message={confirmState.intent === 'post'
+                    ? 'This will lock the voucher and create financial impact in the general ledger.'
+                    : 'This will move the voucher to cancelled status and prevent reuse.'}
+                confirmLabel={confirmState.intent === 'post' ? 'Post Voucher' : 'Cancel Voucher'}
+                severity={confirmState.intent === 'post' ? 'critical' : 'danger'}
+                loading={processing}
+                onClose={() => setConfirmState({ open: false, intent: 'draft' })}
+                onConfirm={() => {
+                    if (confirmState.intent === 'post') {
+                        submitForm('post');
+                        return;
+                    }
+                    post(route('accounting.vouchers.cancel', voucher.id));
+                }}
+            />
+        </AppPage>
+    );
+}
+
+function buildPreviewLines({ data, accounts, selectedPaymentCoa, selectedInvoice, selectedExpenseType, isManualEntry, lines }) {
+    if (isManualEntry) {
+        const userLines = (lines || [])
+            .filter((line) => line.account_id || Number(line.debit || 0) > 0 || Number(line.credit || 0) > 0 || line.description)
+            .map((line) => {
+                const account = accounts.find((item) => String(item.id) === String(line.account_id));
+                return {
+                    ...line,
+                    debit: Number(line.debit || 0),
+                    credit: Number(line.credit || 0),
+                    account_label: account ? `${account.full_code} - ${account.name}` : (line.account_id ? `Account #${line.account_id}` : '-'),
+                };
+            });
+
+        if (data.voucher_type === 'JV' || data.entry_mode === 'manual') {
+            return userLines;
+        }
+
+        const amount = userLines.reduce((sum, line) => sum + Number(['CPV', 'BPV'].includes(data.voucher_type) ? line.debit : line.credit), 0);
+        if (!selectedPaymentCoa || amount <= 0) return userLines;
+        return [
+            ...userLines,
+            {
+                account_label: `${selectedPaymentCoa.full_code} - ${selectedPaymentCoa.name}`,
+                debit: ['CRV', 'BRV'].includes(data.voucher_type) ? amount : 0,
+                credit: ['CPV', 'BPV'].includes(data.voucher_type) ? amount : 0,
+                description: 'System cash/bank line',
+            },
+        ];
+    }
+
+    const amount = Number(data.amount || selectedInvoice?.outstanding || 0);
+    const counterpartyLabel = selectedExpenseType
+        ? `${selectedExpenseType.code} - ${selectedExpenseType.name}`
+        : (selectedInvoice?.number ? `Mapped account for ${selectedInvoice.number}` : 'Mapped counterparty account');
+    const bankLabel = selectedPaymentCoa ? `${selectedPaymentCoa.full_code} - ${selectedPaymentCoa.name}` : 'Mapped cash/bank account';
+    const isPayment = ['CPV', 'BPV'].includes(data.voucher_type);
+    if (amount <= 0) return [];
+
+    return [
+        {
+            account_label: counterpartyLabel,
+            debit: isPayment ? amount : 0,
+            credit: isPayment ? 0 : amount,
+            description: 'Counterparty line',
+        },
+        {
+            account_label: bankLabel,
+            debit: isPayment ? 0 : amount,
+            credit: isPayment ? amount : 0,
+            description: 'Cash/Bank line',
+        },
+    ];
+}
+
+function accountLabel(accounts, accountId) {
+    const account = accounts.find((item) => String(item.id) === String(accountId));
+    if (!account) {
+        return accountId ? `Account #${accountId}` : '-';
+    }
+
+    return `${account.full_code} - ${account.name}`;
+}
+
+function buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount }) {
+    const warnings = [];
+    if (data.posting_date && data.voucher_date && data.posting_date < data.voucher_date) {
+        warnings.push('Posting date is earlier than voucher date.');
+    }
+    if (data.voucher_type !== 'JV' && !selectedPaymentAccount) {
+        warnings.push('A valid cash/bank account is required for this voucher type.');
+    }
+    if (String(data.currency_code || '').toUpperCase() !== String(baseCurrency).toUpperCase() && !data.exchange_rate) {
+        warnings.push('Foreign currency voucher requires exchange rate.');
+    }
+    if (selectedInvoice && Number(data.amount || 0) > Number(selectedInvoice.outstanding || 0)) {
+        warnings.push('Entered amount exceeds selected invoice outstanding.');
+    }
+    if (difference > 0.0001) {
+        warnings.push('Voucher is currently unbalanced.');
+    }
+    return Array.from(new Set(warnings));
+}

@@ -128,7 +128,13 @@ export default function Periods({ periods, filters = {}, error = null }) {
                 {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
                 <SurfaceCard title="Live Filters" subtitle="Narrow period close records by status with the same shared accounting filter behavior.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine accounting periods by status and date range."
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={4}>
                                 <TextField

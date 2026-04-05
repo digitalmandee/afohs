@@ -11,6 +11,7 @@ class PurchaseOrder extends Model
         'vendor_id',
         'tenant_id',
         'warehouse_id',
+        'purchase_requisition_id',
         'order_date',
         'expected_date',
         'status',
@@ -55,8 +56,23 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function purchaseRequisition()
+    {
+        return $this->belongsTo(PurchaseRequisition::class, 'purchase_requisition_id');
+    }
+
     public function revisions()
     {
         return $this->hasMany(PurchaseOrderRevision::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 }

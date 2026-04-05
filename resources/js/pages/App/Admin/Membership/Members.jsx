@@ -409,12 +409,11 @@ const AllMembers = ({ members, memberTypes = [], memberCategories = [], cities =
                         contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
                     >
                         <FilterToolbar
+                            title="Filters"
+                            subtitle="Adjust member criteria and click Apply."
+                            lowChrome
+                            onApply={handleApplyFilters}
                             onReset={resetFilters}
-                            actions={
-                                <Button size="small" variant="contained" onClick={handleApplyFilters} sx={{ borderRadius: '12px', textTransform: 'none', backgroundColor: '#063455', '&:hover': { backgroundColor: '#052a42' } }}>
-                                    Search
-                                </Button>
-                            }
                         >
                             <Box
                                 sx={{

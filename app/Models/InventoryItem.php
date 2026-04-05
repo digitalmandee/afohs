@@ -120,6 +120,11 @@ class InventoryItem extends BaseModel
             ->where('status', 'active');
     }
 
+    public function scopeRequisitionEligible(Builder $query): Builder
+    {
+        return $query->where('status', 'active');
+    }
+
     public function scopeWarehouseOperationalEligible(Builder $query): Builder
     {
         return $query

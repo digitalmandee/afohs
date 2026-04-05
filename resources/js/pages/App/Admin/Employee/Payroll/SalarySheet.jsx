@@ -267,6 +267,11 @@ export default function SalarySheet() {
                             subtitle="Adjust the month and employee scope, then refresh the editable salary grid."
                         >
                             <FilterToolbar
+                                title="Filters"
+                                subtitle="Adjust payroll filters and click Apply."
+                                lowChrome
+                                onApply={fetchData}
+                                showApply={false}
                                 onReset={resetFilters}
                                 actions={(
                                     <Button variant="contained" onClick={fetchData} startIcon={<Refresh />} sx={{ textTransform: 'none', borderRadius: '16px' }}>

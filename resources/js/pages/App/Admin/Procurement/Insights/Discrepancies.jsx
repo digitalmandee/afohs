@@ -93,7 +93,13 @@ export default function Discrepancies({ rows, summary = {}, vendors = [], filter
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Search the queue by GRN, PO, vendor, date range, and queue type without the old manual submit flow.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine discrepancy queue by search, vendor, queue type, date range, and matched visibility."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField label="Search GRN / PO / vendor" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />

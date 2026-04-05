@@ -300,7 +300,13 @@ export default function AttendanceDashboard() {
                 title="Live Filters"
                 subtitle="Filter employees instantly by name, employee ID, email, designation, or department."
             >
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    title="Filters"
+                    subtitle="Set attendance filters and click Apply."
+                    lowChrome
+                    onApply={() => submitFilters(filtersRef.current)}
+                    onReset={resetFilters}
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={6}>
                             <TextField

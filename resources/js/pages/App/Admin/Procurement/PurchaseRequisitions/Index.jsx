@@ -1,15 +1,184 @@
 import React from 'react';
 import { Link, router, useForm } from '@inertiajs/react';
-import { Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Menu, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
+import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
+import CheckCircleOutlineOutlinedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
+import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined';
+import MoreVertOutlinedIcon from '@mui/icons-material/MoreVertOutlined';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount } from '@/lib/formatting';
+
+function ActionIconButton({ title, onClick, icon, color = 'default', loading = false, disabled = false, href, target, rel }) {
+    return (
+        <Tooltip title={title}>
+            <span>
+                <IconButton
+                    size="small"
+                    color={color}
+                    onClick={onClick}
+                    component={href ? 'a' : 'button'}
+                    href={href}
+                    target={target}
+                    rel={rel}
+                    disabled={disabled || loading}
+                    sx={{ border: '1px solid #dbe5ee', borderRadius: '10px' }}
+                >
+                    {loading ? <CircularProgress size={14} color="inherit" /> : icon}
+                </IconButton>
+            </span>
+        </Tooltip>
+    );
+}
+
+function PurchaseRequisitionRowActions({ row, mutation, openConvertModal }) {
+    const [anchorEl, setAnchorEl] = React.useState(null);
+    const menuOpen = Boolean(anchorEl);
+
+    const actionItems = [
+        ...(row.status === 'draft'
+            ? [{
+                key: 'submit',
+                label: 'Submit',
+                icon: <SendOutlinedIcon fontSize="small" />,
+                loading: mutation.isPending(`pr-submit-${row.id}`),
+                run: () => mutation.runRouterAction({
+                    key: `pr-submit-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.purchase-requisitions.submit', row.id),
+                    successMessage: 'Requisition submitted.',
+                    errorMessage: 'Failed to submit requisition.',
+                    confirmConfig: {
+                        title: 'Submit Requisition',
+                        message: 'Submit this requisition for approval?',
+                        confirmLabel: 'Submit',
+                        severity: 'warning',
+                    },
+                }),
+            }]
+            : []),
+        ...(['draft', 'submitted'].includes(row.status)
+            ? [{
+                key: 'approve',
+                label: 'Approve',
+                icon: <CheckCircleOutlineOutlinedIcon fontSize="small" />,
+                loading: mutation.isPending(`pr-approve-${row.id}`),
+                run: () => mutation.runRouterAction({
+                    key: `pr-approve-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.purchase-requisitions.approve', row.id),
+                    successMessage: 'Requisition approved.',
+                    errorMessage: 'Failed to approve requisition.',
+                    confirmConfig: {
+                        title: 'Approve Requisition',
+                        message: 'Approve this requisition now?',
+                        confirmLabel: 'Approve',
+                        severity: 'critical',
+                    },
+                }),
+            }, {
+                key: 'reject',
+                label: 'Reject',
+                icon: <HighlightOffOutlinedIcon fontSize="small" />,
+                loading: mutation.isPending(`pr-reject-${row.id}`),
+                run: () => mutation.runRouterAction({
+                    key: `pr-reject-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.purchase-requisitions.reject', row.id),
+                    successMessage: 'Requisition rejected.',
+                    errorMessage: 'Failed to reject requisition.',
+                    confirmConfig: {
+                        title: 'Reject Requisition',
+                        message: 'Reject this requisition?',
+                        confirmLabel: 'Reject',
+                        severity: 'danger',
+                    },
+                }),
+            }]
+            : []),
+    ];
+
+    const canConvert = ['approved', 'partially_converted'].includes(row.status) && !!row.has_remaining_qty;
+
+    return (
+        <Stack direction="row" spacing={0.6} justifyContent="flex-end" alignItems="center">
+            {canConvert ? (
+                <ActionIconButton
+                    title="Convert to PO"
+                    color="primary"
+                    icon={<ReceiptLongOutlinedIcon fontSize="small" />}
+                    onClick={() => openConvertModal(row)}
+                />
+            ) : null}
+
+            {row.latest_purchase_order ? (
+                <ActionIconButton
+                    title={`Open PO (${row.latest_purchase_order.po_no})`}
+                    color="default"
+                    icon={<OpenInNewOutlinedIcon fontSize="small" />}
+                    href={route('procurement.purchase-orders.view', row.latest_purchase_order.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                />
+            ) : null}
+
+            <ActionIconButton
+                title="View Requisition"
+                color="primary"
+                icon={<VisibilityOutlinedIcon fontSize="small" />}
+                href={route('procurement.purchase-requisitions.show', row.id)}
+                target="_blank"
+                rel="noreferrer"
+            />
+
+            {actionItems.length > 0 ? (
+                <>
+                    <ActionIconButton
+                        title="More Actions"
+                        icon={<MoreVertOutlinedIcon fontSize="small" />}
+                        onClick={(event) => setAnchorEl(event.currentTarget)}
+                    />
+                    <Menu
+                        anchorEl={anchorEl}
+                        open={menuOpen}
+                        onClose={() => setAnchorEl(null)}
+                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    >
+                        {actionItems.map((item) => (
+                            <MenuItem
+                                key={item.key}
+                                disabled={item.loading}
+                                onClick={() => {
+                                    setAnchorEl(null);
+                                    item.run();
+                                }}
+                            >
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    {item.loading ? <CircularProgress size={14} /> : item.icon}
+                                    <Typography variant="body2">{item.label}</Typography>
+                                </Stack>
+                            </MenuItem>
+                        ))}
+                    </Menu>
+                </>
+            ) : null}
+        </Stack>
+    );
+}
 
 export default function Index({ requisitions, summary = {}, vendors = [], warehouses = [] }) {
     const rows = requisitions?.data || [];
     const [convertModal, setConvertModal] = React.useState({ open: false, requisition: null });
+    const mutation = useMutationAction();
     const convertForm = useForm({
         vendor_id: '',
         warehouse_id: '',
@@ -74,12 +243,32 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
             })),
         };
 
-        convertForm.transform(() => payload).post(
-            route('procurement.purchase-requisitions.convert-to-po', convertModal.requisition.id),
-            {
-                onSuccess: () => closeConvertModal(),
+        mutation.runAction({
+            key: `pr-convert-${convertModal.requisition.id}`,
+            requireConfirm: true,
+            confirmConfig: {
+                title: 'Convert Requisition to PO',
+                message: 'This will create a purchase order from selected lines. Do you want to continue?',
+                confirmLabel: 'Convert',
+                severity: 'warning',
             },
-        );
+            successMessage: 'Purchase order created successfully.',
+            errorMessage: 'Failed to convert requisition.',
+            action: ({ onSuccess, onError, onFinish }) => {
+                convertForm.transform(() => payload);
+                convertForm.post(
+                    route('procurement.purchase-requisitions.convert-to-po', convertModal.requisition.id),
+                    {
+                        onSuccess: () => {
+                            closeConvertModal();
+                            onSuccess();
+                        },
+                        onError,
+                        onFinish,
+                    },
+                );
+            },
+        });
     };
 
     return (
@@ -106,10 +295,12 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
                     columns={[
                         { key: 'pr_no', label: 'PR No' },
                         { key: 'date', label: 'Request Date' },
+                        { key: 'request_for', label: 'Request For' },
+                        { key: 'location', label: 'Location / Business Unit' },
                         { key: 'department', label: 'Department' },
                         { key: 'items', label: 'Items', align: 'right' },
                         { key: 'status', label: 'Status' },
-                        { key: 'actions', label: 'Actions', align: 'right' },
+                        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 220 } },
                     ]}
                     rows={rows}
                     pagination={requisitions}
@@ -118,22 +309,17 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
                         <TableRow key={row.id} hover>
                             <TableCell>{row.pr_no}</TableCell>
                             <TableCell>{row.request_date}</TableCell>
+                            <TableCell>{row.request_for_label || '-'}</TableCell>
+                            <TableCell>{row.location_label || '-'}</TableCell>
                             <TableCell>{row.department?.name || '-'}</TableCell>
                             <TableCell align="right">{row.items?.length || 0}</TableCell>
                             <TableCell><Chip size="small" label={row.status} /></TableCell>
                             <TableCell align="right">
-                                {row.status === 'draft' ? (
-                                    <Button size="small" onClick={() => router.post(route('procurement.purchase-requisitions.submit', row.id))}>Submit</Button>
-                                ) : null}
-                                {['draft', 'submitted'].includes(row.status) ? (
-                                    <Button size="small" color="success" onClick={() => router.post(route('procurement.purchase-requisitions.approve', row.id))}>Approve</Button>
-                                ) : null}
-                                {['draft', 'submitted'].includes(row.status) ? (
-                                    <Button size="small" color="error" onClick={() => router.post(route('procurement.purchase-requisitions.reject', row.id))}>Reject</Button>
-                                ) : null}
-                                {['approved', 'partially_converted'].includes(row.status) ? (
-                                    <Button size="small" color="primary" onClick={() => openConvertModal(row)}>Convert to PO</Button>
-                                ) : null}
+                                <PurchaseRequisitionRowActions
+                                    row={row}
+                                    mutation={mutation}
+                                    openConvertModal={openConvertModal}
+                                />
                             </TableCell>
                         </TableRow>
                     )}
@@ -224,29 +410,37 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
                                     />
                                 </Grid>
                                 <Grid item xs={12} md={2}>
+                                    <TextField size="small" type="number" label="Unit Cost" value={line.unit_cost} onChange={(event) => updateConvertItem(index, 'unit_cost', event.target.value)} fullWidth />
+                                </Grid>
+                                <Grid item xs={12} md={2}>
                                     <TextField
                                         size="small"
-                                        type="number"
-                                        label="Unit Cost"
-                                        value={line.unit_cost}
-                                        onChange={(event) => updateConvertItem(index, 'unit_cost', event.target.value)}
+                                        label="Line Total"
+                                        value={formatAmount(Number(line.qty_ordered || 0) * Number(line.unit_cost || 0))}
                                         fullWidth
+                                        InputProps={{
+                                            readOnly: true,
+                                            sx: { '& input': { textAlign: 'right', fontWeight: 700 } },
+                                        }}
                                     />
-                                </Grid>
-                                <Grid item xs={12} md={2} sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Typography variant="body2">{formatAmount(Number(line.qty_ordered || 0) * Number(line.unit_cost || 0))}</Typography>
                                 </Grid>
                             </Grid>
                         ))}
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={closeConvertModal}>Cancel</Button>
-                        <Button type="submit" variant="contained" disabled={convertForm.processing}>
-                            {convertForm.processing ? 'Converting...' : 'Create PO'}
-                        </Button>
+                        <AppLoadingButton
+                            type="submit"
+                            variant="contained"
+                            loading={mutation.isPending(`pr-convert-${convertModal.requisition?.id || 'new'}`)}
+                            loadingLabel="Converting..."
+                        >
+                            {mutation.isPending(`pr-convert-${convertModal.requisition?.id || 'new'}`) ? 'Converting...' : 'Create PO'}
+                        </AppLoadingButton>
                     </DialogActions>
                 </form>
             </Dialog>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

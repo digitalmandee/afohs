@@ -44,6 +44,10 @@ export default function EventBookingDashboard({ data, eventVenues = [] }) {
         });
     }, [bookings, searchTerm]);
 
+    const applyFilters = React.useCallback(() => {
+        setSearchTerm((current) => current.trim());
+    }, []);
+
     return (
         <>
             <AppPage
@@ -78,7 +82,13 @@ export default function EventBookingDashboard({ data, eventVenues = [] }) {
                 </Grid>
 
                 <SurfaceCard title="Live Search" subtitle={`Filter recent bookings by guest, booking number, venue, or event name across ${eventVenues.length} active venues.`}>
-                    <FilterToolbar onReset={() => setSearchTerm('')}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Refine bookings and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={() => setSearchTerm('')}
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={6}>
                                 <TextField

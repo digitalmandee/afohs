@@ -65,6 +65,10 @@ const UserManagement = () => {
         router.get(route(showTrashed ? 'admin.users.trashed' : 'admin.users.index'), { search }, { preserveState: true });
     };
 
+    const applyFilters = () => {
+        router.get(route(showTrashed ? 'admin.users.trashed' : 'admin.users.index'), { search }, { preserveState: true });
+    };
+
     const resetCreateUserDialog = () => {
         setCreateUserOpen(false);
         setCreateUserTab(0);
@@ -338,7 +342,13 @@ const UserManagement = () => {
                     cardSx={{ borderRadius: '18px' }}
                     contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
                 >
-                    <FilterToolbar onReset={() => { setSearch(''); router.get(route(showTrashed ? 'admin.users.trashed' : 'admin.users.index'), {}, { preserveState: true }); }}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Search users and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={() => { setSearch(''); router.get(route(showTrashed ? 'admin.users.trashed' : 'admin.users.index'), {}, { preserveState: true }); }}
+                    >
                         <Box component="form" onSubmit={handleSearch}>
                             <TextField
                                 size="small"

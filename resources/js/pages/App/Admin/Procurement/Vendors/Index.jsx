@@ -1,6 +1,7 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
+    Box,
     Button,
     Chip,
     Dialog,
@@ -22,7 +23,14 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import { AdminIconAction, AdminRowActionGroup } from '@/components/App/ui/AdminRowActions';
-import { DeleteOutline } from '@mui/icons-material';
+import {
+    AccountBalanceWalletOutlined,
+    DeleteOutline,
+    PaymentsOutlined,
+    ReceiptLongOutlined,
+    UndoOutlined,
+    VisibilityOutlined,
+} from '@mui/icons-material';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ vendors, filters, summary = {}, tenants = [], coaAccounts = [], paymentAccounts = [] }) {
@@ -135,15 +143,28 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
     });
 
     const list = vendors?.data || [];
+    const statCards = [
+        { key: 'vendors', label: 'Vendors', value: formatCount(summary.count), tone: 'dark' },
+        { key: 'active', label: 'Active', value: formatCount(summary.active), tone: 'light' },
+        { key: 'approved', label: 'Approved', value: formatCount(summary.approved), tone: 'light' },
+        { key: 'inactive', label: 'Inactive', value: formatCount(summary.inactive), tone: 'muted' },
+        { key: 'opening_balance', label: 'Opening Balance', value: formatAmount(summary.opening_balance), tone: 'light' },
+        { key: 'ap_outstanding', label: 'AP Outstanding', value: formatAmount(summary.ap_outstanding), tone: 'light' },
+        { key: 'advance_credit', label: 'Advance Credit', value: formatAmount(summary.advance_credit), tone: 'light' },
+        { key: 'purchase_return_credit', label: 'Return Credit', value: formatAmount(summary.purchase_return_credit), tone: 'light' },
+        { key: 'net_payable', label: 'Net Payable', value: formatAmount(summary.net_payable), tone: 'light' },
+    ];
     const columns = [
         { key: 'code', label: 'Code' },
-        { key: 'name', label: 'Vendor', minWidth: 220 },
+        { key: 'name', label: 'Vendor', minWidth: 260 },
         { key: 'restaurant', label: 'Restaurant', minWidth: 170 },
-        { key: 'finance', label: 'Finance Defaults', minWidth: 320 },
-        { key: 'contact', label: 'Contact', minWidth: 220 },
-        { key: 'opening_balance', label: 'Opening Balance' },
-        { key: 'status', label: 'Status' },
-        { key: 'actions', label: 'Action', align: 'right' },
+        { key: 'status', label: 'Status', minWidth: 120 },
+        { key: 'ap', label: 'AP Outstanding', minWidth: 140 },
+        { key: 'advance', label: 'Advance Credit', minWidth: 140 },
+        { key: 'return_credit', label: 'Return Credit', minWidth: 140 },
+        { key: 'net', label: 'Net Payable', minWidth: 140 },
+        { key: 'approval', label: 'Approval', minWidth: 120 },
+        { key: 'actions', label: 'Actions', align: 'right', minWidth: 220 },
     ];
 
     const submit = (e) => {
@@ -165,36 +186,54 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
         <AppPage
             eyebrow="Procurement"
             title="Vendors"
-            subtitle="Maintain restaurant-aware supplier masters with finance defaults so payables and payments post correctly into accounting."
+            subtitle="Vendor master and payable-readiness register."
+            hideSubtitle
             actions={[
                 <Button key="create" variant="contained" onClick={() => setOpenModal(true)}>
                     Add Vendor
                 </Button>,
             ]}
         >
-            <Grid container spacing={2.25}>
-                <Grid item xs={12} md={2.4}>
-                    <StatCard label="Vendors" value={formatCount(summary.count)} />
-                </Grid>
-                <Grid item xs={12} md={2.4}>
-                    <StatCard label="Active" value={formatCount(summary.active)} tone="light" />
-                </Grid>
-                <Grid item xs={12} md={2.4}>
-                    <StatCard label="Approved" value={formatCount(summary.approved)} tone="light" />
-                </Grid>
-                <Grid item xs={12} md={2.4}>
-                    <StatCard label="Inactive" value={formatCount(summary.inactive)} tone="muted" />
-                </Grid>
-                <Grid item xs={12} md={2.4}>
-                    <StatCard label="Opening Balance" value={formatAmount(summary.opening_balance)} tone="light" />
-                </Grid>
+            <Grid container spacing={1}>
+                {statCards.map((card, index) => (
+                    <Grid key={card.key} item xs={12} sm={6} md={3} lg={2.4}>
+                        <StatCard
+                            label={card.label}
+                            value={card.value}
+                            tone={card.tone}
+                            compact
+                            minimal={index !== 0}
+                            accent={index === 0}
+                            white={index !== 0}
+                            cardSx={index !== 0 ? { backgroundColor: '#ffffff !important' } : {}}
+                        />
+                    </Grid>
+                ))}
             </Grid>
 
-            <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search, change status, or switch restaurant context.">
-                <FilterToolbar onReset={resetFilters}>
-                    <Grid container spacing={2}>
+            <Box sx={{ pt: 1, borderTop: '1px solid rgba(214,224,237,0.92)' }}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    inlineActions
+                    lowChrome
+                    showReset={false}
+                    title="Filters"
+                    subtitle="Quickly narrow vendor records by search, restaurant, and status."
+                >
+                    <Grid
+                        container
+                        spacing={1}
+                        sx={{
+                            m: 0,
+                            width: '100%',
+                            alignItems: 'center',
+                            pb: 0.8,
+                        }}
+                    >
                         <Grid item xs={12} md={5}>
                             <TextField
+                                size="small"
                                 label="Search vendor"
                                 placeholder="Search by code, name, or email"
                                 value={localFilters.search}
@@ -202,8 +241,9 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
                                 fullWidth
                             />
                         </Grid>
-                        <Grid item xs={12} md={3.5}>
+                        <Grid item xs={12} md={3}>
                             <TextField
+                                size="small"
                                 select
                                 label="Restaurant"
                                 value={localFilters.tenant_id}
@@ -216,8 +256,9 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
                                 ))}
                             </TextField>
                         </Grid>
-                        <Grid item xs={12} md={3.5}>
+                        <Grid item xs={12} md={2}>
                             <TextField
+                                size="small"
                                 select
                                 label="Status"
                                 value={localFilters.status}
@@ -229,69 +270,92 @@ export default function Index({ vendors, filters, summary = {}, tenants = [], co
                                 <MenuItem value="inactive">Inactive</MenuItem>
                             </TextField>
                         </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            md={2}
+                            sx={{
+                                display: 'flex',
+                                justifyContent: 'flex-start',
+                                alignItems: 'center',
+                                pl: { md: 0.5 },
+                                pr: { md: 0.5 },
+                                pt: { xs: 0.25, md: 0 },
+                                pb: { xs: 0.6, md: 0.35 },
+                            }}
+                        >
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={resetFilters}
+                                sx={{ minHeight: 36, px: 1.5, mb: { md: 0.2 } }}
+                            >
+                                Reset Filters
+                            </Button>
+                        </Grid>
                     </Grid>
                 </FilterToolbar>
-            </SurfaceCard>
+            </Box>
 
-            <SurfaceCard title="Vendor Register" subtitle="Vendor master with restaurant context, account defaults, and payment readiness in one standardized table.">
+            <SurfaceCard contentSx={{ p: 0, '&:last-child': { pb: 0 } }}>
                 <AdminDataTable
                     columns={columns}
                     rows={list}
                     pagination={vendors}
                     emptyMessage="No vendors found."
-                    tableMinWidth={1380}
+                    tableMinWidth={1480}
                     renderRow={(vendor) => (
                         <TableRow
                             key={vendor.id}
                             hover
                             sx={{
                                 '& .MuiTableCell-body': {
-                                    py: 1.5,
+                                    py: 1,
                                     borderBottomColor: '#edf2f7',
                                 },
                             }}
                         >
                             <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>{vendor.code}</TableCell>
                             <TableCell>
-                                <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{vendor.name}</Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Terms: {vendor.payment_terms_days ?? 0} days
-                                </Typography>
+                                <Typography sx={{ fontWeight: 700, color: 'text.primary', whiteSpace: 'nowrap' }}>{vendor.name}</Typography>
                             </TableCell>
                             <TableCell>
-                                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                    <Chip size="small" label={vendor.tenant?.name || 'Shared'} color="primary" variant="outlined" />
-                                    <Chip size="small" label={vendor.approval_status || 'approved'} variant="outlined" />
-                                </Stack>
+                                <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{vendor.tenant?.name || 'Shared'}</Typography>
                             </TableCell>
-                            <TableCell>
-                                <Stack spacing={0.5}>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Payable: {vendor.payable_account ? `${vendor.payable_account.full_code} · ${vendor.payable_account.name}` : '-'}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Advance: {vendor.advance_account ? `${vendor.advance_account.full_code} · ${vendor.advance_account.name}` : '-'}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Payment: {vendor.default_payment_account?.name || '-'}
-                                    </Typography>
-                                </Stack>
-                            </TableCell>
-                            <TableCell>
-                                <Typography>{vendor.phone || '-'}</Typography>
-                                <Typography variant="body2" color="text.secondary">{vendor.email || '-'}</Typography>
-                            </TableCell>
-                            <TableCell>{formatAmount(vendor.opening_balance)}</TableCell>
                             <TableCell>
                                 <Chip
                                     size="small"
-                                    label={vendor.status}
+                                    label={vendor.status || 'inactive'}
                                     color={vendor.status === 'active' ? 'success' : 'default'}
                                     variant={vendor.status === 'active' ? 'filled' : 'outlined'}
                                 />
                             </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{formatAmount(vendor.ap_outstanding)}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{formatAmount(vendor.advance_credit)}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{formatAmount(vendor.purchase_return_credit)}</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: '#0a3d62' }}>
+                                {formatAmount(Math.max(0, Number(vendor.ap_outstanding || 0) - Number(vendor.advance_credit || 0) - Number(vendor.purchase_return_credit || 0)))}
+                            </TableCell>
+                            <TableCell>
+                                <Chip size="small" label={vendor.approval_status || 'approved'} variant="outlined" />
+                            </TableCell>
                             <TableCell align="right">
                                 <AdminRowActionGroup justify="flex-end">
+                                    <AdminIconAction title="View Profile" onClick={() => router.get(route('procurement.vendors.show', vendor.id))}>
+                                        <VisibilityOutlined fontSize="small" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Vendor Bills" onClick={() => router.get(route('procurement.vendor-bills.index'), { vendor_id: vendor.id })}>
+                                        <ReceiptLongOutlined fontSize="small" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Vendor Payments" onClick={() => router.get(route('procurement.vendor-payments.index'), { vendor_id: vendor.id })}>
+                                        <PaymentsOutlined fontSize="small" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Supplier Advances" onClick={() => router.get(route('procurement.supplier-advances.index'), { vendor_id: vendor.id })}>
+                                        <AccountBalanceWalletOutlined fontSize="small" />
+                                    </AdminIconAction>
+                                    <AdminIconAction title="Purchase Returns" onClick={() => router.get(route('procurement.purchase-returns.index'), { vendor_id: vendor.id })}>
+                                        <UndoOutlined fontSize="small" />
+                                    </AdminIconAction>
                                     <AdminIconAction title="Delete Vendor" color="error" onClick={() => router.delete(route('procurement.vendors.destroy', vendor.id))}>
                                         <DeleteOutline fontSize="small" />
                                     </AdminIconAction>

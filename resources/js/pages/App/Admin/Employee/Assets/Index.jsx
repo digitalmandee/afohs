@@ -185,7 +185,13 @@ const AssetsIndex = () => {
                 title="Live Filters"
                 subtitle="Search assets instantly by name, classification, type, or location."
             >
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    title="Filters"
+                    subtitle="Refine assets and click Apply."
+                    lowChrome
+                    onApply={getAssets}
+                    onReset={resetFilters}
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={6}>
                             <TextField

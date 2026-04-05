@@ -1,18 +1,18 @@
 import React from 'react';
 import { Button, IconButton, Stack, Tooltip } from '@mui/material';
 
-export function AdminRowActionGroup({ children, justify = 'flex-start' }) {
+export function AdminRowActionGroup({ children, justify = 'flex-start', wrap = true }) {
     return (
         <Stack
             direction="row"
             spacing={0.35}
             useFlexGap
-            flexWrap="nowrap"
+            flexWrap={wrap ? 'wrap' : 'nowrap'}
             alignItems="center"
             justifyContent={justify}
             sx={{
                 maxWidth: '100%',
-                overflowX: 'hidden',
+                overflow: wrap ? 'visible' : 'hidden',
                 '& .MuiButton-root, & .MuiIconButton-root': {
                     flexShrink: 0,
                 },

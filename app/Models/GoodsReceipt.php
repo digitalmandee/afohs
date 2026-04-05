@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class GoodsReceipt extends Model
 {
@@ -16,13 +17,19 @@ class GoodsReceipt extends Model
         'received_date',
         'status',
         'remarks',
+        'submitted_at',
+        'accepted_at',
         'created_by',
+        'verifier_user_id',
+        'accepted_by',
         'posted_by',
         'posted_at',
     ];
 
     protected $casts = [
         'received_date' => 'date',
+        'submitted_at' => 'datetime',
+        'accepted_at' => 'datetime',
         'posted_at' => 'datetime',
     ];
 
@@ -54,5 +61,25 @@ class GoodsReceipt extends Model
     public function items()
     {
         return $this->hasMany(GoodsReceiptItem::class);
+    }
+
+    public function verifier()
+    {
+        return $this->belongsTo(User::class, 'verifier_user_id');
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function acceptedBy()
+    {
+        return $this->belongsTo(User::class, 'accepted_by');
+    }
+
+    public function postedBy()
+    {
+        return $this->belongsTo(User::class, 'posted_by');
     }
 }

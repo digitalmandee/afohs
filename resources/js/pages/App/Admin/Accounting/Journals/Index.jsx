@@ -274,7 +274,13 @@ export default function Index({ entries, filters, summary, templatesEnabled, tem
           cardSx={{ borderRadius: '18px' }}
           contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
       >
-          <FilterToolbar onReset={resetFilters}>
+          <FilterToolbar
+            onReset={resetFilters}
+            onApply={() => submitFilters(localFilters)}
+            lowChrome
+            title="Filters"
+            subtitle="Refine journal register by source, status, and period."
+          >
             <Grid container spacing={1.25} alignItems="center">
               <Grid item xs={12} md={3}>
                 <TextField

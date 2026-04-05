@@ -2,16 +2,235 @@ import React from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
-import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Menu, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
+import CheckCircleOutlineOutlinedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
+import HighlightOffOutlinedIcon from '@mui/icons-material/HighlightOffOutlined';
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
+import MoreVertOutlinedIcon from '@mui/icons-material/MoreVertOutlined';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppPage from '@/components/App/ui/AppPage';
 import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
+function ActionIconButton({
+    title,
+    onClick,
+    icon,
+    color = 'default',
+    loading = false,
+    disabled = false,
+    href,
+    target,
+    rel,
+}) {
+    return (
+        <Tooltip title={title}>
+            <span>
+                <IconButton
+                    size="small"
+                    color={color}
+                    onClick={onClick}
+                    component={href ? 'a' : 'button'}
+                    href={href}
+                    target={target}
+                    rel={rel}
+                    disabled={disabled || loading}
+                    sx={{ border: '1px solid #dbe5ee', borderRadius: '10px' }}
+                >
+                    {loading ? <CircularProgress size={14} color="inherit" /> : icon}
+                </IconButton>
+            </span>
+        </Tooltip>
+    );
+}
+
+function PurchaseOrderRowActions({ po, mutation, openHistory }) {
+    const isCompact = useMediaQuery('(max-width:1500px)');
+    const [anchorEl, setAnchorEl] = React.useState(null);
+    const menuOpen = Boolean(anchorEl);
+
+    const isDraft = po.status === 'draft';
+    const canEdit = ['draft', 'submitted'].includes(po.status);
+    const canCreateGrn = ['approved', 'partially_received'].includes(po.status);
+
+    const actionItems = [
+        ...(isDraft
+            ? [
+                {
+                    key: 'submit',
+                    label: 'Submit PO',
+                    icon: <SendOutlinedIcon fontSize="small" />,
+                    color: 'primary',
+                    loading: mutation.isPending(`po-submit-${po.id}`),
+                    onClick: () =>
+                        mutation.runRouterAction({
+                            key: `po-submit-${po.id}`,
+                            method: 'post',
+                            url: route('procurement.purchase-orders.submit', po.id),
+                            successMessage: 'Purchase order submitted.',
+                            errorMessage: 'Failed to submit purchase order.',
+                            confirmConfig: {
+                                title: 'Submit Purchase Order',
+                                message: 'Submit this purchase order for approval?',
+                                confirmLabel: 'Submit',
+                                severity: 'warning',
+                            },
+                        }),
+                },
+                {
+                    key: 'approve',
+                    label: 'Approve PO',
+                    icon: <CheckCircleOutlineOutlinedIcon fontSize="small" />,
+                    color: 'success',
+                    loading: mutation.isPending(`po-approve-${po.id}`),
+                    onClick: () =>
+                        mutation.runRouterAction({
+                            key: `po-approve-${po.id}`,
+                            method: 'post',
+                            url: route('procurement.purchase-orders.approve', po.id),
+                            successMessage: 'Purchase order approved.',
+                            errorMessage: 'Failed to approve purchase order.',
+                            confirmConfig: {
+                                title: 'Approve Purchase Order',
+                                message: 'Approve this purchase order?',
+                                confirmLabel: 'Approve',
+                                severity: 'critical',
+                            },
+                        }),
+                },
+                {
+                    key: 'reject',
+                    label: 'Reject PO',
+                    icon: <HighlightOffOutlinedIcon fontSize="small" />,
+                    color: 'error',
+                    loading: mutation.isPending(`po-reject-${po.id}`),
+                    onClick: () =>
+                        mutation.runRouterAction({
+                            key: `po-reject-${po.id}`,
+                            method: 'post',
+                            url: route('procurement.purchase-orders.reject', po.id),
+                            successMessage: 'Purchase order rejected.',
+                            errorMessage: 'Failed to reject purchase order.',
+                            confirmConfig: {
+                                title: 'Reject Purchase Order',
+                                message: 'Reject this purchase order?',
+                                confirmLabel: 'Reject',
+                                severity: 'danger',
+                            },
+                        }),
+                },
+              ]
+            : []),
+        ...(canEdit
+            ? [{
+                key: 'edit',
+                label: 'Edit PO',
+                icon: <EditOutlinedIcon fontSize="small" />,
+                color: 'default',
+                onClick: () => router.visit(route('procurement.purchase-orders.edit', po.id)),
+            }]
+            : []),
+        {
+            key: 'history',
+            label: 'History',
+            icon: <HistoryOutlinedIcon fontSize="small" />,
+            color: 'default',
+            onClick: () => openHistory(po),
+        },
+    ];
+
+    return (
+        <Stack direction="row" spacing={0.6} justifyContent="flex-end" alignItems="center">
+            {canCreateGrn && (
+                <ActionIconButton
+                    title="Create GRN"
+                    color="primary"
+                    icon={<ReceiptLongOutlinedIcon fontSize="small" />}
+                    onClick={() => router.visit(`${route('procurement.goods-receipts.create')}?purchase_order_id=${po.id}`)}
+                />
+            )}
+            <ActionIconButton
+                title="Print PO"
+                icon={<PrintOutlinedIcon fontSize="small" />}
+                href={route('procurement.purchase-orders.print', po.id)}
+                target="_blank"
+                rel="noreferrer"
+            />
+            <ActionIconButton
+                title="Download PDF"
+                icon={<PictureAsPdfOutlinedIcon fontSize="small" />}
+                href={route('procurement.purchase-orders.pdf', po.id)}
+            />
+            <ActionIconButton
+                title="View PO"
+                color="primary"
+                icon={<VisibilityOutlinedIcon fontSize="small" />}
+                href={route('procurement.purchase-orders.view', po.id)}
+                target="_blank"
+                rel="noreferrer"
+            />
+
+            {!isCompact &&
+                actionItems.map((item) => (
+                    <ActionIconButton
+                        key={item.key}
+                        title={item.label}
+                        icon={item.icon}
+                        color={item.color}
+                        onClick={item.onClick}
+                        loading={item.loading}
+                    />
+                ))}
+
+            {(isCompact || actionItems.length > 2) && (
+                <>
+                    <ActionIconButton
+                        title="More Actions"
+                        icon={<MoreVertOutlinedIcon fontSize="small" />}
+                        onClick={(event) => setAnchorEl(event.currentTarget)}
+                    />
+                    <Menu
+                        anchorEl={anchorEl}
+                        open={menuOpen}
+                        onClose={() => setAnchorEl(null)}
+                        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    >
+                        {actionItems.map((item) => (
+                            <MenuItem
+                                key={item.key}
+                                disabled={item.loading}
+                                onClick={() => {
+                                    setAnchorEl(null);
+                                    item.onClick();
+                                }}
+                            >
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    {item.loading ? <CircularProgress size={14} /> : item.icon}
+                                    <Typography variant="body2">{item.label}</Typography>
+                                </Stack>
+                            </MenuItem>
+                        ))}
+                    </Menu>
+                </>
+            )}
+        </Stack>
+    );
+}
+
 export default function Index({ orders, filters, summary = {}, vendors = [], warehouses = [], tenants = [] }) {
+    const mutation = useMutationAction();
     const data = orders?.data || [];
     const columns = [
         { key: 'po_no', label: 'PO No' },
@@ -21,7 +240,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
         { key: 'approval', label: 'Approval' },
         { key: 'accounting', label: 'Accounting' },
         { key: 'total', label: 'Total', align: 'right' },
-        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 240 } },
+        { key: 'actions', label: 'Actions', align: 'right', sx: { minWidth: 340 } },
     ];
     const [localFilters, setLocalFilters] = React.useState({
         search: filters?.search || '',
@@ -168,7 +387,13 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                 cardSx={{ borderRadius: '18px' }}
                 contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
             >
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine purchase orders by search, status, vendor, warehouse, and date range."
+                >
                     <Box>
                         <Grid container spacing={1.25} alignItems="center">
                             <Grid item xs={12} md={3}>
@@ -261,7 +486,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                     rows={data}
                     pagination={orders}
                     emptyMessage="No purchase orders."
-                    tableMinWidth={1060}
+                    tableMinWidth={1260}
                     renderRow={(po) => (
                         <TableRow
                             key={po.id}
@@ -295,14 +520,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>{formatAmount(po.grand_total)}</TableCell>
                             <TableCell align="right">
-                                {po.status === 'draft' && (
-                                    <>
-                                        <Button size="small" onClick={() => router.post(route('procurement.purchase-orders.submit', po.id))}>Submit</Button>
-                                        <Button size="small" color="success" onClick={() => router.post(route('procurement.purchase-orders.approve', po.id))}>Approve</Button>
-                                        <Button size="small" color="error" onClick={() => router.post(route('procurement.purchase-orders.reject', po.id))}>Reject</Button>
-                                    </>
-                                )}
-                                <Button size="small" onClick={() => openHistory(po)}>History</Button>
+                                <PurchaseOrderRowActions po={po} mutation={mutation} openHistory={openHistory} />
                             </TableCell>
                         </TableRow>
                     )}
@@ -339,6 +557,7 @@ export default function Index({ orders, filters, summary = {}, vendors = [], war
                     <Button onClick={() => setHistoryOpen(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

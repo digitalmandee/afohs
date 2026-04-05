@@ -62,7 +62,13 @@ export default function TrialBalance({ rows = [], summary, filters, error = null
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the statement period and refresh the report without leaving the standardized reporting shell.">
-                <FilterToolbar onReset={() => submitFilters({ from: '', to: '' })}>
+                <FilterToolbar
+                    onReset={() => submitFilters({ from: '', to: '' })}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine trial balance reporting period."
+                >
                     <Grid container spacing={2}>
                         <DateRangeFilterFields
                             startValue={localFilters.from}

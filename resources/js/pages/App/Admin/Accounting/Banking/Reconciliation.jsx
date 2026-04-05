@@ -167,7 +167,13 @@ export default function Reconciliation({ sessions, paymentAccounts = [], filters
                 {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
                 <SurfaceCard title="Live Filters" subtitle="Filter sessions by bank account, reconciliation state, or jump directly into an existing session.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine reconciliation sessions by account, period, and status."
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={4}>
                                 <TextField

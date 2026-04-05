@@ -19,7 +19,7 @@ class VerifySupplierLedgerConsistency extends Command
 
         $subledgerOutstanding = (float) VendorBill::query()
             ->whereIn('status', ['posted', 'partially_paid', 'paid'])
-            ->selectRaw('COALESCE(SUM(grand_total - paid_amount - advance_applied_amount), 0) as outstanding')
+            ->selectRaw('COALESCE(SUM(grand_total - paid_amount - advance_applied_amount - COALESCE(return_applied_amount, 0)), 0) as outstanding')
             ->value('outstanding');
 
         $apAccount = CoaAccount::query()

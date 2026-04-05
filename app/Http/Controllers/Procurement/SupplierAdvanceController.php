@@ -8,6 +8,7 @@ use App\Models\SupplierAdvance;
 use App\Models\Vendor;
 use App\Models\VendorBill;
 use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Accounting\StrictAccountingSyncService;
 use App\Services\Procurement\SupplierAdvanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,13 @@ class SupplierAdvanceController extends Controller
 
     public function index(Request $request)
     {
-        $query = SupplierAdvance::query()->with(['vendor:id,name', 'paymentAccount:id,name']);
+        $query = SupplierAdvance::query()->with([
+            'vendor:id,name',
+            'paymentAccount:id,name',
+            'purchaseOrder:id,po_no',
+            'applications.vendorBill:id,bill_no,goods_receipt_id',
+            'applications.vendorBill.goodsReceipt:id,purchase_order_id',
+        ]);
 
         if ($request->filled('vendor_id')) {
             $query->where('vendor_id', $request->integer('vendor_id'));
@@ -38,9 +45,69 @@ class SupplierAdvanceController extends Controller
         }
 
         return Inertia::render('App/Admin/Procurement/SupplierAdvances/Index', [
-            'advances' => $advances,
+            'advances' => $advances->through(function (SupplierAdvance $advance) {
+                $total = (float) $advance->amount;
+                $applied = (float) $advance->applied_amount;
+                $remaining = max(0, $total - $applied);
+
+                return [
+                    'id' => $advance->id,
+                    'advance_no' => $advance->advance_no,
+                    'status' => $advance->status,
+                    'vendor_id' => $advance->vendor_id,
+                    'vendor' => $advance->vendor,
+                    'payment_account_id' => $advance->payment_account_id,
+                    'paymentAccount' => $advance->paymentAccount,
+                    'advance_date' => $advance->advance_date,
+                    'amount' => $advance->amount,
+                    'applied_amount' => $advance->applied_amount,
+                    'remaining_amount' => $remaining,
+                    'reference' => $advance->reference,
+                    'remarks' => $advance->remarks,
+                    'purchase_order_id' => $advance->purchase_order_id,
+                    'linked_po_no' => $advance->purchaseOrder?->po_no,
+                    'applied_to_bills' => $advance->applications
+                        ->map(fn ($application) => [
+                            'vendor_bill_id' => $application->vendor_bill_id,
+                            'bill_no' => $application->vendorBill?->bill_no,
+                            'amount' => (float) $application->amount,
+                            'target_purchase_order_id' => $application->target_purchase_order_id
+                                ?: $application->vendorBill?->goodsReceipt?->purchase_order_id,
+                            'override_po_lock' => (bool) $application->override_po_lock,
+                            'override_reason' => $application->override_reason,
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            }),
             'vendors' => Vendor::query()->orderBy('name')->get(['id', 'name']),
+            'openBills' => VendorBill::query()
+                ->whereIn('status', ['posted', 'partially_paid'])
+                ->whereRaw('(grand_total - paid_amount - advance_applied_amount - COALESCE(return_applied_amount, 0)) > 0.009')
+                ->orderBy('bill_date')
+                ->limit(500)
+                ->get(['id', 'bill_no', 'vendor_id', 'goods_receipt_id', 'grand_total', 'paid_amount', 'advance_applied_amount', 'return_applied_amount'])
+                ->map(function (VendorBill $bill) {
+                    $outstanding = max(
+                        0,
+                        (float) $bill->grand_total
+                        - (float) $bill->paid_amount
+                        - (float) $bill->advance_applied_amount
+                        - (float) $bill->return_applied_amount
+                    );
+
+                    return [
+                        'id' => $bill->id,
+                        'bill_no' => $bill->bill_no,
+                        'vendor_id' => $bill->vendor_id,
+                        'goods_receipt_id' => $bill->goods_receipt_id,
+                        'outstanding' => $outstanding,
+                    ];
+                })
+                ->values()
+                ->all(),
             'filters' => $request->only(['vendor_id', 'status', 'per_page']),
+            'poLockOverrideAllowed' => $this->canOverridePoLock($request->user()),
         ]);
     }
 
@@ -113,7 +180,7 @@ class SupplierAdvanceController extends Controller
                 'posted_at' => now(),
             ]);
 
-            app(AccountingEventDispatcher::class)->dispatch(
+            $event = app(AccountingEventDispatcher::class)->dispatch(
                 'supplier_advance_posted',
                 SupplierAdvance::class,
                 (int) $supplierAdvance->id,
@@ -126,6 +193,8 @@ class SupplierAdvanceController extends Controller
                 $request->user()?->id,
                 $supplierAdvance->tenant_id
             );
+
+            app(StrictAccountingSyncService::class)->enforceOrFail($event, "Supplier Advance {$supplierAdvance->advance_no}");
 
             ApprovalAction::query()->create([
                 'document_type' => 'supplier_advance',
@@ -144,15 +213,40 @@ class SupplierAdvanceController extends Controller
         $data = $request->validate([
             'vendor_bill_id' => 'required|exists:vendor_bills,id',
             'amount' => 'required|numeric|min:0.01',
+            'override_po_lock' => 'nullable|boolean',
+            'override_reason' => 'nullable|string|max:1000',
         ]);
+
+        $overridePoLock = (bool) ($data['override_po_lock'] ?? false);
+        if ($overridePoLock && !$this->canOverridePoLock($request->user())) {
+            return redirect()->back()->withErrors([
+                'override_po_lock' => 'You do not have permission to bypass PO lock.',
+            ]);
+        }
 
         $bill = VendorBill::query()->findOrFail((int) $data['vendor_bill_id']);
         $this->supplierAdvanceService->applyToBill(
             advance: $supplierAdvance,
             bill: $bill,
             amount: (float) $data['amount'],
-            userId: $request->user()?->id
+            userId: $request->user()?->id,
+            overridePoLock: $overridePoLock,
+            overrideReason: $data['override_reason'] ?? null
         );
+
+        if ($overridePoLock) {
+            ApprovalAction::query()->create([
+                'document_type' => 'supplier_advance',
+                'document_id' => $supplierAdvance->id,
+                'action' => 'override_applied',
+                'remarks' => sprintf(
+                    'PO lock override used to apply advance to bill %s. Reason: %s',
+                    (string) $bill->bill_no,
+                    trim((string) ($data['override_reason'] ?? 'N/A'))
+                ),
+                'action_by' => $request->user()?->id,
+            ]);
+        }
 
         return redirect()->back()->with('success', 'Supplier advance applied to bill.');
     }
@@ -173,5 +267,17 @@ class SupplierAdvanceController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Supplier advance voided.');
+    }
+
+    private function canOverridePoLock($user): bool
+    {
+        if (!$user || !method_exists($user, 'hasRole')) {
+            return false;
+        }
+
+        return $user->hasRole('Super Admin')
+            || $user->hasRole('super-admin')
+            || $user->hasRole('Procurement Admin')
+            || $user->hasRole('procurement-admin');
     }
 }

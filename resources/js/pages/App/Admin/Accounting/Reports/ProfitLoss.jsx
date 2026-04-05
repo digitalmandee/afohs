@@ -72,7 +72,17 @@ export default function ProfitLoss({ income = [], expense = [], summary = {}, fi
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period without dropping back into the legacy report form layout.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.profit-loss'))}>
+                <FilterToolbar
+                    onReset={() => router.get(route('accounting.reports.profit-loss'))}
+                    onApply={() => router.get(route('accounting.reports.profit-loss'), localFilters, {
+                        preserveState: true,
+                        preserveScroll: true,
+                        replace: true,
+                    })}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Set reporting period for profit and loss."
+                >
                     <Grid container spacing={2}>
                         <DateRangeFilterFields
                             startValue={localFilters.from}

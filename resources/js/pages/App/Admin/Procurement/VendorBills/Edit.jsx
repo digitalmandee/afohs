@@ -1,9 +1,10 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Grid, IconButton, MenuItem, TextField, Typography, Alert } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, Grid, IconButton, MenuItem, TextField, Typography, Alert } from '@mui/material';
 import { DeleteOutline } from '@mui/icons-material';
+import { formatAmount } from '@/lib/formatting';
 
-export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }) {
+export default function Edit({ bill, vendors, receipts, availableAdvances = [], procurementPolicy = {} }) {
   const billRequiresGrn = Boolean(procurementPolicy.bill_requires_grn ?? true);
 
   const initialItems = (bill?.items || []).map((item) => ({
@@ -32,16 +33,25 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
     other_charges: initialCharges,
   });
 
+  const buildItemsFromReceipt = React.useCallback((sourceReceipt) => (sourceReceipt?.items || []).map((item) => ({
+    inventory_item_id: item.inventory_item_id || '',
+    description: item.inventory_item?.name || '',
+    qty: item.qty_received || 1,
+    unit_cost: item.unit_cost || 0,
+    tax_amount: 0,
+    discount_amount: 0,
+  })), []);
+
+  const filteredReceipts = React.useMemo(() => {
+    if (!data.vendor_id) return [];
+    return (receipts || [])
+      .filter((row) => String(row.vendor_id) === String(data.vendor_id))
+      .sort((a, b) => new Date(a.received_date || 0) - new Date(b.received_date || 0));
+  }, [data.vendor_id, receipts]);
+
   const handleReceiptChange = (value) => {
-    const selected = (receipts || []).find((row) => String(row.id) === String(value));
-    const nextItems = (selected?.items || []).map((item) => ({
-      inventory_item_id: item.inventory_item_id || '',
-      description: item.inventory_item?.name || '',
-      qty: item.qty_received || 1,
-      unit_cost: item.unit_cost || 0,
-      tax_amount: 0,
-      discount_amount: 0,
-    }));
+    const selected = filteredReceipts.find((row) => String(row.id) === String(value));
+    const nextItems = buildItemsFromReceipt(selected);
 
     setData('goods_receipt_id', value);
     setData('vendor_id', selected?.vendor_id || data.vendor_id);
@@ -71,6 +81,35 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
     return sum + base + Number(item.tax_amount || 0) - Number(item.discount_amount || 0);
   }, 0) + data.other_charges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
 
+  React.useEffect(() => {
+    if (!data.vendor_id || filteredReceipts.length === 0) return;
+    const exists = filteredReceipts.some((row) => String(row.id) === String(data.goods_receipt_id));
+    if (!exists && !data.goods_receipt_id) {
+      const oldest = filteredReceipts[0];
+      setData('goods_receipt_id', oldest.id);
+      const nextItems = buildItemsFromReceipt(oldest);
+      if (nextItems.length > 0) {
+        setData('items', nextItems);
+      }
+    }
+  }, [buildItemsFromReceipt, data.goods_receipt_id, data.vendor_id, filteredReceipts, setData]);
+
+  const selectedReceipt = React.useMemo(() => (
+    filteredReceipts.find((row) => String(row.id) === String(data.goods_receipt_id)) || null
+  ), [filteredReceipts, data.goods_receipt_id]);
+  const availableVendorAdvances = React.useMemo(() => {
+    if (!data.vendor_id) {
+      return [];
+    }
+    const selectedPoId = selectedReceipt?.purchase_order_id ? String(selectedReceipt.purchase_order_id) : null;
+    return (availableAdvances || [])
+      .filter((advance) => String(advance.vendor_id) === String(data.vendor_id))
+      .map((advance) => ({
+        ...advance,
+        poLockMatch: !selectedPoId || !advance.purchase_order_id || String(advance.purchase_order_id) === selectedPoId,
+      }));
+  }, [availableAdvances, data.vendor_id, selectedReceipt?.purchase_order_id]);
+
   const submit = (e) => {
     e.preventDefault();
     put(route('procurement.vendor-bills.update', bill.id));
@@ -87,13 +126,25 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField select label="Vendor" value={data.vendor_id} onChange={(e) => setData('vendor_id', e.target.value)} error={!!errors.vendor_id} helperText={errors.vendor_id} fullWidth>
+                  <MenuItem value="">Select Vendor</MenuItem>
                   {(vendors || []).map((vendor) => <MenuItem key={vendor.id} value={vendor.id}>{vendor.name}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField select label={`Goods Receipt${billRequiresGrn ? '' : ' (optional)'}`} value={data.goods_receipt_id} onChange={(e) => handleReceiptChange(e.target.value)} error={!!errors.goods_receipt_id} helperText={errors.goods_receipt_id} fullWidth>
+                <TextField
+                  select
+                  label={`Pending GRN${billRequiresGrn ? '' : ' (optional)'}`}
+                  value={data.goods_receipt_id}
+                  onChange={(e) => handleReceiptChange(e.target.value)}
+                  error={!!errors.goods_receipt_id}
+                  helperText={errors.goods_receipt_id || (selectedReceipt?.billable_summary
+                    ? `Remaining qty: ${Number(selectedReceipt.billable_summary.remaining_qty || 0).toFixed(3)}`
+                    : '')}
+                  fullWidth
+                  disabled={!data.vendor_id}
+                >
                   {!billRequiresGrn ? <MenuItem value="">None</MenuItem> : null}
-                  {(receipts || []).map((row) => <MenuItem key={row.id} value={row.id}>{row.grn_no} - {row.vendor?.name}</MenuItem>)}
+                  {filteredReceipts.map((row) => <MenuItem key={row.id} value={row.id}>{row.grn_no} - {row.vendor?.name}</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} md={2}>
@@ -106,13 +157,25 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
                 <TextField label="Remarks" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth />
               </Grid>
             </Grid>
+            {data.vendor_id && filteredReceipts.length === 0 ? (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                No pending accepted GRN found for this vendor.
+              </Alert>
+            ) : null}
+            {availableVendorAdvances.length > 0 ? (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Available advances: {availableVendorAdvances.map((advance) => (
+                  `${advance.advance_no} (${formatAmount(advance.remaining_amount)}${advance.poLockMatch ? '' : ', PO lock mismatch'})`
+                )).join(' · ')}
+              </Alert>
+            ) : null}
 
             <Box sx={{ mt: 3 }}>
               <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>Items</Typography>
               {data.items.map((item, index) => (
                 <Grid container spacing={2} key={index} sx={{ mb: 2 }}>
                   <Grid item xs={12} md={2}>
-                    <TextField label="Item ID" value={item.inventory_item_id} onChange={(e) => updateItem(index, 'inventory_item_id', e.target.value)} error={!!errors[`items.${index}.inventory_item_id`]} helperText={errors[`items.${index}.inventory_item_id`]} fullWidth />
+                    <TextField label="Item" value={item.inventory_item_id} onChange={(e) => updateItem(index, 'inventory_item_id', e.target.value)} error={!!errors[`items.${index}.inventory_item_id`]} helperText={errors[`items.${index}.inventory_item_id`]} disabled={billRequiresGrn} fullWidth />
                   </Grid>
                   <Grid item xs={12} md={3}>
                     <TextField label="Description" value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} fullWidth />
@@ -134,7 +197,7 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
                   </Grid>
                 </Grid>
               ))}
-              <Button onClick={addItem}>Add Item</Button>
+              {!billRequiresGrn ? <Button onClick={addItem}>Add Item</Button> : null}
             </Box>
 
             <Box sx={{ mt: 3 }}>
@@ -164,7 +227,8 @@ export default function Edit({ bill, vendors, receipts, procurementPolicy = {} }
             <Card sx={{ mt: 3, border: '1px solid', borderColor: 'divider' }}>
               <CardContent sx={{ py: 2 }}>
                 <Typography variant="body2" color="text.secondary">Estimated Bill Total</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>{Number(grandTotal || 0).toFixed(2)}</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>{formatAmount(grandTotal)}</Typography>
+                <Chip size="small" label="Draft (non-posting)" variant="outlined" color="warning" sx={{ mt: 1 }} />
               </CardContent>
             </Card>
 

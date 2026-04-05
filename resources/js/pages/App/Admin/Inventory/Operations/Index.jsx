@@ -308,7 +308,13 @@ export default function Index({
                 </Grid>
 
                 <SurfaceCard title="Stock Ledger" subtitle="Live movement history by restaurant, warehouse, location, inventory item, and movement type.">
-                            <FilterToolbar onReset={resetFilters}>
+                            <FilterToolbar
+                                onReset={resetFilters}
+                                onApply={() => submitFilters(localFilters)}
+                                lowChrome
+                                title="Filters"
+                                subtitle="Refine stock ledger by search, warehouse context, item, movement type, and date range."
+                            >
                                 <Grid container spacing={2}>
                                     <Grid item xs={12} md={4}>
                                         <TextField

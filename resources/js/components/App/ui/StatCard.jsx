@@ -34,17 +34,31 @@ const toneStyles = {
     },
 };
 
-export default function StatCard({ label, value, caption, icon = null, tone = 'dark', accent = false, compact = false }) {
+export default function StatCard({ label, value, caption, icon = null, tone = 'dark', accent = false, compact = false, minimal = false, white = false, cardSx = {} }) {
     const resolvedTone = accent ? 'dark' : toneStyles[tone] ? tone : 'light';
     const styles = toneStyles[resolvedTone];
+    const minimalAsBrand = minimal && resolvedTone === 'dark';
+    const minimalNeutralStyle = {
+        border: '1px solid rgba(203,213,225,0.85)',
+        background: 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)',
+        boxShadow: '0 2px 8px rgba(15,23,42,0.04)',
+        labelColor: '#637083',
+        valueColor: '#1f2937',
+        captionColor: '#6b7280',
+        iconBg: 'rgba(6,52,85,0.06)',
+        iconColor: '#063455',
+    };
+    const displayStyles = minimal && !minimalAsBrand ? minimalNeutralStyle : styles;
 
     return (
         <Card
             sx={{
                 height: '100%',
-                border: styles.border,
-                background: styles.background,
-                boxShadow: styles.boxShadow,
+                border: displayStyles.border,
+                background: white ? 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)' : displayStyles.background,
+                backgroundColor: white ? '#ffffff !important' : undefined,
+                boxShadow: white ? '0 2px 8px rgba(15,23,42,0.04)' : displayStyles.boxShadow,
+                ...cardSx,
             }}
         >
             <CardContent sx={{ p: compact ? 1.5 : 2, '&:last-child': { pb: compact ? 1.5 : 2 } }}>
@@ -54,7 +68,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                             <Typography
                                 variant="body2"
                                 sx={{
-                                    color: styles.labelColor,
+                                    color: displayStyles.labelColor,
                                     fontWeight: 700,
                                     letterSpacing: '0.02em',
                                     fontSize: compact ? '0.8rem' : undefined,
@@ -71,8 +85,8 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                                     display: 'grid',
                                     placeItems: 'center',
                                     borderRadius: compact ? '12px' : '14px',
-                                    bgcolor: styles.iconBg,
-                                    color: styles.iconColor,
+                                    bgcolor: displayStyles.iconBg,
+                                    color: displayStyles.iconColor,
                                     '& svg': { fontSize: compact ? '1rem' : '1.25rem' },
                                 }}
                             >
@@ -83,7 +97,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                     <Typography
                         variant="h4"
                         sx={{
-                            color: styles.valueColor,
+                            color: displayStyles.valueColor,
                             fontWeight: 800,
                             letterSpacing: '-0.03em',
                             lineHeight: 1.15,
@@ -96,7 +110,7 @@ export default function StatCard({ label, value, caption, icon = null, tone = 'd
                         <Typography
                             variant="caption"
                             sx={{
-                                color: styles.captionColor,
+                                color: displayStyles.captionColor,
                                 fontSize: '0.76rem',
                             }}
                         >

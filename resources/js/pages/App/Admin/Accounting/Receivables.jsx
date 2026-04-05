@@ -121,7 +121,13 @@ export default function Receivables({ invoices, total, summary, filters }) {
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically as you refine payer, status, and invoice dates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine receivables by search, status, source, and date range."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField

@@ -97,7 +97,13 @@ export default function BalanceSheet({ assets = [], liabilities = [], equity = [
             </Grid>
 
             <SurfaceCard title="Report Filters" subtitle="Adjust the reporting period while keeping the new accounting report layout consistent.">
-                <FilterToolbar onReset={() => submitFilters({ from: '', to: '' })}>
+                <FilterToolbar
+                    onReset={() => submitFilters({ from: '', to: '' })}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine balance sheet reporting period."
+                >
                     <Grid container spacing={2}>
                         <DateRangeFilterFields
                             startValue={localFilters.from}

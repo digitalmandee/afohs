@@ -120,7 +120,13 @@ export default function GeneralLedger({ lines, accounts, filters, summary, tenan
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
             <SurfaceCard title="Live Filters" subtitle="Filter by account, reference text, and date range without using manual search submissions.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine general ledger by account, module, and date range."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField

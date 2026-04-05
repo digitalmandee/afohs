@@ -88,7 +88,10 @@ export default function Edit({ payment, vendors, paymentAccounts, openVendorBill
                   <TextField select label="Vendor Bill" value={data.vendor_bill_id} onChange={(e) => setData('vendor_bill_id', e.target.value)} error={!!errors.vendor_bill_id} helperText={errors.vendor_bill_id} fullWidth>
                     <MenuItem value="">Select Bill</MenuItem>
                     {billOptions.map((bill) => {
-                      const outstanding = Number(bill.grand_total || 0) - Number(bill.paid_amount || 0) - Number(bill.advance_applied_amount || 0);
+                      const outstanding = Number(bill.grand_total || 0)
+                        - Number(bill.paid_amount || 0)
+                        - Number(bill.advance_applied_amount || 0)
+                        - Number(bill.return_applied_amount || 0);
                       return <MenuItem key={bill.id} value={bill.id}>{bill.bill_no} (Outstanding: {outstanding.toFixed(2)})</MenuItem>;
                     })}
                   </TextField>

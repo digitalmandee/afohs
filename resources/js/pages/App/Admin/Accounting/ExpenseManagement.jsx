@@ -123,7 +123,13 @@ export default function ExpenseManagement({ bills, total, summary, filters, tena
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while you refine vendors, payment status, and bill dates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine expenses by search, status, account, and date range."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField

@@ -58,16 +58,15 @@ export default function AllPosReports({ startDate, endDate, filters }) {
             >
                 <SurfaceCard title="Report Range" subtitle="Choose a date range once and open the operational POS reports with consistent filters.">
                     <FilterToolbar
+                        title="Filters"
+                        subtitle="Select date range and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
                         onReset={() => {
                             const cleared = { start_date: startDate || '', end_date: endDate || '' };
                             setDateFilters(cleared);
                             router.get(route('admin.reports.pos.all'), cleared, { preserveState: true, preserveScroll: true, replace: true });
                         }}
-                        actions={(
-                            <Button variant="contained" startIcon={<Search />} onClick={applyFilters}>
-                                Apply Range
-                            </Button>
-                        )}
                     >
                         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} useFlexGap>
                             <LocalizationProvider dateAdapter={AdapterDayjs}>

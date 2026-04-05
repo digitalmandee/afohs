@@ -112,7 +112,13 @@ export default function Outstanding({ rows, summary, filters, error }) {
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Refine outstanding exposure by payer reference and aging bucket.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine outstanding balances by search and aging dimensions."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={8}>
                             <TextField

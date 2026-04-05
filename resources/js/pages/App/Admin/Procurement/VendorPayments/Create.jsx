@@ -139,7 +139,10 @@ export default function Create({ vendors, paymentAccounts, openVendorBills = [] 
                   >
                     <MenuItem value="">Select Bill</MenuItem>
                     {billOptions.map((bill) => {
-                      const outstanding = Number(bill.grand_total || 0) - Number(bill.paid_amount || 0) - Number(bill.advance_applied_amount || 0);
+                      const outstanding = Number(bill.grand_total || 0)
+                        - Number(bill.paid_amount || 0)
+                        - Number(bill.advance_applied_amount || 0)
+                        - Number(bill.return_applied_amount || 0);
                       return (
                         <MenuItem key={bill.id} value={bill.id}>
                           {bill.bill_no} (Outstanding: {outstanding.toFixed(2)})

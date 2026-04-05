@@ -2,13 +2,16 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\OperationalMutationAudit;
 use App\Http\Middleware\RequestLogContext;
+use App\Services\OperationalAuditLogger;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Stancl\Tenancy\Exceptions\TenantCouldNotBeIdentifiedByPathException;
@@ -32,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->web(append: [
             RequestLogContext::class,
+            OperationalMutationAudit::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
@@ -144,6 +148,28 @@ return Application::configure(basePath: dirname(__DIR__))
             if (str_starts_with($path, 'admin/inventory')) {
                 Log::channel('inventory')->error('inventory.exception.unhandled', $baseContext);
             }
+
+            if (str_starts_with($path, 'admin/accounting') || str_starts_with($path, 'admin/procurement') || str_starts_with($path, 'admin/inventory')) {
+                $module = str_starts_with($path, 'admin/accounting')
+                    ? 'accounting'
+                    : (str_starts_with($path, 'admin/procurement') ? 'procurement' : 'inventory');
+                $parameterName = $route?->parameterNames()[0] ?? null;
+                $parameterValue = $parameterName ? ($route?->parameters()[$parameterName] ?? null) : null;
+
+                app(OperationalAuditLogger::class)->record([
+                    'correlation_id' => (string) $request->attributes->get('correlation_id'),
+                    'module' => $module,
+                    'entity_type' => $parameterName,
+                    'entity_id' => is_scalar($parameterValue)
+                        ? (string) $parameterValue
+                        : (is_object($parameterValue) && method_exists($parameterValue, 'getKey') ? (string) $parameterValue->getKey() : null),
+                    'action' => ((string) ($routeName ?: 'request')) . '.failed',
+                    'status' => 'failed',
+                    'severity' => 'error',
+                    'message' => (string) $e->getMessage(),
+                    'context' => $baseContext,
+                ]);
+            }
         });
 
         $exceptions->context(function (\Throwable $e) {
@@ -185,6 +211,45 @@ return Application::configure(basePath: dirname(__DIR__))
             return Inertia::render('Errors/TenantNotFound', [
                 'message' => 'The tenant you are looking for does not exist.'
             ])->toResponse($request)->setStatusCode(404);
+        });
+
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            $path = (string) $request->path();
+            if (!str_starts_with($path, 'admin/accounting')
+                && !str_starts_with($path, 'admin/procurement')
+                && !str_starts_with($path, 'admin/inventory')) {
+                return null;
+            }
+
+            $route = $request->route();
+            $routeName = (string) ($route?->getName() ?? 'validation');
+            $firstError = collect($e->errors())->flatten()->first() ?: $e->getMessage();
+            $module = str_starts_with($path, 'admin/accounting')
+                ? 'accounting'
+                : (str_starts_with($path, 'admin/procurement') ? 'procurement' : 'inventory');
+            $parameterName = $route?->parameterNames()[0] ?? null;
+            $parameterValue = $parameterName ? ($route?->parameters()[$parameterName] ?? null) : null;
+
+            app(OperationalAuditLogger::class)->record([
+                'correlation_id' => (string) $request->attributes->get('correlation_id'),
+                'module' => $module,
+                'entity_type' => $parameterName,
+                'entity_id' => is_scalar($parameterValue)
+                    ? (string) $parameterValue
+                    : (is_object($parameterValue) && method_exists($parameterValue, 'getKey') ? (string) $parameterValue->getKey() : null),
+                'action' => $routeName . '.validation.failed',
+                'status' => 'failed',
+                'severity' => 'warning',
+                'message' => (string) $firstError,
+                'context' => [
+                    'errors' => $e->errors(),
+                    'request_id' => $request->attributes->get('request_id'),
+                    'method' => $request->method(),
+                    'path' => $path,
+                ],
+            ]);
+
+            return null;
         });
     })
     ->create();

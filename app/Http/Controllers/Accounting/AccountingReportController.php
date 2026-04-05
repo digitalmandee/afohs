@@ -156,6 +156,152 @@ class AccountingReportController extends Controller
         return Inertia::render('App/Admin/Accounting/Reports/BalanceSheet', $report['page']);
     }
 
+    public function hub()
+    {
+        $categories = [
+            [
+                'name' => 'Finance Core',
+                'items' => [
+                    ['label' => 'Trial Balance', 'route' => route('accounting.reports.trial-balance')],
+                    ['label' => 'Balance Sheet', 'route' => route('accounting.reports.balance-sheet')],
+                    ['label' => 'Profit & Loss', 'route' => route('accounting.reports.profit-loss')],
+                    ['label' => 'Financial Statements', 'route' => route('accounting.reports.financial-statements')],
+                    ['label' => 'General Ledger', 'route' => route('accounting.general-ledger')],
+                    ['label' => 'Chart of Accounts', 'route' => route('accounting.coa.index')],
+                    ['label' => 'Accounts Payables', 'route' => route('accounting.payables')],
+                    ['label' => 'Expenses', 'route' => route('accounting.expenses')],
+                    ['label' => 'Day Book', 'route' => route('accounting.reports.day-book')],
+                    ['label' => 'Cash Book', 'route' => route('accounting.reports.cash-book')],
+                    ['label' => 'Bank Book', 'route' => route('accounting.reports.bank-book')],
+                    ['label' => 'Accounting Vouchers', 'route' => route('accounting.vouchers.index')],
+                ],
+            ],
+            [
+                'name' => 'Procurement & Payables',
+                'items' => [
+                    ['label' => 'AP Aging', 'route' => route('accounting.reports.payables-aging')],
+                    ['label' => 'Purchase Requisitions', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'purchase-requisitions'])],
+                    ['label' => 'Vendor Bills', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'vendor-bills'])],
+                    ['label' => 'Vendor Payments', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'vendor-payments'])],
+                    ['label' => 'Supplier Advances', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'supplier-advances'])],
+                    ['label' => 'Purchase Orders', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'purchase-orders'])],
+                    ['label' => 'Goods Receipts', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'goods-receipts'])],
+                    ['label' => 'Purchase Returns', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'purchase-returns'])],
+                    ['label' => 'Cash Purchases', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'cash-purchases'])],
+                    ['label' => 'Delivery Notes', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'delivery-notes'])],
+                    ['label' => '3-Way Discrepancies', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'discrepancies'])],
+                    ['label' => 'Payment Run', 'route' => route('module-reports.index', ['domain' => 'procurement', 'report' => 'payment-run'])],
+                ],
+            ],
+            [
+                'name' => 'Inventory & Store',
+                'items' => [
+                    ['label' => 'Inventory Documents', 'route' => route('module-reports.index', ['domain' => 'inventory', 'report' => 'documents'])],
+                    ['label' => 'Warehouse Valuation', 'route' => route('module-reports.index', ['domain' => 'inventory', 'report' => 'valuation'])],
+                    ['label' => 'Inventory Operations', 'route' => route('module-reports.index', ['domain' => 'inventory', 'report' => 'operations'])],
+                    ['label' => 'Stock Audits', 'route' => route('module-reports.index', ['domain' => 'inventory', 'report' => 'stock-audits'])],
+                ],
+            ],
+        ];
+
+        $metadata = $this->reportHubMetadata();
+        $enrichedCategories = collect($categories)->map(function (array $category) use ($metadata) {
+            $items = collect($category['items'] ?? [])->map(function (array $item) use ($metadata) {
+                $meta = $metadata[$item['label']] ?? [];
+
+                return array_merge([
+                    'description' => null,
+                    'iconKey' => null,
+                    'badge' => null,
+                ], $item, $meta);
+            })->values()->all();
+
+            return array_merge($category, [
+                'count' => count($items),
+                'items' => $items,
+            ]);
+        })->values()->all();
+
+        return Inertia::render('App/Admin/Accounting/Reports/Hub', [
+            'categories' => $enrichedCategories,
+        ]);
+    }
+
+    public function dayBook(Request $request)
+    {
+        $report = $this->buildDayBookReport($request);
+
+        if ($request->input('export') === 'csv') {
+            return $this->downloadCsv(
+                'day-book.csv',
+                ['Entry No', 'Date', 'Restaurant', 'Source', 'Description', 'Debit', 'Credit'],
+                $report['csv_rows']
+            );
+        }
+
+        return Inertia::render('App/Admin/Accounting/Reports/DayBook', $report['page']);
+    }
+
+    public function dayBookPrint(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildDayBookReport($request), 'day-book', 'print');
+    }
+
+    public function dayBookPdf(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildDayBookReport($request), 'day-book', 'pdf');
+    }
+
+    public function cashBook(Request $request)
+    {
+        $report = $this->buildAccountBookReport($request, ['cash'], 'Cash Book');
+
+        if ($request->input('export') === 'csv') {
+            return $this->downloadCsv(
+                'cash-book.csv',
+                ['Date', 'Entry No', 'Restaurant', 'Account', 'Source', 'Description', 'Debit', 'Credit', 'Running Balance'],
+                $report['csv_rows']
+            );
+        }
+
+        return Inertia::render('App/Admin/Accounting/Reports/CashBook', $report['page']);
+    }
+
+    public function cashBookPrint(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildAccountBookReport($request, ['cash'], 'Cash Book'), 'cash-book', 'print');
+    }
+
+    public function cashBookPdf(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildAccountBookReport($request, ['cash'], 'Cash Book'), 'cash-book', 'pdf');
+    }
+
+    public function bankBook(Request $request)
+    {
+        $report = $this->buildAccountBookReport($request, ['bank', 'bank_transfer', 'online', 'cheque'], 'Bank Book');
+
+        if ($request->input('export') === 'csv') {
+            return $this->downloadCsv(
+                'bank-book.csv',
+                ['Date', 'Entry No', 'Restaurant', 'Account', 'Source', 'Description', 'Debit', 'Credit', 'Running Balance'],
+                $report['csv_rows']
+            );
+        }
+
+        return Inertia::render('App/Admin/Accounting/Reports/BankBook', $report['page']);
+    }
+
+    public function bankBookPrint(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildAccountBookReport($request, ['bank', 'bank_transfer', 'online', 'cheque'], 'Bank Book'), 'bank-book', 'print');
+    }
+
+    public function bankBookPdf(Request $request)
+    {
+        return $this->renderBrandedReportResponse($this->buildAccountBookReport($request, ['bank', 'bank_transfer', 'online', 'cheque'], 'Bank Book'), 'bank-book', 'pdf');
+    }
+
     public function profitLoss(Request $request)
     {
         $report = $this->buildProfitLossReport($request);
@@ -1450,5 +1596,371 @@ class AccountingReportController extends Controller
         }
 
         return $type !== '' ? $type : 'other';
+    }
+
+    private function resolveDateRange(Request $request): array
+    {
+        $from = $this->safeParseDate($request->input('from'));
+        $to = $this->safeParseDate($request->input('to'));
+
+        if (!$from || !$to || $from->greaterThan($to)) {
+            $to = Carbon::today();
+            $from = $to->copy()->startOfMonth();
+        }
+
+        return [$from->toDateString(), $to->toDateString()];
+    }
+
+    private function buildDayBookReport(Request $request): array
+    {
+        [$from, $to] = $this->resolveDateRange($request);
+        $perPage = $this->resolvePerPage($request);
+        $sourceResolver = app(AccountingSourceResolver::class);
+
+        $entryQuery = JournalEntry::query()
+            ->with('tenant:id,name')
+            ->whereBetween('entry_date', [$from, $to]);
+
+        if ($request->filled('tenant_id')) {
+            $entryQuery->where('tenant_id', (int) $request->input('tenant_id'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $entryQuery->where(function ($query) use ($search) {
+                $query->where('entry_no', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('source')) {
+            $entryQuery->where('module_type', (string) $request->input('source'));
+        }
+
+        if ($request->filled('account_id')) {
+            $accountId = (int) $request->input('account_id');
+            $entryQuery->whereHas('lines', fn ($lines) => $lines->where('account_id', $accountId));
+        }
+
+        if ($request->filled('payment_account_id')) {
+            $paymentAccount = PaymentAccount::query()->find((int) $request->input('payment_account_id'));
+            if ($paymentAccount?->coa_account_id) {
+                $entryQuery->whereHas('lines', fn ($lines) => $lines->where('account_id', (int) $paymentAccount->coa_account_id));
+            }
+        }
+
+        $rows = $entryQuery
+            ->orderBy('entry_date')
+            ->orderBy('id')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $entryIds = collect($rows->items())->pluck('id')->values()->all();
+        $lineTotals = JournalLine::query()
+            ->whereIn('journal_entry_id', $entryIds)
+            ->selectRaw('journal_entry_id, SUM(debit) as debit_total, SUM(credit) as credit_total')
+            ->groupBy('journal_entry_id')
+            ->get()
+            ->keyBy('journal_entry_id');
+
+        $pageRows = collect($rows->items())->map(function (JournalEntry $entry) use ($lineTotals, $sourceResolver) {
+            $totals = $lineTotals->get($entry->id);
+            $source = $sourceResolver->resolveForJournalEntry($entry);
+
+            return [
+                'id' => $entry->id,
+                'entry_no' => (string) $entry->entry_no,
+                'entry_date' => optional($entry->entry_date)->toDateString(),
+                'description' => (string) ($entry->description ?: '-'),
+                'restaurant_name' => (string) ($entry->tenant?->name ?: '-'),
+                'source' => (string) ($entry->module_type ?: 'general_journal'),
+                'source_label' => (string) ($source['source_label'] ?? 'General Journal'),
+                'document_url' => $source['document_url'] ?? null,
+                'debit_total' => (float) ($totals->debit_total ?? 0),
+                'credit_total' => (float) ($totals->credit_total ?? 0),
+            ];
+        })->values();
+
+        $rows->setCollection($pageRows);
+
+        $summary = [
+            'records' => $rows->total(),
+            'total_debit' => (float) $pageRows->sum('debit_total'),
+            'total_credit' => (float) $pageRows->sum('credit_total'),
+        ];
+
+        $sourceOptions = JournalEntry::query()
+            ->whereNotNull('module_type')
+            ->distinct()
+            ->orderBy('module_type')
+            ->pluck('module_type')
+            ->values()
+            ->all();
+
+        $csvRows = $pageRows->map(fn (array $row) => [
+            'Entry No' => $row['entry_no'],
+            'Date' => $row['entry_date'],
+            'Restaurant' => $row['restaurant_name'],
+            'Source' => $row['source_label'],
+            'Description' => $row['description'],
+            'Debit' => number_format((float) $row['debit_total'], 2, '.', ''),
+            'Credit' => number_format((float) $row['credit_total'], 2, '.', ''),
+        ])->all();
+
+        return [
+            'page' => [
+                'rows' => $rows,
+                'summary' => $summary,
+                'accounts' => CoaAccount::query()->where('is_active', true)->where('is_postable', true)->orderBy('full_code')->get(['id', 'full_code', 'name']),
+                'paymentAccounts' => PaymentAccount::query()->orderBy('name')->get(['id', 'name']),
+                'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+                'sourceOptions' => $sourceOptions,
+                'filters' => [
+                    'from' => $from,
+                    'to' => $to,
+                    'tenant_id' => $request->input('tenant_id'),
+                    'search' => $request->input('search'),
+                    'source' => $request->input('source'),
+                    'account_id' => $request->input('account_id'),
+                    'payment_account_id' => $request->input('payment_account_id'),
+                    'per_page' => $perPage,
+                ],
+            ],
+            'csv_rows' => $csvRows,
+            'print' => $this->buildBrandedPayload(
+                'Day Book',
+                [
+                    'From' => $from,
+                    'To' => $to,
+                    'Restaurant' => (string) ($request->input('tenant_id') ?: 'All'),
+                    'Source' => (string) ($request->input('source') ?: 'All'),
+                ],
+                [
+                    ['label' => 'Entries', 'value' => number_format((float) $summary['records'], 0, '.', ',')],
+                    ['label' => 'Total Debit', 'value' => number_format((float) $summary['total_debit'], 2, '.', ',')],
+                    ['label' => 'Total Credit', 'value' => number_format((float) $summary['total_credit'], 2, '.', ',')],
+                ],
+                [
+                    [
+                        'title' => 'Day Book Entries',
+                        'columns' => ['Entry No', 'Date', 'Restaurant', 'Source', 'Description', 'Debit', 'Credit'],
+                        'rows' => $csvRows,
+                    ],
+                ],
+                null
+            ),
+        ];
+    }
+
+    private function buildAccountBookReport(Request $request, array $paymentMethods, string $bookLabel): array
+    {
+        [$from, $to] = $this->resolveDateRange($request);
+        $perPage = $this->resolvePerPage($request);
+        $sourceResolver = app(AccountingSourceResolver::class);
+
+        $paymentAccountQuery = PaymentAccount::query()
+            ->whereIn('payment_method', $paymentMethods)
+            ->whereNotNull('coa_account_id');
+
+        if ($request->filled('payment_account_id')) {
+            $paymentAccountQuery->whereKey((int) $request->input('payment_account_id'));
+        }
+
+        $accountIds = $paymentAccountQuery
+            ->pluck('coa_account_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($request->filled('account_id')) {
+            $accountIds = [(int) $request->input('account_id')];
+        }
+
+        if (empty($accountIds)) {
+            $emptyRows = new LengthAwarePaginator([], 0, $perPage, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+
+            return [
+                'page' => [
+                    'rows' => $emptyRows,
+                    'summary' => ['records' => 0, 'total_debit' => 0, 'total_credit' => 0, 'closing_balance' => 0],
+                    'filters' => ['from' => $from, 'to' => $to, 'per_page' => $perPage],
+                    'accounts' => CoaAccount::query()->where('is_active', true)->where('is_postable', true)->orderBy('full_code')->get(['id', 'full_code', 'name']),
+                    'paymentAccounts' => PaymentAccount::query()->whereIn('payment_method', $paymentMethods)->orderBy('name')->get(['id', 'name']),
+                    'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+                    'sourceOptions' => [],
+                    'bookLabel' => $bookLabel,
+                    'error' => 'No payment accounts are mapped to COA for this book.',
+                ],
+                'csv_rows' => [],
+                'print' => $this->buildBrandedPayload($bookLabel, ['From' => $from, 'To' => $to], [], [], 'No payment accounts are mapped to COA for this book.'),
+            ];
+        }
+
+        $query = JournalLine::query()
+            ->with(['entry:id,entry_date,entry_no,module_type,module_id,tenant_id', 'entry.tenant:id,name', 'account:id,full_code,name'])
+            ->whereIn('account_id', $accountIds)
+            ->whereHas('entry', function ($builder) use ($from, $to, $request) {
+                $builder->whereBetween('entry_date', [$from, $to]);
+
+                if ($request->filled('tenant_id')) {
+                    $builder->where('tenant_id', (int) $request->input('tenant_id'));
+                }
+
+                if ($request->filled('source')) {
+                    $builder->where('module_type', (string) $request->input('source'));
+                }
+
+                if ($request->filled('search')) {
+                    $search = trim((string) $request->input('search'));
+                    $builder->where(function ($nested) use ($search) {
+                        $nested->where('entry_no', 'like', "%{$search}%")
+                            ->orWhere('description', 'like', "%{$search}%");
+                    });
+                }
+            })
+            ->orderBy('journal_entry_id')
+            ->orderBy('id');
+
+        $rows = $query->paginate($perPage)->withQueryString();
+
+        $runningBalance = 0.0;
+        $pageRows = collect($rows->items())->map(function (JournalLine $line) use (&$runningBalance, $sourceResolver) {
+            $debit = (float) ($line->debit ?? 0);
+            $credit = (float) ($line->credit ?? 0);
+            $runningBalance += ($debit - $credit);
+
+            $source = $line->entry ? $sourceResolver->resolveForJournalEntry($line->entry) : [
+                'source_label' => 'General Journal',
+                'document_url' => null,
+            ];
+
+            return [
+                'id' => $line->id,
+                'entry_date' => optional($line->entry?->entry_date)->toDateString(),
+                'entry_no' => (string) ($line->entry?->entry_no ?: '-'),
+                'restaurant_name' => (string) ($line->entry?->tenant?->name ?: '-'),
+                'account' => trim((string) (($line->account?->full_code ?: '-') . ' ' . ($line->account?->name ?: ''))),
+                'description' => (string) ($line->description ?: '-'),
+                'debit' => $debit,
+                'credit' => $credit,
+                'running_balance' => $runningBalance,
+                'source' => (string) ($line->entry?->module_type ?: 'general_journal'),
+                'source_label' => $source['source_label'] ?? 'General Journal',
+                'document_url' => $source['document_url'] ?? null,
+            ];
+        })->values();
+
+        $rows->setCollection($pageRows);
+
+        $summary = [
+            'records' => $rows->total(),
+            'total_debit' => (float) $pageRows->sum('debit'),
+            'total_credit' => (float) $pageRows->sum('credit'),
+            'closing_balance' => (float) ($pageRows->last()['running_balance'] ?? 0),
+        ];
+
+        $sourceOptions = JournalEntry::query()
+            ->whereNotNull('module_type')
+            ->distinct()
+            ->orderBy('module_type')
+            ->pluck('module_type')
+            ->values()
+            ->all();
+
+        $csvRows = $pageRows->map(fn (array $row) => [
+            'Date' => $row['entry_date'],
+            'Entry No' => $row['entry_no'],
+            'Restaurant' => $row['restaurant_name'],
+            'Account' => $row['account'],
+            'Source' => $row['source_label'],
+            'Description' => $row['description'],
+            'Debit' => number_format((float) $row['debit'], 2, '.', ''),
+            'Credit' => number_format((float) $row['credit'], 2, '.', ''),
+            'Running Balance' => number_format((float) $row['running_balance'], 2, '.', ''),
+        ])->all();
+
+        return [
+            'page' => [
+                'rows' => $rows,
+                'summary' => $summary,
+                'filters' => [
+                    'from' => $from,
+                    'to' => $to,
+                    'tenant_id' => $request->input('tenant_id'),
+                    'search' => $request->input('search'),
+                    'source' => $request->input('source'),
+                    'account_id' => $request->input('account_id'),
+                    'payment_account_id' => $request->input('payment_account_id'),
+                    'per_page' => $perPage,
+                ],
+                'accounts' => CoaAccount::query()->where('is_active', true)->where('is_postable', true)->orderBy('full_code')->get(['id', 'full_code', 'name']),
+                'paymentAccounts' => PaymentAccount::query()->whereIn('payment_method', $paymentMethods)->orderBy('name')->get(['id', 'name']),
+                'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+                'sourceOptions' => $sourceOptions,
+                'bookLabel' => $bookLabel,
+                'error' => null,
+            ],
+            'csv_rows' => $csvRows,
+            'print' => $this->buildBrandedPayload(
+                $bookLabel,
+                [
+                    'From' => $from,
+                    'To' => $to,
+                    'Restaurant' => (string) ($request->input('tenant_id') ?: 'All'),
+                    'Source' => (string) ($request->input('source') ?: 'All'),
+                ],
+                [
+                    ['label' => 'Rows', 'value' => number_format((float) $summary['records'], 0, '.', ',')],
+                    ['label' => 'Total Debit', 'value' => number_format((float) $summary['total_debit'], 2, '.', ',')],
+                    ['label' => 'Total Credit', 'value' => number_format((float) $summary['total_credit'], 2, '.', ',')],
+                    ['label' => 'Closing Balance', 'value' => number_format((float) $summary['closing_balance'], 2, '.', ',')],
+                ],
+                [
+                    [
+                        'title' => $bookLabel . ' Entries',
+                        'columns' => ['Date', 'Entry No', 'Restaurant', 'Account', 'Source', 'Description', 'Debit', 'Credit', 'Running Balance'],
+                        'rows' => $csvRows,
+                    ],
+                ],
+                null
+            ),
+        ];
+    }
+
+    private function reportHubMetadata(): array
+    {
+        return [
+            'Trial Balance' => ['description' => 'Period-end debit and credit position by account.', 'iconKey' => 'balance', 'badge' => 'Finance'],
+            'Balance Sheet' => ['description' => 'Assets, liabilities, and equity snapshot.', 'iconKey' => 'sheet', 'badge' => 'Finance'],
+            'Profit & Loss' => ['description' => 'Revenue and expense performance by period.', 'iconKey' => 'profit', 'badge' => 'Finance'],
+            'Financial Statements' => ['description' => 'Combined financial packs with key summaries.', 'iconKey' => 'statements', 'badge' => 'Finance'],
+            'General Ledger' => ['description' => 'Detailed transaction movement by account.', 'iconKey' => 'ledger', 'badge' => 'Finance'],
+            'Chart of Accounts' => ['description' => 'Account master and posting controls.', 'iconKey' => 'accounts', 'badge' => 'Master'],
+            'Accounts Payables' => ['description' => 'Outstanding vendor liabilities and aging.', 'iconKey' => 'payables', 'badge' => 'Payables'],
+            'Expenses' => ['description' => 'Expense journal and category trends.', 'iconKey' => 'expenses', 'badge' => 'Finance'],
+            'Day Book' => ['description' => 'Daily journal register with source traceability.', 'iconKey' => 'daybook', 'badge' => 'Reports'],
+            'Cash Book' => ['description' => 'Cash-side running balance and entries.', 'iconKey' => 'cash', 'badge' => 'Reports'],
+            'Bank Book' => ['description' => 'Bank-side running balance and entries.', 'iconKey' => 'bank', 'badge' => 'Reports'],
+            'Accounting Vouchers' => ['description' => 'CPV, CRV, BPV, BRV, and JV operations.', 'iconKey' => 'voucher', 'badge' => 'Vouchers'],
+            'AP Aging' => ['description' => 'Aging buckets for supplier dues.', 'iconKey' => 'aging', 'badge' => 'Payables'],
+            'Purchase Requisitions' => ['description' => 'Demand capture and approval pipeline.', 'iconKey' => 'requisition', 'badge' => 'Procurement'],
+            'Vendor Bills' => ['description' => 'Invoice posting, status, and outstanding view.', 'iconKey' => 'bill', 'badge' => 'Procurement'],
+            'Vendor Payments' => ['description' => 'Payment register and settlement tracking.', 'iconKey' => 'payment', 'badge' => 'Procurement'],
+            'Supplier Advances' => ['description' => 'Advance disbursement and adjustment ledger.', 'iconKey' => 'advance', 'badge' => 'Procurement'],
+            'Purchase Orders' => ['description' => 'PO lifecycle and conversion monitoring.', 'iconKey' => 'po', 'badge' => 'Procurement'],
+            'Inventory Documents' => ['description' => 'Document flow for stock movement controls.', 'iconKey' => 'documents', 'badge' => 'Inventory'],
+            'Warehouse Valuation' => ['description' => 'Stock valuation by warehouse and policy.', 'iconKey' => 'valuation', 'badge' => 'Inventory'],
+            'Inventory Operations' => ['description' => 'Operational stock entries and activity.', 'iconKey' => 'operations', 'badge' => 'Inventory'],
+            'Stock Audits' => ['description' => 'Physical audit sessions and variances.', 'iconKey' => 'audit', 'badge' => 'Inventory'],
+            'Goods Receipts' => ['description' => 'GRN intake and posting readiness.', 'iconKey' => 'grn', 'badge' => 'Inventory'],
+            'Purchase Returns' => ['description' => 'Return notes, credits, and quantity controls.', 'iconKey' => 'returns', 'badge' => 'Inventory'],
+            'Cash Purchases' => ['description' => 'Immediate purchase and payment records.', 'iconKey' => 'cash', 'badge' => 'Procurement'],
+            'Delivery Notes' => ['description' => 'Dispatch and receipt documentation history.', 'iconKey' => 'delivery', 'badge' => 'Store'],
+            '3-Way Discrepancies' => ['description' => 'GRN, PO, and bill mismatch monitoring queue.', 'iconKey' => 'warning', 'badge' => 'Procurement'],
+            'Payment Run' => ['description' => 'AP settlement queue for batch payment execution.', 'iconKey' => 'payables', 'badge' => 'Payables'],
+        ];
     }
 }

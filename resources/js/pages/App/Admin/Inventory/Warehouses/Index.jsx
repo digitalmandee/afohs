@@ -365,7 +365,13 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                     cardSx={{ borderRadius: '18px' }}
                     contentSx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}
                 >
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine warehouses by search, restaurant, status, coverage, and source settings."
+                    >
                         <Grid container spacing={1.25}>
                             <Grid item xs={12} md={4}>
                                 <TextField

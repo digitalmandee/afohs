@@ -88,7 +88,13 @@ export default function TransactionIndex({ transactions, filters, summary = {} }
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results refresh automatically while you search, change fee type, or adjust the date range.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    title="Filters"
+                    subtitle="Refine transactions and click Apply."
+                    lowChrome
+                    onApply={() => submitFilters(localFilters)}
+                    onReset={resetFilters}
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField label="Search member or membership #" value={localFilters.search} onChange={(event) => updateFilters({ search: event.target.value })} fullWidth />

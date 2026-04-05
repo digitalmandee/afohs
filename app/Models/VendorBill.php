@@ -21,6 +21,7 @@ class VendorBill extends Model
         'grand_total',
         'paid_amount',
         'advance_applied_amount',
+        'return_applied_amount',
         'other_charges_total',
         'remarks',
         'created_by',
@@ -39,6 +40,7 @@ class VendorBill extends Model
         'grand_total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'advance_applied_amount' => 'decimal:2',
+        'return_applied_amount' => 'decimal:2',
     ];
 
     public function vendor()
@@ -74,5 +76,15 @@ class VendorBill extends Model
     public function otherCharges()
     {
         return $this->hasMany(VendorBillOtherCharge::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function postedBy()
+    {
+        return $this->belongsTo(User::class, 'posted_by');
     }
 }

@@ -80,7 +80,13 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
             </Grid>
 
             <SurfaceCard title="Comparison Filters" subtitle="Review current and prior periods in one place without dropping back to the older report layout.">
-                <FilterToolbar onReset={() => router.get(route('accounting.reports.financial-statements'))}>
+                <FilterToolbar
+                    onReset={() => router.get(route('accounting.reports.financial-statements'))}
+                    onApply={() => applyFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Set current and comparison date ranges for statement analysis."
+                >
                     <Grid container spacing={2}>
                         <DateRangeFilterFields
                             startLabel="Current From"
@@ -104,7 +110,6 @@ export default function FinancialStatements({ filters, comparison = {}, currentH
                         />
                         <Grid item xs={12}>
                             <Stack direction="row" spacing={1}>
-                                <Button variant="contained" onClick={() => applyFilters()}>Apply</Button>
                                 <Button variant="outlined" onClick={() => {
                                     const targets = [
                                         route('accounting.reports.trial-balance', { from: localFilters.from, to: localFilters.to }),

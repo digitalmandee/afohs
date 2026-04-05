@@ -173,7 +173,16 @@ const LeaveReport = () => {
                         </Box>
             )}
         >
-                    <FilterToolbar onReset={handleClearSearch}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Set leave report filters and click Apply."
+                        lowChrome
+                        onApply={() => {
+                            setCurrentPage(1);
+                            getMonthlyReport(1);
+                        }}
+                        onReset={handleClearSearch}
+                    >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                                 <TextField
@@ -196,24 +205,6 @@ const LeaveReport = () => {
                                         },
                                     }}
                                 />
-                                <Button
-                                    variant="outlined"
-                                    onClick={handleClearSearch}
-                                    sx={{
-                                        color: '#063455',
-                                        borderColor: '#063455',
-                                        textTransform: 'none',
-                                        borderRadius: '16px',
-                                        px: 4,
-                                        '&:hover': {
-                                            borderColor: '#052d45',
-                                            // backgroundColor: 'rgba(6, 52, 85, 0.04)',
-                                        },
-                                    }}
-                                >
-                                    Reset
-                                </Button>
-
                             </Box>
                         </Box>
                     </FilterToolbar>

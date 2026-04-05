@@ -57,7 +57,13 @@ export default function SinglePosReport({ reportData = {}, tenant, startDate, en
                 </Grid>
 
                 <SurfaceCard title="Report Range" subtitle="Adjust the report dates and reopen the restaurant-level breakdown without leaving the current shell.">
-                    <FilterToolbar onReset={() => setDateFilters({ start_date: startDate || '', end_date: endDate || '' })} actions={<Button variant="contained" onClick={applyFilters}>Apply Range</Button>}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Choose the date range and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
+                        onReset={() => setDateFilters({ start_date: startDate || '', end_date: endDate || '' })}
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={6}>
                                 <LocalizationProvider dateAdapter={AdapterDayjs}>

@@ -38,11 +38,17 @@ export default function WarehouseDocumentsIndex({ documents, filters = {}, wareh
         >
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <SurfaceCard title="Live Filters" subtitle="Filter by document number, warehouse, restaurant, and document type.">
-                <FilterToolbar onReset={() => {
-                    const reset = { search: '', type: '', restaurant_id: '', warehouse_id: '', per_page: localFilters.per_page || 25 };
-                    setLocalFilters(reset);
-                    applyFilters(reset);
-                }}>
+                <FilterToolbar
+                    onReset={() => {
+                        const reset = { search: '', type: '', restaurant_id: '', warehouse_id: '', per_page: localFilters.per_page || 25 };
+                        setLocalFilters(reset);
+                        applyFilters(reset);
+                    }}
+                    onApply={() => applyFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine stock documents by search, type, restaurant, and warehouse."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField label="Search document" value={localFilters.search} onChange={(event) => update('search', event.target.value)} onBlur={() => applyFilters(localFilters)} fullWidth />

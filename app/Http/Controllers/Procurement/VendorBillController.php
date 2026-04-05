@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\AccountingEventQueue;
 use App\Models\ApprovalAction;
 use App\Models\GoodsReceipt;
@@ -13,8 +14,11 @@ use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\VendorBill;
 use App\Services\Accounting\AccountingEventDispatcher;
+use App\Services\Accounting\StrictAccountingSyncService;
+use App\Services\Procurement\ProcurementDocumentNumberService;
 use App\Services\Procurement\ProcurementPolicyService;
 use App\Services\Procurement\SupplierAdvanceService;
+use App\Support\Branding\StaticDocumentBrandingResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -24,7 +28,8 @@ class VendorBillController extends Controller
 {
     public function __construct(
         private readonly ProcurementPolicyService $policyService,
-        private readonly SupplierAdvanceService $supplierAdvanceService
+        private readonly SupplierAdvanceService $supplierAdvanceService,
+        private readonly ProcurementDocumentNumberService $documentNumberService
     ) {
     }
 
@@ -66,7 +71,7 @@ class VendorBillController extends Controller
         $summary = [
             'count' => (int) (clone $query)->count(),
             'total_value' => (float) ((clone $query)->sum('grand_total') ?? 0),
-            'outstanding' => (float) ((clone $query)->select(DB::raw('SUM(grand_total - paid_amount - advance_applied_amount) as balance'))->value('balance') ?? 0),
+            'outstanding' => (float) ((clone $query)->select(DB::raw('SUM(grand_total - paid_amount - advance_applied_amount - COALESCE(return_applied_amount, 0)) as balance'))->value('balance') ?? 0),
             'posted' => (int) ((clone $query)->where('status', 'posted')->count()),
         ];
 
@@ -99,11 +104,15 @@ class VendorBillController extends Controller
             $bill->gl_posted = (bool) ($postedLookup[$bill->id] ?? false);
             $bill->accounting_status = $event?->status ?? ($bill->gl_posted ? 'posted' : 'pending');
             $bill->accounting_failure_reason = $event?->error_message;
+            $bill->accounting_correlation_id = (string) ($event?->payload['correlation_id'] ?? '');
             $bill->latest_approval_action = $action ? [
                 'action' => $action->action,
                 'remarks' => $action->remarks,
                 'created_at' => $action->created_at,
             ] : null;
+            $bill->posting_hint = in_array((string) $bill->status, ['draft'], true)
+                ? 'Draft (non-posting)'
+                : ($bill->gl_posted ? 'Posted (GL done)' : 'Posting pending');
             return $bill;
         });
 
@@ -124,39 +133,70 @@ class VendorBillController extends Controller
         }
 
         $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
-        $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.inventoryItem:id,name'])
-            ->orderByDesc('received_date')
-            ->limit(200)
-            ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'received_date', 'status']);
+        $receipts = $this->pendingGoodsReceipts();
 
         return Inertia::render('App/Admin/Procurement/VendorBills/Create', [
             'receipt' => $receipt,
             'vendors' => $vendors,
             'receipts' => $receipts,
+            'availableAdvances' => $this->availableAdvancesByVendor($receipts),
             'procurementPolicy' => $this->policyService->all(),
         ]);
     }
 
     public function edit(VendorBill $vendorBill)
     {
-        $bill = $vendorBill->load('items', 'otherCharges');
+        $bill = $vendorBill->load('items', 'otherCharges', 'goodsReceipt.items.inventoryItem');
 
         if ($bill->status !== 'draft') {
             return redirect()->route('procurement.vendor-bills.index')->with('error', 'Only draft bills can be edited.');
         }
 
         $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
-        $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.inventoryItem:id,name'])
-            ->orderByDesc('received_date')
-            ->limit(200)
-            ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'received_date', 'status']);
+        $receipts = $this->pendingGoodsReceipts($bill->id);
+        if ($bill->goodsReceipt) {
+            $includedIds = collect($receipts)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            if (!in_array((int) $bill->goods_receipt_id, $includedIds, true)) {
+                $receipts->prepend($bill->goodsReceipt->setAttribute('billable_summary', [
+                    'total_qty_received' => (float) $bill->goodsReceipt->items->sum('qty_received'),
+                    'already_billed_qty' => 0.0,
+                    'remaining_qty' => (float) $bill->goodsReceipt->items->sum('qty_received'),
+                ]));
+            }
+        }
 
         return Inertia::render('App/Admin/Procurement/VendorBills/Edit', [
             'bill' => $bill,
             'vendors' => $vendors,
             'receipts' => $receipts,
+            'availableAdvances' => $this->availableAdvancesByVendor($receipts),
             'procurementPolicy' => $this->policyService->all(),
         ]);
+    }
+
+    public function view(VendorBill $vendorBill)
+    {
+        return response()->view(
+            'procurement.vendor-bills.document',
+            $this->buildVendorBillDocumentPayload($vendorBill, false)
+        );
+    }
+
+    public function print(VendorBill $vendorBill)
+    {
+        return response()->view(
+            'procurement.vendor-bills.document',
+            $this->buildVendorBillDocumentPayload($vendorBill, true)
+        );
+    }
+
+    public function pdf(VendorBill $vendorBill)
+    {
+        $payload = $this->buildVendorBillDocumentPayload($vendorBill, false);
+
+        return Pdf::loadView('procurement.vendor-bills.document', $payload)
+            ->setPaper('a4', 'portrait')
+            ->download(sprintf('%s-%s.pdf', (string) $vendorBill->bill_no, now()->format('Ymd-His')));
     }
 
     public function store(Request $request)
@@ -179,10 +219,24 @@ class VendorBillController extends Controller
 
         $vendor = Vendor::query()->findOrFail($data['vendor_id']);
         $bill = DB::transaction(function () use ($data, $request, $vendor, $receipt) {
+            $tenantId = $receipt?->tenant_id ?: $vendor->tenant_id;
+            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            if ($branchId <= 0) {
+                throw ValidationException::withMessages([
+                    'vendor_id' => 'Branch mapping missing for numbering. Assign branch to vendor restaurant before creating bill.',
+                ]);
+            }
+
+            $billNo = $this->documentNumberService->generate(
+                documentType: 'PINV',
+                branchId: $branchId,
+                documentDate: $data['bill_date']
+            );
+
             $bill = VendorBill::query()->create([
-                'bill_no' => 'BILL-' . now()->format('YmdHis'),
+                'bill_no' => $billNo,
                 'vendor_id' => $data['vendor_id'],
-                'tenant_id' => $receipt?->tenant_id ?: $vendor->tenant_id,
+                'tenant_id' => $tenantId,
                 'goods_receipt_id' => $data['goods_receipt_id'] ?? null,
                 'bill_date' => $data['bill_date'],
                 'due_date' => $data['due_date'] ?? null,
@@ -304,7 +358,7 @@ class VendorBillController extends Controller
                 }
             }
 
-            app(AccountingEventDispatcher::class)->dispatch(
+            $event = app(AccountingEventDispatcher::class)->dispatch(
                 'vendor_bill_posted',
                 VendorBill::class,
                 (int) $vendorBill->id,
@@ -317,6 +371,8 @@ class VendorBillController extends Controller
                 $request->user()?->id,
                 $vendorBill->tenant_id
             );
+
+            app(StrictAccountingSyncService::class)->enforceOrFail($event, "Vendor Bill {$vendorBill->bill_no}");
 
             ApprovalAction::create([
                 'document_type' => 'vendor_bill',
@@ -481,5 +537,169 @@ class VendorBillController extends Controller
         if (!empty($errors)) {
             throw ValidationException::withMessages($errors);
         }
+    }
+
+    private function pendingGoodsReceipts(?int $existingBillId = null)
+    {
+        $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.inventoryItem:id,name'])
+            ->whereIn('status', ['accepted', 'received'])
+            ->orderBy('received_date')
+            ->limit(500)
+            ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'purchase_order_id', 'received_date', 'status']);
+
+        if ($receipts->isEmpty()) {
+            return $receipts;
+        }
+
+        $receiptIds = $receipts->pluck('id')->all();
+
+        $grnQtyByReceipt = GoodsReceiptItem::query()
+            ->whereIn('goods_receipt_id', $receiptIds)
+            ->selectRaw('goods_receipt_id, SUM(qty_received) as qty')
+            ->groupBy('goods_receipt_id')
+            ->pluck('qty', 'goods_receipt_id')
+            ->map(fn ($qty) => (float) $qty)
+            ->all();
+
+        $billedQtyByReceipt = DB::table('vendor_bill_items')
+            ->join('vendor_bills', 'vendor_bills.id', '=', 'vendor_bill_items.vendor_bill_id')
+            ->whereIn('vendor_bills.goods_receipt_id', $receiptIds)
+            ->where('vendor_bills.status', '!=', 'void')
+            ->when($existingBillId, fn ($q) => $q->where('vendor_bills.id', '!=', $existingBillId))
+            ->selectRaw('vendor_bills.goods_receipt_id as goods_receipt_id, SUM(vendor_bill_items.qty) as qty')
+            ->groupBy('vendor_bills.goods_receipt_id')
+            ->pluck('qty', 'goods_receipt_id')
+            ->map(fn ($qty) => (float) $qty)
+            ->all();
+
+        return $receipts
+            ->map(function ($receipt) use ($grnQtyByReceipt, $billedQtyByReceipt) {
+                $received = (float) ($grnQtyByReceipt[$receipt->id] ?? 0.0);
+                $billed = (float) ($billedQtyByReceipt[$receipt->id] ?? 0.0);
+                $remaining = max(0.0, $received - $billed);
+                $receipt->setAttribute('billable_summary', [
+                    'total_qty_received' => $received,
+                    'already_billed_qty' => $billed,
+                    'remaining_qty' => $remaining,
+                ]);
+                return $receipt;
+            })
+            ->filter(fn ($receipt) => ((float) ($receipt->billable_summary['remaining_qty'] ?? 0)) > 0.0001)
+            ->values();
+    }
+
+    private function availableAdvancesByVendor($receipts)
+    {
+        $vendorIds = collect($receipts)->pluck('vendor_id')->filter()->unique()->values()->all();
+        if (empty($vendorIds)) {
+            return [];
+        }
+
+        $advances = SupplierAdvance::query()
+            ->with(['purchaseOrder:id,po_no'])
+            ->whereIn('vendor_id', $vendorIds)
+            ->whereIn('status', ['posted', 'partially_applied'])
+            ->get(['id', 'advance_no', 'vendor_id', 'purchase_order_id', 'amount', 'applied_amount', 'status', 'advance_date']);
+
+        return $advances
+            ->map(function (SupplierAdvance $advance) {
+                $remaining = max(0, (float) $advance->amount - (float) $advance->applied_amount);
+                if ($remaining <= 0.0001) {
+                    return null;
+                }
+
+                return [
+                    'id' => $advance->id,
+                    'advance_no' => $advance->advance_no,
+                    'vendor_id' => $advance->vendor_id,
+                    'purchase_order_id' => $advance->purchase_order_id,
+                    'linked_po_no' => $advance->purchaseOrder?->po_no,
+                    'advance_date' => optional($advance->advance_date)->format('Y-m-d'),
+                    'status' => $advance->status,
+                    'amount' => (float) $advance->amount,
+                    'applied_amount' => (float) $advance->applied_amount,
+                    'remaining_amount' => $remaining,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function buildVendorBillDocumentPayload(VendorBill $vendorBill, bool $autoPrint): array
+    {
+        $vendorBill->loadMissing([
+            'vendor',
+            'tenant',
+            'goodsReceipt:id,grn_no,received_date',
+            'items.inventoryItem.unit',
+            'otherCharges',
+            'createdBy:id,name',
+            'postedBy:id,name',
+        ]);
+
+        $lineItems = $vendorBill->items->map(function ($item) {
+            $qty = (float) ($item->qty ?? 0);
+            $unitCost = (float) ($item->unit_cost ?? 0);
+            $lineTotal = (float) ($item->line_total ?? ($qty * $unitCost));
+
+            return [
+                'item_name' => $item->inventoryItem?->name ?? $item->description ?? ('Inventory Item #' . $item->inventory_item_id),
+                'sku' => $item->inventoryItem?->sku ?: '-',
+                'uom' => $item->inventoryItem?->unit?->name ?: '-',
+                'qty' => number_format($qty, 3, '.', ','),
+                'unit_cost' => number_format($unitCost, 2, '.', ','),
+                'tax_amount' => number_format((float) ($item->tax_amount ?? 0), 2, '.', ','),
+                'discount_amount' => number_format((float) ($item->discount_amount ?? 0), 2, '.', ','),
+                'line_total' => number_format($lineTotal, 2, '.', ','),
+            ];
+        })->values()->all();
+
+        $otherCharges = $vendorBill->otherCharges->map(function ($charge) {
+            return [
+                'description' => $charge->description ?: '-',
+                'amount' => number_format((float) ($charge->amount ?? 0), 2, '.', ','),
+            ];
+        })->values()->all();
+
+        $tenantName = $vendorBill->tenant?->name ?: config('app.name', 'AFOHS Club');
+
+        return [
+            'title' => 'Vendor Bill',
+            'companyName' => $tenantName,
+            'logoDataUri' => app(StaticDocumentBrandingResolver::class)->resolveLogoDataUri(),
+            'generatedAt' => now()->format('d/m/Y h:i A'),
+            'autoPrint' => $autoPrint,
+            'bill' => [
+                'number' => $vendorBill->bill_no,
+                'status' => strtoupper(str_replace('_', ' ', (string) $vendorBill->status)),
+                'bill_date' => optional($vendorBill->bill_date)->format('d/m/Y') ?: '-',
+                'due_date' => optional($vendorBill->due_date)->format('d/m/Y') ?: '-',
+                'currency' => $vendorBill->currency ?: 'PKR',
+                'grn_no' => $vendorBill->goodsReceipt?->grn_no ?: '-',
+                'grn_date' => optional($vendorBill->goodsReceipt?->received_date)->format('d/m/Y') ?: '-',
+                'remarks' => $vendorBill->remarks ?: '-',
+                'created_by' => $vendorBill->createdBy?->name ?: 'N/A',
+                'created_at' => optional($vendorBill->created_at)->format('d/m/Y h:i A') ?: 'N/A',
+                'posted_by' => $vendorBill->postedBy?->name ?: ((string) $vendorBill->status === 'draft' ? 'Pending' : 'N/A'),
+                'posted_at' => optional($vendorBill->posted_at)->format('d/m/Y h:i A') ?: ((string) $vendorBill->status === 'draft' ? 'Pending' : 'N/A'),
+            ],
+            'vendor' => [
+                'name' => $vendorBill->vendor?->name ?: '-',
+                'code' => $vendorBill->vendor?->code ?: '-',
+                'phone' => $vendorBill->vendor?->phone ?: '-',
+                'email' => $vendorBill->vendor?->email ?: '-',
+                'address' => $vendorBill->vendor?->address ?: '-',
+            ],
+            'lineItems' => $lineItems,
+            'otherCharges' => $otherCharges,
+            'totals' => [
+                'sub_total' => number_format((float) ($vendorBill->sub_total ?? 0), 2, '.', ','),
+                'tax_total' => number_format((float) ($vendorBill->tax_total ?? 0), 2, '.', ','),
+                'discount_total' => number_format((float) ($vendorBill->discount_total ?? 0), 2, '.', ','),
+                'other_charges_total' => number_format((float) ($vendorBill->other_charges_total ?? 0), 2, '.', ','),
+                'grand_total' => number_format((float) ($vendorBill->grand_total ?? 0), 2, '.', ','),
+            ],
+        ];
     }
 }

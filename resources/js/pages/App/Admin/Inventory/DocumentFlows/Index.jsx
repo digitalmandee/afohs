@@ -3,12 +3,16 @@ import { Link, router } from '@inertiajs/react';
 import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import StatCard from '@/components/App/ui/StatCard';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatCount } from '@/lib/formatting';
 
 export default function Index({ documents, summary = {}, filters = {}, typeOptions = [] }) {
+    const mutation = useMutationAction();
     const rows = documents?.data || [];
     const [type, setType] = React.useState(filters.type || '');
     const [status, setStatus] = React.useState(filters.status || '');
@@ -44,11 +48,17 @@ export default function Index({ documents, summary = {}, filters = {}, typeOptio
             </Grid>
 
             <SurfaceCard title="Filter">
-                <FilterToolbar onReset={() => {
+                <FilterToolbar
+                    onReset={() => {
                     setType('');
                     setStatus('');
                     router.get(route('inventory.document-flows.index'), { per_page: perPage }, { replace: true, preserveScroll: true });
-                }}>
+                    }}
+                    onApply={() => applyFilters(type, status)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Filter documents by type and workflow state."
+                >
                     <Grid container spacing={1.25}>
                         <Grid item xs={12} md={4}>
                             <TextField
@@ -117,19 +127,80 @@ export default function Index({ documents, summary = {}, filters = {}, typeOptio
                             <TableCell><Chip size="small" label={row.workflow_state || row.status} /></TableCell>
                             <TableCell align="right">
                                 {row.approval_required && row.approval_status === 'draft' ? (
-                                    <Button size="small" onClick={() => router.post(route('inventory.document-flows.submit', row.id))}>Submit</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        loading={mutation.isPending(`doc-submit-${row.id}`)}
+                                        loadingLabel="Submitting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `doc-submit-${row.id}`,
+                                            method: 'post',
+                                            url: route('inventory.document-flows.submit', row.id),
+                                            successMessage: 'Document submitted.',
+                                            errorMessage: 'Failed to submit document.',
+                                            confirmConfig: {
+                                                title: 'Submit Document',
+                                                message: 'Submit this document for approval?',
+                                                confirmLabel: 'Submit',
+                                                severity: 'warning',
+                                            },
+                                        })}
+                                    >
+                                        Submit
+                                    </AppLoadingButton>
                                 ) : null}
                                 {row.status !== 'posted' && ['draft', 'submitted'].includes(row.approval_status) ? (
-                                    <Button size="small" color="success" onClick={() => router.post(route('inventory.document-flows.approve', row.id))}>Approve/Post</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        color="success"
+                                        loading={mutation.isPending(`doc-approve-${row.id}`)}
+                                        loadingLabel="Posting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `doc-approve-${row.id}`,
+                                            method: 'post',
+                                            url: route('inventory.document-flows.approve', row.id),
+                                            successMessage: 'Document approved/posted.',
+                                            errorMessage: 'Failed to approve/post document.',
+                                            confirmConfig: {
+                                                title: 'Approve/Post Document',
+                                                message: 'This may create stock and accounting impact. Continue?',
+                                                confirmLabel: 'Approve/Post',
+                                                severity: 'critical',
+                                            },
+                                        })}
+                                    >
+                                        Approve/Post
+                                    </AppLoadingButton>
                                 ) : null}
                                 {['draft', 'submitted'].includes(row.approval_status) ? (
-                                    <Button size="small" color="error" onClick={() => router.post(route('inventory.document-flows.reject', row.id), { remarks: 'Rejected from register.' })}>Reject</Button>
+                                    <AppLoadingButton
+                                        size="small"
+                                        color="error"
+                                        loading={mutation.isPending(`doc-reject-${row.id}`)}
+                                        loadingLabel="Rejecting..."
+                                        onClick={() => mutation.runRouterAction({
+                                            key: `doc-reject-${row.id}`,
+                                            method: 'post',
+                                            url: route('inventory.document-flows.reject', row.id),
+                                            data: { remarks: 'Rejected from register.' },
+                                            successMessage: 'Document rejected.',
+                                            errorMessage: 'Failed to reject document.',
+                                            confirmConfig: {
+                                                title: 'Reject Document',
+                                                message: 'Reject this document?',
+                                                confirmLabel: 'Reject',
+                                                severity: 'danger',
+                                            },
+                                        })}
+                                    >
+                                        Reject
+                                    </AppLoadingButton>
                                 ) : null}
                             </TableCell>
                         </TableRow>
                     )}
                 />
             </SurfaceCard>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

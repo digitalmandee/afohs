@@ -18,14 +18,18 @@ import {
     Typography,
 } from '@mui/material';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
 import AppPage from '@/components/App/ui/AppPage';
 import CompactDateRangePicker from '@/components/App/ui/CompactDateRangePicker';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import StatCard from '@/components/App/ui/StatCard';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount, formatCount } from '@/lib/formatting';
 
 export default function Index({ payments, filters, summary = {}, vendors = [], paymentAccounts = [], tenants = [] }) {
+    const mutation = useMutationAction();
     const rows = payments?.data || [];
     const columns = [
         { key: 'payment_no', label: 'Payment No' },
@@ -175,7 +179,13 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically while searching and changing payment attributes.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine payments by search, status, method, vendor, account, restaurant, and date."
+                >
                     <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} md={2}>
                             <TextField
@@ -286,7 +296,14 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                             <TableCell>
                                 <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(payment.accounting_status || (payment.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
                                 {payment.accounting_failure_reason ? (
-                                    <Typography variant="body2" color="error.main">{payment.accounting_failure_reason}</Typography>
+                                    <>
+                                        <Typography variant="body2" color="error.main">{payment.accounting_failure_reason}</Typography>
+                                        {payment.accounting_correlation_id ? (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                                Correlation: {payment.accounting_correlation_id}
+                                            </Typography>
+                                        ) : null}
+                                    </>
                                 ) : (
                                     <Chip
                                         size="small"
@@ -301,9 +318,68 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                                 {payment.status === 'draft' && (
                                     <>
                                         <Button size="small" component={Link} href={route('procurement.vendor-payments.edit', payment.id)}>Edit</Button>
-                                        <Button size="small" onClick={() => router.post(route('procurement.vendor-payments.submit', payment.id))}>Submit</Button>
-                                        <Button size="small" color="success" onClick={() => router.post(route('procurement.vendor-payments.approve', payment.id))}>Approve</Button>
-                                        <Button size="small" color="error" onClick={() => router.post(route('procurement.vendor-payments.reject', payment.id))}>Reject</Button>
+                                        <AppLoadingButton
+                                            size="small"
+                                            loading={mutation.isPending(`vp-submit-${payment.id}`)}
+                                            loadingLabel="Submitting..."
+                                            onClick={() => mutation.runRouterAction({
+                                                key: `vp-submit-${payment.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-payments.submit', payment.id),
+                                                successMessage: 'Vendor payment submitted.',
+                                                errorMessage: 'Failed to submit vendor payment.',
+                                                confirmConfig: {
+                                                    title: 'Submit Vendor Payment',
+                                                    message: 'Submit this vendor payment for approval?',
+                                                    confirmLabel: 'Submit',
+                                                    severity: 'warning',
+                                                },
+                                            })}
+                                        >
+                                            Submit
+                                        </AppLoadingButton>
+                                        <AppLoadingButton
+                                            size="small"
+                                            color="success"
+                                            loading={mutation.isPending(`vp-approve-${payment.id}`)}
+                                            loadingLabel="Posting..."
+                                            onClick={() => mutation.runRouterAction({
+                                                key: `vp-approve-${payment.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-payments.approve', payment.id),
+                                                successMessage: 'Vendor payment approved and posted.',
+                                                errorMessage: 'Failed to approve vendor payment.',
+                                                confirmConfig: {
+                                                    title: 'Approve Vendor Payment',
+                                                    message: 'This will post AP settlement. Continue?',
+                                                    confirmLabel: 'Approve',
+                                                    severity: 'critical',
+                                                },
+                                            })}
+                                        >
+                                            Approve
+                                        </AppLoadingButton>
+                                        <AppLoadingButton
+                                            size="small"
+                                            color="error"
+                                            loading={mutation.isPending(`vp-reject-${payment.id}`)}
+                                            loadingLabel="Rejecting..."
+                                            onClick={() => mutation.runRouterAction({
+                                                key: `vp-reject-${payment.id}`,
+                                                method: 'post',
+                                                url: route('procurement.vendor-payments.reject', payment.id),
+                                                successMessage: 'Vendor payment rejected.',
+                                                errorMessage: 'Failed to reject vendor payment.',
+                                                confirmConfig: {
+                                                    title: 'Reject Vendor Payment',
+                                                    message: 'Reject this vendor payment?',
+                                                    confirmLabel: 'Reject',
+                                                    severity: 'danger',
+                                                },
+                                            })}
+                                        >
+                                            Reject
+                                        </AppLoadingButton>
                                     </>
                                 )}
                                 <Button size="small" onClick={() => openHistory(payment)}>History</Button>
@@ -343,6 +419,7 @@ export default function Index({ payments, filters, summary = {}, vendors = [], p
                     <Button onClick={() => setHistoryOpen(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

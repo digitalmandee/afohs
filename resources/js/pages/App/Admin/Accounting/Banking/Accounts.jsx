@@ -153,7 +153,13 @@ export default function Accounts({ accounts, coaAccounts, filters, error = null 
                 {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
 
                 <SurfaceCard title="Live Filters" subtitle="Results update automatically while you refine account name, method, or activity state.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine bank accounts by search, method, and status."
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={4}>
                                 <TextField

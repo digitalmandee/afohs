@@ -181,7 +181,13 @@ export default function Index({ budgets, coaAccounts, filters, error }) {
                 ) : null}
 
                 <SurfaceCard title="Live Filters" subtitle="Results update automatically as you refine budget name, status, and budget period.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine budgets by fiscal year, status, and ownership."
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={4}>
                                 <TextField

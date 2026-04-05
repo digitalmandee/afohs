@@ -147,7 +147,13 @@ const LeaveApplication = () => {
                     <Box sx={{ mb: 2 }}>
                         <Grid container spacing={2}>
                             <Grid item xs={12} lg={8}>
-                                <FilterToolbar onReset={handleClearAllFilters}>
+                                <FilterToolbar
+                                    title="Filters"
+                                    subtitle="Set leave application filters and click Apply."
+                                    lowChrome
+                                    onApply={() => fetchApplications(1)}
+                                    onReset={handleClearAllFilters}
+                                >
                                 <Grid container spacing={1.25}>
                                     <Grid item xs={12} md={5}>
                                         <TextField

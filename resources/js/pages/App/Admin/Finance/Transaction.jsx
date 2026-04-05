@@ -252,6 +252,7 @@ export default function Transaction({ transactions, filters, users = [], transac
                     <FilterToolbar
                         compact
                         onReset={resetFilters}
+                        onApply={() => submitFilters(localFilters)}
                         actions={(
                             <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
                                 <Button

@@ -133,6 +133,10 @@ export default function RunningSalesOrders({ runningOrders = [], totalOrders = 0
 
                 <SurfaceCard title="Live Filters" subtitle="Adjust date range, restaurant, and cashier selections before opening or printing the report.">
                     <FilterToolbar
+                        title="Filters"
+                        subtitle="Set report criteria and click Apply."
+                        lowChrome
+                        onApply={applyFilters}
                         onReset={() => {
                             const cleared = {
                                 start_date: startDate || reportDate || '',
@@ -146,7 +150,6 @@ export default function RunningSalesOrders({ runningOrders = [], totalOrders = 0
                                 end_date: cleared.end_date,
                             }, { preserveState: true, preserveScroll: true, replace: true });
                         }}
-                        actions={<Button variant="contained" onClick={applyFilters}>Apply Range</Button>}
                     >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={3}>

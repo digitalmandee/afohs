@@ -127,7 +127,13 @@ export default function Deliveries({ deliveries, filters, summary = {}, error = 
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter by delivery status, channel, or recipient/provider response with live updates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine delivery queue by channel, status, and retry state."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField

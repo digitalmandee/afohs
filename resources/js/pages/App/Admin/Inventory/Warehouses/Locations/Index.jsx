@@ -43,11 +43,17 @@ export default function WarehouseLocationsIndex({ locations, warehouses = [], fi
         >
             {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
             <SurfaceCard title="Live Filters" subtitle="Search by warehouse, location code, or status.">
-                <FilterToolbar onReset={() => {
-                    const reset = { search: '', warehouse_id: '', status: '', per_page: localFilters.per_page || 25 };
-                    setLocalFilters(reset);
-                    applyFilters(reset);
-                }}>
+                <FilterToolbar
+                    onReset={() => {
+                        const reset = { search: '', warehouse_id: '', status: '', per_page: localFilters.per_page || 25 };
+                        setLocalFilters(reset);
+                        applyFilters(reset);
+                    }}
+                    onApply={() => applyFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine locations by search, warehouse, and status."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={5}>
                             <TextField

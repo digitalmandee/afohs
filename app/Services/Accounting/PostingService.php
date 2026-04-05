@@ -6,12 +6,14 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\User;
 use App\Services\Accounting\Support\AccountingPeriodGate;
+use App\Services\OperationalAuditLogger;
 use Illuminate\Support\Facades\DB;
 
 class PostingService
 {
     public function __construct(
-        private readonly AccountingPeriodGate $accountingPeriodGate
+        private readonly AccountingPeriodGate $accountingPeriodGate,
+        private readonly OperationalAuditLogger $operationalAuditLogger
     )
     {
     }
@@ -27,45 +29,121 @@ class PostingService
     ): JournalEntry
     {
         $createdBy = $this->resolveCreatedBy($createdBy);
-        $this->assertBalancedLines($lines);
+        $correlationId = request()?->attributes->get('correlation_id') ?: request()?->header('X-Correlation-ID');
 
-        return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId) {
-            $periodId = $this->accountingPeriodGate->resolveOpenPeriodId($entryDate);
-
-            $entry = JournalEntry::create([
-                'entry_no' => $this->generateEntryNo(),
+        $this->operationalAuditLogger->record([
+            'correlation_id' => is_string($correlationId) ? $correlationId : null,
+            'module' => 'accounting',
+            'entity_type' => $moduleType,
+            'entity_id' => (string) $moduleId,
+            'action' => 'accounting.posting_service.post.attempted',
+            'status' => 'attempted',
+            'severity' => 'info',
+            'message' => 'Posting service started journal posting.',
+            'context' => [
                 'entry_date' => $entryDate,
-                'description' => $description,
-                'status' => 'posted',
-                'module_type' => $moduleType,
-                'module_id' => $moduleId,
+                'line_count' => count($lines),
                 'tenant_id' => $tenantId,
-                'period_id' => $periodId,
-                'created_by' => $createdBy,
-                'posted_by' => $createdBy,
-                'posted_at' => now(),
-            ]);
+            ],
+        ]);
 
-            foreach ($lines as $line) {
-                JournalLine::create([
-                    'journal_entry_id' => $entry->id,
-                    'account_id' => $line['account_id'],
-                    'description' => $line['description'] ?? null,
-                    'debit' => $line['debit'] ?? 0,
-                    'credit' => $line['credit'] ?? 0,
-                    'vendor_id' => $line['vendor_id'] ?? null,
-                    'member_id' => $line['member_id'] ?? null,
-                    'employee_id' => $line['employee_id'] ?? null,
-                    'product_id' => $line['product_id'] ?? null,
-                    'warehouse_id' => $line['warehouse_id'] ?? null,
-                    'warehouse_location_id' => $line['warehouse_location_id'] ?? null,
-                    'reference_type' => $line['reference_type'] ?? null,
-                    'reference_id' => $line['reference_id'] ?? null,
+        try {
+            $this->assertBalancedLines($lines);
+
+            return DB::transaction(function () use ($moduleType, $moduleId, $entryDate, $description, $lines, $createdBy, $tenantId, $correlationId) {
+                $postingUniqueKey = "{$moduleType}|{$moduleId}";
+                $existing = JournalEntry::query()
+                    ->where('posting_unique_key', $postingUniqueKey)
+                    ->first();
+
+                if ($existing) {
+                    $this->operationalAuditLogger->record([
+                        'correlation_id' => is_string($correlationId) ? $correlationId : null,
+                        'module' => 'accounting',
+                        'entity_type' => $moduleType,
+                        'entity_id' => (string) $moduleId,
+                        'action' => 'accounting.posting_service.post.idempotent',
+                        'status' => 'posted',
+                        'severity' => 'info',
+                        'message' => 'Posting deduplicated via posting_unique_key.',
+                        'context' => [
+                            'journal_entry_id' => $existing->id,
+                            'posting_unique_key' => $postingUniqueKey,
+                        ],
+                    ]);
+                    return $existing;
+                }
+
+                $periodId = $this->accountingPeriodGate->resolveOpenPeriodId($entryDate);
+
+                $entry = JournalEntry::create([
+                    'entry_no' => $this->generateEntryNo(),
+                    'entry_date' => $entryDate,
+                    'description' => $description,
+                    'status' => 'posted',
+                    'module_type' => $moduleType,
+                    'module_id' => $moduleId,
+                    'posting_unique_key' => $postingUniqueKey,
+                    'tenant_id' => $tenantId,
+                    'period_id' => $periodId,
+                    'created_by' => $createdBy,
+                    'posted_by' => $createdBy,
+                    'posted_at' => now(),
                 ]);
-            }
 
-            return $entry;
-        });
+                foreach ($lines as $line) {
+                    JournalLine::create([
+                        'journal_entry_id' => $entry->id,
+                        'account_id' => $line['account_id'],
+                        'description' => $line['description'] ?? null,
+                        'debit' => $line['debit'] ?? 0,
+                        'credit' => $line['credit'] ?? 0,
+                        'vendor_id' => $line['vendor_id'] ?? null,
+                        'member_id' => $line['member_id'] ?? null,
+                        'employee_id' => $line['employee_id'] ?? null,
+                        'product_id' => $line['product_id'] ?? null,
+                        'warehouse_id' => $line['warehouse_id'] ?? null,
+                        'warehouse_location_id' => $line['warehouse_location_id'] ?? null,
+                        'reference_type' => $line['reference_type'] ?? null,
+                        'reference_id' => $line['reference_id'] ?? null,
+                    ]);
+                }
+
+                $this->operationalAuditLogger->record([
+                    'correlation_id' => is_string($correlationId) ? $correlationId : null,
+                    'module' => 'accounting',
+                    'entity_type' => $moduleType,
+                    'entity_id' => (string) $moduleId,
+                    'action' => 'accounting.posting_service.post.posted',
+                    'status' => 'posted',
+                    'severity' => 'info',
+                    'message' => 'Journal posted by posting service.',
+                    'context' => [
+                        'journal_entry_id' => $entry->id,
+                        'posting_unique_key' => $postingUniqueKey,
+                        'entry_date' => $entryDate,
+                    ],
+                ]);
+
+                return $entry;
+            });
+        } catch (\Throwable $e) {
+            $this->operationalAuditLogger->record([
+                'correlation_id' => is_string($correlationId) ? $correlationId : null,
+                'module' => 'accounting',
+                'entity_type' => $moduleType,
+                'entity_id' => (string) $moduleId,
+                'action' => 'accounting.posting_service.post.failed',
+                'status' => 'failed',
+                'severity' => 'error',
+                'message' => $e->getMessage(),
+                'context' => [
+                    'entry_date' => $entryDate,
+                    'line_count' => count($lines),
+                ],
+            ]);
+            throw $e;
+        }
     }
 
     private function resolveCreatedBy(?int $createdBy): ?int

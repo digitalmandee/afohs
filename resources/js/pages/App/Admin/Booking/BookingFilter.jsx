@@ -740,6 +740,11 @@ export default function RoomBookingFilter({
             {embedded ? (
                 <FilterToolbar
                     compact={false}
+                    title="Filters"
+                    subtitle="Set booking criteria and click Apply."
+                    lowChrome
+                    onApply={handleApply}
+                    showApply={false}
                     onReset={handleReset}
                     actions={
                         <Button

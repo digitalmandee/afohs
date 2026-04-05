@@ -918,6 +918,10 @@ export default function Index({ accounts, error = null }) {
                             setParentFilter('all');
                             setShowInactive(false);
                         }}
+                        onApply={() => {}}
+                        lowChrome
+                        title="Filters"
+                        subtitle="Refine COA tree by search, category, level, and parent branch."
                         actions={(
                             <Stack direction="row" spacing={0.75}>
                                 <Button size="small" variant="outlined" onClick={expandAll}>Expand All</Button>

@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Vendor extends Model
 {
@@ -74,5 +77,25 @@ class Vendor extends Model
     public function supplierAdvances()
     {
         return $this->hasMany(SupplierAdvance::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function media(): MorphMany
+    {
+        return $this->morphMany(Media::class, 'mediable');
+    }
+
+    public function profilePhoto(): MorphOne
+    {
+        return $this->morphOne(Media::class, 'mediable')->where('type', 'profile_photo')->latestOfMany();
     }
 }

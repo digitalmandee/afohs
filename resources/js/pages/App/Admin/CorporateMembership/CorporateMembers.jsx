@@ -328,12 +328,11 @@ const CorporateMembers = ({ members, memberCategories = [], cities = [] }) => {
                 >
                     <SurfaceCard title="Live Filters" subtitle="Results update automatically while you search or change any corporate member filter.">
                         <FilterToolbar
+                            title="Filters"
+                            subtitle="Adjust corporate member criteria and click Apply."
+                            lowChrome
+                            onApply={handleApplyFilters}
                             onReset={resetFilters}
-                            actions={
-                                <Button variant="contained" onClick={handleApplyFilters} sx={{ borderRadius: '14px', textTransform: 'none', backgroundColor: '#063455', '&:hover': { backgroundColor: '#052a42' } }}>
-                                    Search
-                                </Button>
-                            }
                         >
                             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
                                 <Autocomplete

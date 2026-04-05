@@ -71,6 +71,7 @@ class InventoryItemController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateItem($request);
+        $data = $this->withGeneratedSku($data);
         $mappings = $this->validatedVendorMappings($request);
 
         DB::transaction(function () use ($data, $request, $mappings) {
@@ -260,6 +261,32 @@ class InventoryItemController extends Controller
                 'currency' => $mapping['currency'] ?? 'PKR',
             ]);
         }
+    }
+
+    protected function withGeneratedSku(array $data): array
+    {
+        if (!empty(trim((string) ($data['sku'] ?? '')))) {
+            return $data;
+        }
+
+        $seed = ((int) InventoryItem::query()->max('id')) + 1;
+        $maxAttempts = 50;
+
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $candidate = sprintf('INV-%06d', $seed + $attempt);
+            $exists = InventoryItem::query()
+                ->where('sku', $candidate)
+                ->exists();
+
+            if (!$exists) {
+                $data['sku'] = $candidate;
+                return $data;
+            }
+        }
+
+        $data['sku'] = 'INV-' . now()->format('ymdHis');
+
+        return $data;
     }
 
     protected function redirectToIndex(Request $request)

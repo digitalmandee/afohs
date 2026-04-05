@@ -253,7 +253,13 @@ export default function History() {
                         title="Live Filters"
                         subtitle="Pick an employee and adjust the date range. Results refresh automatically."
                     >
-                        <FilterToolbar onReset={resetFilters}>
+                        <FilterToolbar
+                            title="Filters"
+                            subtitle="Set payroll history filters and click Apply."
+                            lowChrome
+                            onApply={() => fetchHistory(employee, fromDate, toDate)}
+                            onReset={resetFilters}
+                        >
                             <Grid container spacing={1.25}>
                                 <Grid item xs={12} md={4}>
                                     <Autocomplete

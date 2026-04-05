@@ -159,7 +159,13 @@ export default function VoucherDashboard({ vouchers, stats = {}, filters = {} })
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Filter vouchers by code, recipient account, type, status, and validity range with live updates.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    title="Filters"
+                    subtitle="Refine voucher results and click Apply."
+                    lowChrome
+                    onApply={() => submitFilters(localFilters)}
+                    onReset={resetFilters}
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={3}>
                             <TextField

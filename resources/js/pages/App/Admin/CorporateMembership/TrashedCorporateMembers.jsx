@@ -154,7 +154,13 @@ export default function TrashedCorporateMembers({ members, filters = {} }) {
             ]}
         >
             <SurfaceCard title="Live Filters" subtitle="Search updates automatically while you type.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    title="Filters"
+                    subtitle="Search deleted corporate members and click Apply."
+                    lowChrome
+                    onApply={() => submitFilters(localFilters)}
+                    onReset={resetFilters}
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={8}>
                             <TextField

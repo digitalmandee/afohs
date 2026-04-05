@@ -13,6 +13,7 @@ class JournalEntry extends Model
         'status',
         'module_type',
         'module_id',
+        'posting_unique_key',
         'tenant_id',
         'period_id',
         'created_by',

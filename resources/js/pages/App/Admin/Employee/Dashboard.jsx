@@ -371,7 +371,13 @@ export default function EmployeeDashboard() {
                 </SurfaceCard>
 
                 <SurfaceCard title="Live Filters" subtitle="Employee results update automatically while you search or refine HR filters.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Set employee filters and click Apply."
+                        lowChrome
+                        onApply={() => submitFilters(filtersRef.current)}
+                        onReset={resetFilters}
+                    >
                         {fetchError ? (
                             <Alert severity="warning" variant="outlined">
                                 {fetchError}

@@ -1,8 +1,13 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Box, Card, CardContent, Checkbox, Chip, FormControlLabel, Grid, MenuItem, TextField, Typography } from '@mui/material';
+import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
+import useMutationAction from '@/hooks/useMutationAction';
+import { formatAmount } from '@/lib/formatting';
 
-export default function Index({ advances, vendors = [] }) {
+export default function Index({ advances, vendors = [], openBills = [], poLockOverrideAllowed = false }) {
+  const mutation = useMutationAction();
   const { data, setData, post, processing, errors, reset } = useForm({
     vendor_id: '',
     purchase_order_id: '',
@@ -12,11 +17,67 @@ export default function Index({ advances, vendors = [] }) {
     reference: '',
     remarks: '',
   });
+  const [applyState, setApplyState] = React.useState({});
 
   const submit = (e) => {
     e.preventDefault();
-    post(route('procurement.supplier-advances.store'), {
-      onSuccess: () => reset('purchase_order_id', 'payment_account_id', 'amount', 'reference', 'remarks'),
+    mutation.runAction({
+      key: 'sa-create',
+      requireConfirm: true,
+      confirmConfig: {
+        title: 'Create Supplier Advance',
+        message: 'Create this supplier advance and save the draft?',
+        confirmLabel: 'Create',
+        severity: 'info',
+      },
+      successMessage: 'Supplier advance created.',
+      errorMessage: 'Failed to create supplier advance.',
+      action: ({ onSuccess, onError, onFinish }) => post(route('procurement.supplier-advances.store'), {
+        onSuccess: () => {
+          reset('purchase_order_id', 'payment_account_id', 'amount', 'reference', 'remarks');
+          onSuccess();
+        },
+        onError,
+        onFinish,
+      }),
+    });
+  };
+
+  const setApplyField = (advanceId, field, value) => {
+    setApplyState((prev) => ({
+      ...prev,
+      [advanceId]: {
+        ...(prev[advanceId] || {
+          vendor_bill_id: '',
+          amount: '',
+          override_po_lock: false,
+          override_reason: '',
+        }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const applyAdvance = (row) => {
+    const rowState = applyState[row.id] || {};
+    mutation.runRouterAction({
+      key: `sa-apply-${row.id}`,
+      method: 'post',
+      url: route('procurement.supplier-advances.apply', row.id),
+      data: {
+        vendor_bill_id: rowState.vendor_bill_id,
+        amount: rowState.amount,
+        override_po_lock: !!rowState.override_po_lock,
+        override_reason: rowState.override_reason || '',
+      },
+      successMessage: 'Supplier advance applied to bill.',
+      errorMessage: 'Failed to apply supplier advance.',
+      confirmConfig: {
+        title: 'Apply Supplier Advance',
+        message: 'Apply this amount to the selected bill now?',
+        confirmLabel: 'Apply',
+        severity: 'warning',
+      },
     });
   };
 
@@ -48,7 +109,9 @@ export default function Index({ advances, vendors = [] }) {
                 <TextField label="Remarks" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth />
               </Grid>
             </Grid>
-            <Button type="submit" variant="contained" disabled={processing} sx={{ mt: 2 }}>Create Advance</Button>
+            <AppLoadingButton type="submit" variant="contained" loading={processing || mutation.isPending('sa-create')} loadingLabel="Saving..." sx={{ mt: 2 }}>
+              Create Advance
+            </AppLoadingButton>
           </form>
         </CardContent>
       </Card>
@@ -57,17 +120,152 @@ export default function Index({ advances, vendors = [] }) {
         <CardContent>
           <Typography variant="h6" sx={{ mb: 1 }}>Advance Register</Typography>
           {(advances?.data || []).map((row) => (
-            <Box key={row.id} sx={{ py: 1, borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="body2">{row.advance_no} · {row.vendor?.name} · {row.status}</Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" onClick={() => router.post(route('procurement.supplier-advances.submit', row.id))}>Submit</Button>
-                <Button size="small" color="success" onClick={() => router.post(route('procurement.supplier-advances.approve', row.id))}>Approve</Button>
-                <Button size="small" color="error" onClick={() => router.post(route('procurement.supplier-advances.reject', row.id))}>Reject</Button>
+            <Box key={row.id} sx={{ py: 1.5, borderBottom: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {row.advance_no} · {row.vendor?.name} · {row.status}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip size="small" label={`Total: ${formatAmount(row.amount)}`} />
+                  <Chip size="small" label={`Applied: ${formatAmount(row.applied_amount)}`} />
+                  <Chip size="small" color="primary" variant="outlined" label={`Remaining: ${formatAmount(row.remaining_amount)}`} />
+                  <Chip size="small" variant="outlined" label={`PO: ${row.linked_po_no || 'Unlinked'}`} />
+                </Box>
+              </Box>
+
+              {Array.isArray(row.applied_to_bills) && row.applied_to_bills.length > 0 ? (
+                <Alert severity="info" sx={{ py: 0.25 }}>
+                  Applied to: {row.applied_to_bills.map((entry) => `${entry.bill_no || `Bill#${entry.vendor_bill_id}`} (${formatAmount(entry.amount)})`).join(', ')}
+                </Alert>
+              ) : null}
+
+              <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', md: '2fr 1fr auto auto' }, alignItems: 'center' }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Apply To Bill"
+                  value={applyState[row.id]?.vendor_bill_id || ''}
+                  onChange={(e) => setApplyField(row.id, 'vendor_bill_id', e.target.value)}
+                >
+                  {openBills
+                    .filter((bill) => String(bill.vendor_id) === String(row.vendor_id))
+                    .map((bill) => (
+                      <MenuItem key={bill.id} value={bill.id}>
+                        {bill.bill_no} · Outstanding {formatAmount(bill.outstanding)}
+                      </MenuItem>
+                    ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  label="Apply Amount"
+                  type="number"
+                  value={applyState[row.id]?.amount || ''}
+                  onChange={(e) => setApplyField(row.id, 'amount', e.target.value)}
+                  inputProps={{ min: 0, step: '0.01' }}
+                />
+                {poLockOverrideAllowed ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    <FormControlLabel
+                      sx={{ m: 0 }}
+                      control={(
+                        <Checkbox
+                          size="small"
+                          checked={!!applyState[row.id]?.override_po_lock}
+                          onChange={(e) => setApplyField(row.id, 'override_po_lock', e.target.checked)}
+                        />
+                      )}
+                      label="Admin PO override"
+                    />
+                    <TextField
+                      size="small"
+                      label="Override Reason"
+                      value={applyState[row.id]?.override_reason || ''}
+                      onChange={(e) => setApplyField(row.id, 'override_reason', e.target.value)}
+                      disabled={!applyState[row.id]?.override_po_lock}
+                    />
+                  </Box>
+                ) : <Box />}
+                <AppLoadingButton
+                  size="small"
+                  variant="contained"
+                  loading={mutation.isPending(`sa-apply-${row.id}`)}
+                  loadingLabel="Applying..."
+                  onClick={() => applyAdvance(row)}
+                  disabled={Number(row.remaining_amount || 0) <= 0}
+                >
+                  Apply
+                </AppLoadingButton>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <AppLoadingButton
+                  size="small"
+                  loading={mutation.isPending(`sa-submit-${row.id}`)}
+                  loadingLabel="Submitting..."
+                  onClick={() => mutation.runRouterAction({
+                    key: `sa-submit-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.supplier-advances.submit', row.id),
+                    successMessage: 'Supplier advance submitted.',
+                    errorMessage: 'Failed to submit supplier advance.',
+                    confirmConfig: {
+                      title: 'Submit Supplier Advance',
+                      message: 'Submit this supplier advance for approval?',
+                      confirmLabel: 'Submit',
+                      severity: 'warning',
+                    },
+                  })}
+                >
+                  Submit
+                </AppLoadingButton>
+                <AppLoadingButton
+                  size="small"
+                  color="success"
+                  loading={mutation.isPending(`sa-approve-${row.id}`)}
+                  loadingLabel="Approving..."
+                  onClick={() => mutation.runRouterAction({
+                    key: `sa-approve-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.supplier-advances.approve', row.id),
+                    successMessage: 'Supplier advance approved.',
+                    errorMessage: 'Failed to approve supplier advance.',
+                    confirmConfig: {
+                      title: 'Approve Supplier Advance',
+                      message: 'Approve and post this supplier advance?',
+                      confirmLabel: 'Approve',
+                      severity: 'critical',
+                    },
+                  })}
+                >
+                  Approve
+                </AppLoadingButton>
+                <AppLoadingButton
+                  size="small"
+                  color="error"
+                  loading={mutation.isPending(`sa-reject-${row.id}`)}
+                  loadingLabel="Rejecting..."
+                  onClick={() => mutation.runRouterAction({
+                    key: `sa-reject-${row.id}`,
+                    method: 'post',
+                    url: route('procurement.supplier-advances.reject', row.id),
+                    successMessage: 'Supplier advance rejected.',
+                    errorMessage: 'Failed to reject supplier advance.',
+                    confirmConfig: {
+                      title: 'Reject Supplier Advance',
+                      message: 'Reject this supplier advance?',
+                      confirmLabel: 'Reject',
+                      severity: 'danger',
+                    },
+                  })}
+                >
+                  Reject
+                </AppLoadingButton>
               </Box>
             </Box>
           ))}
         </CardContent>
       </Card>
+      <ConfirmActionDialog {...mutation.confirmDialogProps} />
     </Box>
   );
 }

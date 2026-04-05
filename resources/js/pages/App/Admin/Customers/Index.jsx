@@ -158,7 +158,13 @@ export default function GuestIndex({ customerData, filters = {}, guestTypes = []
                 </Grid>
 
                 <SurfaceCard title="Live Filters" subtitle="Refine guest records by guest number, name, contact, email, sponsor, or guest type.">
-                    <FilterToolbar onReset={resetFilters}>
+                    <FilterToolbar
+                        title="Filters"
+                        subtitle="Refine guest records and click Apply."
+                        lowChrome
+                        onApply={() => submitFilters(localFilters)}
+                        onReset={resetFilters}
+                    >
                         <Grid container spacing={2}>
                             <Grid item xs={12} md={7}>
                                 <TextField

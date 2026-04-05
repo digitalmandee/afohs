@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
+use App\Models\Branch;
 use App\Models\Department;
 use App\Models\InventoryItem;
 use App\Models\PurchaseOrder;
@@ -12,8 +13,11 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Warehouse;
+use App\Services\Procurement\ProcurementDocumentNumberService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -27,6 +31,9 @@ class PurchaseRequisitionController extends Controller
         $query = PurchaseRequisition::query()
             ->with([
                 'tenant:id,name',
+                'branch:id,name',
+                'warehouse:id,name',
+                'latestPurchaseOrder:id,purchase_requisition_id,po_no,status',
                 'department:id,name',
                 'items:id,purchase_requisition_id,inventory_item_id,qty_requested,qty_converted,estimated_unit_cost',
                 'items.inventoryItem:id,name,sku',
@@ -45,6 +52,25 @@ class PurchaseRequisitionController extends Controller
         }
 
         $requisitions = $query->latest('id')->paginate($perPage)->withQueryString();
+        $requisitions->getCollection()->transform(function (PurchaseRequisition $requisition) {
+            $requestFor = (string) ($requisition->request_for ?: ($requisition->tenant_id ? 'restaurant' : 'other'));
+            $locationLabel = match ($requestFor) {
+                'restaurant' => $requisition->tenant?->name ?: 'Restaurant',
+                'office' => $requisition->branch?->name ?: 'Head Office',
+                'warehouse' => $requisition->warehouse?->name ?: 'Warehouse',
+                default => $requisition->other_location_label ?: 'Other',
+            };
+            if (!$requisition->request_for && !$requisition->tenant_id) {
+                $locationLabel = trim("{$locationLabel} (legacy)");
+            }
+
+            $requisition->request_for_label = ucfirst($requestFor);
+            $requisition->location_label = $locationLabel;
+            $requisition->has_remaining_qty = $requisition->items->contains(function ($item) {
+                return ((float) $item->qty_requested - (float) $item->qty_converted) > 0.0001;
+            });
+            return $requisition;
+        });
 
         return Inertia::render('App/Admin/Procurement/PurchaseRequisitions/Index', [
             'requisitions' => $requisitions,
@@ -63,12 +89,31 @@ class PurchaseRequisitionController extends Controller
 
     public function create()
     {
+        $departments = Department::query()
+            ->where(function ($query) {
+                $query->where('status', 'active')
+                    ->orWhere('status', true)
+                    ->orWhere('status', 1);
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $departmentOptionsByRequestFor = $this->buildDepartmentOptionsByRequestFor($departments);
+        $headOfficeBranchId = config('procurement.head_office_branch_id');
+        $headOfficeBranch = $headOfficeBranchId ? Branch::query()->find($headOfficeBranchId) : null;
+
         return Inertia::render('App/Admin/Procurement/PurchaseRequisitions/Create', [
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
-            'departments' => Department::query()->orderBy('name')->get(['id', 'name']),
+            'departments' => $departments,
+            'departmentsByRequestFor' => $departmentOptionsByRequestFor,
+            'requestForOptions' => $this->requestForOptions(),
+            'warehouses' => Warehouse::query()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'branches' => Branch::query()->where('status', true)->orderBy('name')->get(['id', 'name']),
+            'headOfficeBranchId' => $headOfficeBranch?->id,
+            'headOfficeBranchName' => $headOfficeBranch?->name,
             'requesters' => User::query()->orderBy('name')->get(['id', 'name']),
             'inventoryItems' => InventoryItem::query()
-                ->procurementEligible()
+                ->requisitionEligible()
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'default_unit_cost']),
         ]);
@@ -77,7 +122,11 @@ class PurchaseRequisitionController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'request_for' => 'required|in:restaurant,office,warehouse,other',
             'tenant_id' => 'nullable|exists:tenants,id',
+            'branch_id' => 'nullable|exists:branches,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'other_location_label' => 'nullable|string|max:120',
             'department_id' => 'nullable|exists:departments,id',
             'subdepartment_id' => 'nullable|exists:subdepartments,id',
             'requested_by' => 'nullable|exists:users,id',
@@ -91,11 +140,26 @@ class PurchaseRequisitionController extends Controller
             'items.*.remarks' => 'nullable|string',
         ]);
 
+        $data = $this->normalizeRequestContext($data);
+
+        if (!empty($data['department_id']) && !$this->isDepartmentAllowedForRequestFor(
+            (int) $data['department_id'],
+            (string) $data['request_for']
+        )) {
+            throw ValidationException::withMessages([
+                'department_id' => 'Selected department is not allowed for this request type.',
+            ]);
+        }
+
         $requisition = DB::transaction(function () use ($data) {
             $documentNo = 'PR-' . now()->format('YmdHis');
             $requisition = PurchaseRequisition::query()->create([
                 'pr_no' => $documentNo,
+                'request_for' => $data['request_for'],
                 'tenant_id' => $data['tenant_id'] ?? null,
+                'branch_id' => $data['branch_id'] ?? null,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'other_location_label' => $data['other_location_label'] ?? null,
                 'department_id' => $data['department_id'] ?? null,
                 'subdepartment_id' => $data['subdepartment_id'] ?? null,
                 'requested_by' => $data['requested_by'] ?? auth()->id(),
@@ -151,6 +215,56 @@ class PurchaseRequisitionController extends Controller
         ]);
 
         return back()->with('success', 'Purchase requisition submitted.');
+    }
+
+    public function show(PurchaseRequisition $purchaseRequisition)
+    {
+        $purchaseRequisition->load([
+            'tenant:id,name',
+            'branch:id,name',
+            'warehouse:id,name',
+            'department:id,name',
+            'subdepartment:id,name',
+            'requester:id,name',
+            'approver:id,name',
+            'items:id,purchase_requisition_id,inventory_item_id,qty_requested,qty_converted,estimated_unit_cost,remarks',
+            'items.inventoryItem:id,name,sku',
+        ]);
+
+        $approvalHistory = ApprovalAction::query()
+            ->where('document_type', 'purchase_requisition')
+            ->where('document_id', $purchaseRequisition->id)
+            ->latest('id')
+            ->get(['id', 'document_id', 'action', 'remarks', 'action_by', 'created_at']);
+        $historyUsers = User::query()
+            ->whereIn('id', $approvalHistory->pluck('action_by')->filter()->unique()->values())
+            ->pluck('name', 'id');
+        $approvalHistory = $approvalHistory->map(function (ApprovalAction $action) use ($historyUsers) {
+            $action->action_by_name = $historyUsers[$action->action_by] ?? null;
+            return $action;
+        })->values();
+
+        $requestFor = (string) ($purchaseRequisition->request_for ?: ($purchaseRequisition->tenant_id ? 'restaurant' : 'other'));
+        $locationLabel = match ($requestFor) {
+            'restaurant' => $purchaseRequisition->tenant?->name ?: 'Restaurant',
+            'office' => $purchaseRequisition->branch?->name ?: 'Head Office',
+            'warehouse' => $purchaseRequisition->warehouse?->name ?: 'Warehouse',
+            default => $purchaseRequisition->other_location_label ?: 'Other',
+        };
+        if (!$purchaseRequisition->request_for && !$purchaseRequisition->tenant_id) {
+            $locationLabel = trim("{$locationLabel} (legacy)");
+        }
+
+        return Inertia::render('App/Admin/Procurement/PurchaseRequisitions/Show', [
+            'requisition' => $purchaseRequisition,
+            'meta' => [
+                'request_for_label' => ucfirst($requestFor),
+                'location_label' => $locationLabel,
+                'total_qty' => (float) $purchaseRequisition->items->sum('qty_requested'),
+                'total_estimated' => (float) $purchaseRequisition->items->sum(fn ($item) => (float) $item->qty_requested * (float) $item->estimated_unit_cost),
+            ],
+            'history' => $approvalHistory,
+        ]);
     }
 
     public function approve(PurchaseRequisition $purchaseRequisition)
@@ -215,11 +329,26 @@ class PurchaseRequisitionController extends Controller
         $po = DB::transaction(function () use ($purchaseRequisition, $data) {
             $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
 
+            $tenantId = $warehouse->tenant_id ?: $purchaseRequisition->tenant_id;
+            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            if ($branchId <= 0) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'Branch mapping missing for numbering. Assign branch to selected context before converting to PO.',
+                ]);
+            }
+
+            $poNo = app(ProcurementDocumentNumberService::class)->generate(
+                documentType: 'PO',
+                branchId: $branchId,
+                documentDate: $data['order_date']
+            );
+
             $po = PurchaseOrder::query()->create([
-                'po_no' => 'PO-' . now()->format('YmdHis'),
+                'po_no' => $poNo,
                 'vendor_id' => $data['vendor_id'],
-                'tenant_id' => $warehouse->tenant_id ?: $purchaseRequisition->tenant_id,
+                'tenant_id' => $tenantId,
                 'warehouse_id' => $warehouse->id,
+                'purchase_requisition_id' => $purchaseRequisition->id,
                 'order_date' => $data['order_date'],
                 'expected_date' => $data['expected_date'] ?? null,
                 'status' => 'draft',
@@ -267,5 +396,143 @@ class PurchaseRequisitionController extends Controller
         });
 
         return back()->with('success', "PO {$po->po_no} created from requisition.");
+    }
+
+    private function requestForOptions(): array
+    {
+        return [
+            ['value' => 'restaurant', 'label' => 'Restaurant'],
+            ['value' => 'office', 'label' => 'Office'],
+            ['value' => 'warehouse', 'label' => 'Warehouse'],
+            ['value' => 'other', 'label' => 'Other'],
+        ];
+    }
+
+    private function normalizeRequestContext(array $data): array
+    {
+        $requestFor = (string) ($data['request_for'] ?? 'restaurant');
+
+        $normalized = $data;
+        $normalized['other_location_label'] = isset($normalized['other_location_label'])
+            ? trim((string) $normalized['other_location_label'])
+            : null;
+
+        if ($requestFor === 'restaurant') {
+            if (empty($normalized['tenant_id'])) {
+                throw ValidationException::withMessages([
+                    'tenant_id' => 'Restaurant is required when request type is Restaurant.',
+                ]);
+            }
+            $normalized['branch_id'] = null;
+            $normalized['warehouse_id'] = null;
+            $normalized['other_location_label'] = null;
+            return $normalized;
+        }
+
+        if ($requestFor === 'office') {
+            $headOfficeBranchId = config('procurement.head_office_branch_id');
+            if (!$headOfficeBranchId || !Branch::query()->whereKey($headOfficeBranchId)->exists()) {
+                throw ValidationException::withMessages([
+                    'request_for' => 'Head Office branch is not configured. Set procurement.head_office_branch_id.',
+                ]);
+            }
+
+            $normalized['tenant_id'] = null;
+            $normalized['branch_id'] = (int) $headOfficeBranchId;
+            $normalized['warehouse_id'] = null;
+            $normalized['other_location_label'] = null;
+            return $normalized;
+        }
+
+        if ($requestFor === 'warehouse') {
+            if (empty($normalized['warehouse_id'])) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'Warehouse is required when request type is Warehouse.',
+                ]);
+            }
+            $normalized['tenant_id'] = null;
+            $normalized['branch_id'] = null;
+            $normalized['other_location_label'] = null;
+            return $normalized;
+        }
+
+        if (empty($normalized['other_location_label'])) {
+            throw ValidationException::withMessages([
+                'other_location_label' => 'Location / Business Unit is required when request type is Other.',
+            ]);
+        }
+
+        $normalized['tenant_id'] = null;
+        $normalized['branch_id'] = null;
+        $normalized['warehouse_id'] = null;
+
+        return $normalized;
+    }
+
+    private function buildDepartmentOptionsByRequestFor(Collection $departments): array
+    {
+        $departmentMap = [];
+
+        foreach (array_keys($this->departmentRules()) as $requestFor) {
+            $allowedIds = $this->allowedDepartmentIdsForRequestFor($departments, $requestFor);
+            $departmentMap[$requestFor] = $departments
+                ->whereIn('id', $allowedIds)
+                ->values()
+                ->map(fn (Department $department) => ['id' => $department->id, 'name' => $department->name])
+                ->all();
+        }
+
+        return $departmentMap;
+    }
+
+    private function isDepartmentAllowedForRequestFor(int $departmentId, string $requestFor): bool
+    {
+        $departments = Department::query()
+            ->where(function ($query) {
+                $query->where('status', 'active')
+                    ->orWhere('status', true)
+                    ->orWhere('status', 1);
+            })
+            ->get(['id', 'name']);
+
+        $allowedIds = $this->allowedDepartmentIdsForRequestFor($departments, $requestFor);
+        return in_array($departmentId, $allowedIds, true);
+    }
+
+    private function allowedDepartmentIdsForRequestFor(Collection $departments, string $requestFor): array
+    {
+        $rules = $this->departmentRules();
+        $keywords = $rules[$requestFor] ?? [];
+
+        if (empty($keywords)) {
+            return $departments->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
+
+        return $departments
+            ->filter(function (Department $department) use ($keywords) {
+                $name = Str::lower((string) $department->name);
+                foreach ($keywords as $keyword) {
+                    if (Str::contains($name, Str::lower((string) $keyword))) {
+                        return true;
+                    }
+                }
+                return false;
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    private function departmentRules(): array
+    {
+        $configuredRules = config('procurement.request_for_department_rules', []);
+
+        return array_merge([
+            'restaurant' => [],
+            'office' => [],
+            'warehouse' => [],
+            'other' => [],
+        ], is_array($configuredRules) ? $configuredRules : []);
     }
 }

@@ -150,7 +150,13 @@ export default function PayablesAging({ rows, summary, filters }) {
             </SurfaceCard>
 
             <SurfaceCard title="Live Filters" subtitle="Results update automatically as you narrow by bill text, aging bucket, or bill-date range.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine payables aging by vendor, restaurant, bucket, and period."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={4}>
                             <TextField

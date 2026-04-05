@@ -144,7 +144,13 @@ export default function Approvals({ entries, filters = {}, approvalPolicy, summa
             </Grid>
 
             <SurfaceCard title="Live Filters" subtitle="Search by journal number or description with the same live filter behavior used across accounting registers.">
-                <FilterToolbar onReset={resetFilters}>
+                <FilterToolbar
+                    onReset={resetFilters}
+                    onApply={() => submitFilters(localFilters)}
+                    lowChrome
+                    title="Filters"
+                    subtitle="Refine approval inbox by module, step, and age."
+                >
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={6}>
                             <TextField
