@@ -20,6 +20,8 @@ class AccountingVoucherMappingController extends Controller
 {
     public function index()
     {
+        $this->autoAssignVendorDefaults();
+
         $defaults = Setting::getGroup('accounting_voucher_defaults');
         $payableDefault = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
         $advanceDefault = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
@@ -265,6 +267,8 @@ class AccountingVoucherMappingController extends Controller
             'default_receivable_account_id' => (int) $data['default_receivable_account_id'],
         ]);
 
+        $this->autoAssignVendorDefaults();
+
         return redirect()->back()->with('success', 'Voucher default accounts updated.');
     }
 
@@ -277,5 +281,58 @@ class AccountingVoucherMappingController extends Controller
         }
 
         return null;
+    }
+
+    private function autoAssignVendorDefaults(): void
+    {
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $payableDefault = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $advanceDefault = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+
+        $payableValid = $this->isValidPostableAccountId($payableDefault);
+        $advanceValid = $this->isValidPostableAccountId($advanceDefault);
+
+        if (!$payableValid && !$advanceValid) {
+            return;
+        }
+
+        Vendor::query()
+            ->where('status', 'active')
+            ->where(function ($query) use ($payableValid, $advanceValid) {
+                if ($payableValid) {
+                    $query->whereNull('payable_account_id');
+                }
+                if ($advanceValid) {
+                    $method = $payableValid ? 'orWhereNull' : 'whereNull';
+                    $query->{$method}('advance_account_id');
+                }
+            })
+            ->chunkById(100, function ($vendors) use ($payableDefault, $advanceDefault, $payableValid, $advanceValid) {
+                foreach ($vendors as $vendor) {
+                    $updates = [];
+                    if ($payableValid && !$vendor->payable_account_id) {
+                        $updates['payable_account_id'] = $payableDefault;
+                    }
+                    if ($advanceValid && !$vendor->advance_account_id) {
+                        $updates['advance_account_id'] = $advanceDefault;
+                    }
+                    if (!empty($updates)) {
+                        $vendor->update($updates);
+                    }
+                }
+            });
+    }
+
+    private function isValidPostableAccountId(int $accountId): bool
+    {
+        if ($accountId <= 0) {
+            return false;
+        }
+
+        return CoaAccount::query()
+            ->whereKey($accountId)
+            ->where('is_active', true)
+            ->where('is_postable', true)
+            ->exists();
     }
 }

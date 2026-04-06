@@ -102,6 +102,7 @@ class AccountingVoucherController extends Controller
 
     public function create()
     {
+        $this->autoAssignVendorDefaultMappings();
         return Inertia::render('App/Admin/Accounting/Vouchers/Create', $this->formPayload(null));
     }
 
@@ -299,6 +300,8 @@ class AccountingVoucherController extends Controller
 
     public function show(AccountingVoucher $voucher)
     {
+        $this->autoAssignVendorDefaultMappings();
+
         $voucher->load(['lines.account', 'paymentAccount', 'tenant', 'expenseType', 'template']);
 
         $voucher->load([
@@ -320,6 +323,54 @@ class AccountingVoucherController extends Controller
             'allocations',
         ]);
 
+        $approvalTrail = ApprovalAction::query()
+            ->where('document_type', 'accounting_voucher')
+            ->where('document_id', $voucher->id)
+            ->latest('id')
+            ->get();
+
+        $recentOperationalLogs = OperationalAuditLog::query()
+            ->with('actor:id,name,email')
+            ->where('module', 'accounting')
+            ->whereIn('entity_type', ['accounting_voucher', 'voucher', AccountingVoucher::class, class_basename(AccountingVoucher::class)])
+            ->where('entity_id', (string) $voucher->id)
+            ->latest('id')
+            ->limit(20)
+            ->get(['id', 'created_at', 'action', 'status', 'severity', 'message', 'correlation_id', 'actor_id', 'context_json']);
+
+        $auditEvents = collect()
+            ->concat($approvalTrail->map(function (ApprovalAction $item) {
+                return [
+                    'id' => 'approval-' . $item->id,
+                    'source' => 'workflow',
+                    'action' => (string) $item->action,
+                    'status' => 'completed',
+                    'severity' => 'info',
+                    'message' => (string) ($item->remarks ?: ucfirst((string) $item->action)),
+                    'created_at' => optional($item->created_at)->toDateTimeString(),
+                    'actor' => null,
+                    'correlation_id' => null,
+                ];
+            }))
+            ->concat($recentOperationalLogs->map(function (OperationalAuditLog $log) {
+                return [
+                    'id' => 'ops-' . $log->id,
+                    'source' => 'operational',
+                    'action' => (string) $log->action,
+                    'status' => (string) ($log->status ?: 'completed'),
+                    'severity' => (string) ($log->severity ?: 'info'),
+                    'message' => (string) ($log->message ?: '-'),
+                    'created_at' => optional($log->created_at)->toDateTimeString(),
+                    'actor' => $log->actor ? [
+                        'name' => $log->actor->name,
+                        'email' => $log->actor->email,
+                    ] : null,
+                    'correlation_id' => (string) ($log->correlation_id ?: ''),
+                ];
+            }))
+            ->sortByDesc('created_at')
+            ->values();
+
         return Inertia::render('App/Admin/Accounting/Vouchers/Show', [
             'voucher' => $voucher,
             'allocations' => $voucher->allocations->map(function (AccountingVoucherAllocation $allocation) {
@@ -337,18 +388,9 @@ class AccountingVoucherController extends Controller
                     'allocated_at' => optional($allocation->allocated_at)->toDateTimeString(),
                 ];
             })->values(),
-            'approvalTrail' => ApprovalAction::query()
-                ->where('document_type', 'accounting_voucher')
-                ->where('document_id', $voucher->id)
-                ->latest('id')
-                ->get(),
-            'recentOperationalLogs' => OperationalAuditLog::query()
-                ->where('module', 'accounting')
-                ->whereIn('entity_type', ['accounting_voucher', 'voucher', AccountingVoucher::class, class_basename(AccountingVoucher::class)])
-                ->where('entity_id', (string) $voucher->id)
-                ->latest('id')
-                ->limit(8)
-                ->get(['id', 'created_at', 'action', 'status', 'severity', 'message', 'correlation_id']),
+            'approvalTrail' => $approvalTrail,
+            'recentOperationalLogs' => $recentOperationalLogs,
+            'auditEvents' => $auditEvents,
         ]);
     }
 
@@ -398,14 +440,14 @@ class AccountingVoucherController extends Controller
         $payload = $this->buildPrintPayload($voucher);
         $payload['autoPrint'] = true;
 
-        return response()->view('accounting.reports.branded', $payload);
+        return response()->view('accounting.vouchers.document', $payload);
     }
 
     public function pdf(AccountingVoucher $voucher)
     {
         $payload = $this->buildPrintPayload($voucher);
 
-        return Pdf::loadView('accounting.reports.branded', $payload)
+        return Pdf::loadView('accounting.vouchers.document', $payload)
             ->setPaper('a4', 'portrait')
             ->download(sprintf('accounting-voucher-%s.pdf', $voucher->voucher_no));
     }
@@ -416,6 +458,7 @@ class AccountingVoucherController extends Controller
             return redirect()->route('accounting.vouchers.index')->with('error', 'Only draft vouchers can be edited.');
         }
 
+        $this->autoAssignVendorDefaultMappings();
         $voucher->load(['lines.account', 'lines.department', 'media']);
 
         return Inertia::render('App/Admin/Accounting/Vouchers/Edit', $this->formPayload($voucher));
@@ -468,6 +511,11 @@ class AccountingVoucherController extends Controller
             $this->syncAttachments($voucher, $request);
             $this->maybeSaveTemplate($request, $data);
             $this->logAction($voucher->id, 'created', 'Accounting voucher draft created.', $request->user()?->id);
+            $this->recordOperationalEvent($voucher->id, 'accounting.voucher.created', 'completed', 'info', 'Accounting voucher draft created.', $request->user()?->id, [
+                'voucher_no' => $voucher->voucher_no,
+                'voucher_type' => $voucher->voucher_type,
+                'entry_mode' => $voucher->entry_mode,
+            ]);
             $this->applyIntentState($voucher, $intent, $request->user()?->id);
 
             return $voucher;
@@ -530,6 +578,11 @@ class AccountingVoucherController extends Controller
             $this->maybeSaveTemplate($request, $data);
             $this->applyIntentState($voucher, $intent, $request->user()?->id);
             $this->logAction($voucher->id, 'updated', 'Accounting voucher draft updated.', $request->user()?->id);
+            $this->recordOperationalEvent($voucher->id, 'accounting.voucher.updated', 'completed', 'info', 'Accounting voucher draft updated.', $request->user()?->id, [
+                'voucher_no' => $voucher->voucher_no,
+                'voucher_type' => $voucher->voucher_type,
+                'entry_mode' => $voucher->entry_mode,
+            ]);
         });
 
         if ($intent === 'post') {
@@ -621,6 +674,11 @@ class AccountingVoucherController extends Controller
 
         $media->delete();
         $this->logAction($voucher->id, 'attachment_removed', 'Voucher attachment removed before posting.', $request->user()?->id);
+        $this->recordOperationalEvent($voucher->id, 'accounting.voucher.attachment_removed', 'completed', 'warning', 'Voucher attachment removed before posting.', $request->user()?->id, [
+            'voucher_no' => $voucher->voucher_no,
+            'media_id' => $media->id,
+            'file_name' => $media->file_name,
+        ]);
 
         return redirect()->back()->with('success', 'Attachment removed.');
     }
@@ -726,6 +784,18 @@ class AccountingVoucherController extends Controller
             $this->logAction($voucher->id, 'reversed', "Voucher reversed by {$reversal->voucher_no}. Reason: {$data['reason']}", $userId);
             $this->logAction($reversal->id, 'created', "Reversal voucher created from {$voucher->voucher_no}.", $userId);
             $this->logAction($reversal->id, 'approved', 'Reversal voucher auto-approved and posted.', $userId);
+            $this->recordOperationalEvent($voucher->id, 'accounting.voucher.reversed', 'completed', 'warning', "Voucher reversed by {$reversal->voucher_no}.", $userId, [
+                'voucher_no' => $voucher->voucher_no,
+                'reversal_voucher_no' => $reversal->voucher_no,
+                'reason' => $data['reason'],
+                'reversal_date' => $reversalDate,
+            ]);
+            $this->recordOperationalEvent($reversal->id, 'accounting.voucher.reversal_created', 'completed', 'info', "Reversal voucher created from {$voucher->voucher_no}.", $userId, [
+                'voucher_no' => $reversal->voucher_no,
+                'source_voucher_no' => $voucher->voucher_no,
+                'reason' => $data['reason'],
+                'reversal_date' => $reversalDate,
+            ]);
         });
 
         return redirect()->back()->with('success', 'Voucher reversed successfully.');
@@ -789,6 +859,8 @@ class AccountingVoucherController extends Controller
 
     private function formPayload(?AccountingVoucher $voucher): array
     {
+        $this->autoAssignVendorDefaultMappings();
+
         if ($voucher) {
             $voucher->setAttribute('entry_mode', $this->normalizeEntryMode((string) $voucher->entry_mode));
         }
@@ -802,7 +874,7 @@ class AccountingVoucherController extends Controller
                 ->get(['id', 'tenant_id', 'name', 'payment_method', 'coa_account_id', 'is_default', 'status']),
             'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
             'departments' => Department::query()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'branch_id']),
-            'vendors' => Vendor::query()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'payable_account_id']),
+            'vendors' => Vendor::query()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'payable_account_id', 'advance_account_id']),
             'customers' => Customer::query()->orderBy('name')->limit(500)->get(['id', 'name']),
             'members' => Member::query()
                 ->orderByRaw("COALESCE(NULLIF(full_name, ''), CONCAT_WS(' ', first_name, middle_name, last_name)) asc")
@@ -831,6 +903,12 @@ class AccountingVoucherController extends Controller
                 })
                 ->values(),
             'expenseTypes' => AccountingExpenseType::query()->where('is_active', true)->orderBy('name')->get(['id', 'code', 'name', 'expense_account_id']),
+            'expenseAccounts' => CoaAccount::query()
+                ->where('is_active', true)
+                ->where('is_postable', true)
+                ->where('type', 'expense')
+                ->orderBy('full_code')
+                ->get(['id', 'full_code', 'name', 'type']),
             'entryModes' => self::ENTRY_MODES,
             'partyTypes' => self::PARTY_TYPES,
             'canSetPaymentAccountDefault' => $this->canSetPaymentAccountDefault(auth()->user()),
@@ -862,10 +940,9 @@ class AccountingVoucherController extends Controller
             'counterparty_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'set_vendor_counterparty_default' => 'nullable|boolean',
             'payment_rows' => 'nullable|array',
-            'payment_rows.*.row_type' => 'nullable|in:expense,vendor_payment',
             'payment_rows.*.payment_mode' => 'nullable|in:direct,against_invoice',
-            'payment_rows.*.vendor_id' => 'nullable|exists:vendors,id',
             'payment_rows.*.invoice_id' => 'nullable|integer|min:1',
+            'payment_rows.*.expense_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true)->where('type', 'expense'))],
             'payment_rows.*.expense_type_id' => 'nullable|exists:accounting_expense_types,id',
             'payment_rows.*.qty' => 'nullable|numeric|min:0',
             'payment_rows.*.rate' => 'nullable|numeric|min:0',
@@ -921,8 +998,7 @@ class AccountingVoucherController extends Controller
         $data['counterparty_account_id'] = !empty($data['counterparty_account_id']) ? (int) $data['counterparty_account_id'] : null;
         $data['set_vendor_counterparty_default'] = (bool) ($data['set_vendor_counterparty_default'] ?? false);
         $data['payment_rows'] = array_values(array_filter((array) ($data['payment_rows'] ?? []), function (array $row) {
-            return !empty($row['row_type'])
-                || !empty($row['vendor_id'])
+            return !empty($row['expense_account_id'])
                 || !empty($row['expense_type_id'])
                 || !empty($row['invoice_id'])
                 || (float) ($row['amount'] ?? 0) > 0
@@ -958,18 +1034,22 @@ class AccountingVoucherController extends Controller
 
         if ($isSmartPaymentVoucher) {
             $data['payment_rows'] = $this->normalizeSmartPaymentRows($data);
-
-            $vendorRows = collect($data['payment_rows'])->where('row_type', 'vendor_payment')->values();
-            $firstVendorId = $vendorRows->isEmpty() ? null : (int) ($vendorRows->first()['vendor_id'] ?? 0);
-
-            $data['party_type'] = $firstVendorId ? 'vendor' : 'none';
-            $data['party_id'] = $firstVendorId ?: null;
-            $data['vendor_id'] = $firstVendorId ?: null;
+            if ((string) ($data['payment_for'] ?? '') === 'vendor_payment') {
+                if (empty($data['vendor_id'])) {
+                    throw ValidationException::withMessages([
+                        'vendor_id' => 'Vendor / Payee is required for vendor payment vouchers.',
+                    ]);
+                }
+                $data['party_type'] = 'vendor';
+                $data['party_id'] = (int) $data['vendor_id'];
+            } else {
+                $data['party_type'] = 'none';
+                $data['party_id'] = null;
+                $data['vendor_id'] = null;
+            }
             $data['invoice_type'] = null;
             $data['invoice_id'] = null;
             $data['expense_type_id'] = null;
-            $data['payment_for'] = null;
-            $data['payment_mode'] = null;
             $data['counterparty_account_id'] = null;
             $data['set_vendor_counterparty_default'] = false;
         }
@@ -1014,7 +1094,7 @@ class AccountingVoucherController extends Controller
 
         if ($isSmartMode) {
             $hasExpenseContext = !empty($data['expense_type_id'])
-                || ($isSmartPaymentVoucher && collect($data['payment_rows'] ?? [])->contains(fn (array $row) => (string) ($row['row_type'] ?? '') === 'expense'));
+                || ($isSmartPaymentVoucher && (string) ($data['payment_for'] ?? '') === 'expense');
             $hasPartyContext = !empty($data['party_id']) && ($data['party_type'] ?? 'none') !== 'none';
             $hasInvoiceContext = !empty($data['invoice_type']) && !empty($data['invoice_id'])
                 || ($isSmartPaymentVoucher && collect($data['payment_rows'] ?? [])->contains(fn (array $row) => (string) ($row['payment_mode'] ?? 'direct') === 'against_invoice' && !empty($row['invoice_id'])));
@@ -1036,9 +1116,14 @@ class AccountingVoucherController extends Controller
                         'payment_rows' => 'Add at least one payment row for CPV/BPV smart mode.',
                     ]);
                 }
-                if (!$hasExpenseContext && ((string) ($data['party_type'] ?? 'none') !== 'vendor' || empty($data['party_id']))) {
+                if ((string) ($data['payment_for'] ?? '') === 'vendor_payment' && ((string) ($data['party_type'] ?? 'none') !== 'vendor' || empty($data['party_id']))) {
                     throw ValidationException::withMessages([
-                        'party_id' => 'Select a Vendor or provide Expense Type for CPV/BPV smart mode.',
+                        'vendor_id' => 'Select Vendor / Payee for Vendor Payment.',
+                    ]);
+                }
+                if ((string) ($data['payment_for'] ?? '') === 'expense' && !$hasExpenseContext) {
+                    throw ValidationException::withMessages([
+                        'payment_rows' => 'Add at least one expense row with Expense Account and Amount.',
                     ]);
                 }
             }
@@ -1237,152 +1322,199 @@ class AccountingVoucherController extends Controller
         ]);
     }
 
+    private function recordOperationalEvent(
+        int $voucherId,
+        string $action,
+        string $status,
+        string $severity,
+        string $message,
+        ?int $userId,
+        array $context = []
+    ): void {
+        OperationalAuditLog::query()->create([
+            'correlation_id' => (string) (request()?->headers->get('X-Correlation-ID') ?: request()?->attributes->get('correlation_id') ?: ''),
+            'module' => 'accounting',
+            'entity_type' => 'accounting_voucher',
+            'entity_id' => (string) $voucherId,
+            'action' => $action,
+            'status' => $status,
+            'severity' => $severity,
+            'message' => $message,
+            'context_json' => $context,
+            'actor_id' => $userId,
+            'request_path' => request()?->path(),
+            'ip' => request()?->ip(),
+        ]);
+    }
+
     private function buildPrintPayload(AccountingVoucher $voucher): array
     {
-        $voucher->loadMissing(['lines.account', 'lines.department', 'tenant', 'department', 'paymentAccount', 'media', 'createdBy', 'approvedBy', 'postedBy', 'cancelledBy', 'reversedBy', 'reversalVoucher', 'allocations']);
-        $generatedAt = now()->format('Y-m-d H:i:s');
+        $voucher->loadMissing(['lines.account', 'lines.department', 'tenant', 'department', 'paymentAccount.coaAccount', 'media', 'createdBy', 'approvedBy', 'postedBy', 'cancelledBy', 'reversedBy', 'reversalVoucher', 'allocations']);
+        $generatedAt = now()->format('d/m/Y h:i A');
+        $paymentForLabel = $this->paymentForLabel($voucher);
+        $entryMode = $this->entryModeLabel((string) ($voucher->entry_mode ?: 'smart'));
+        $isSmartVoucher = $entryMode === 'Smart';
+        $vendorName = ((string) $voucher->party_type === 'vendor' && (int) ($voucher->party_id ?? 0) > 0)
+            ? (Vendor::query()->whereKey((int) $voucher->party_id)->value('name') ?: '-')
+            : '-';
+        $reversalLog = OperationalAuditLog::query()
+            ->where('module', 'accounting')
+            ->where('entity_type', 'accounting_voucher')
+            ->where('entity_id', (string) $voucher->id)
+            ->where('action', 'accounting.voucher.reversed')
+            ->latest('id')
+            ->first();
+        $reversalReason = (string) data_get($reversalLog?->context_json, 'reason', '-');
+        $reversalDate = (string) data_get($reversalLog?->context_json, 'reversal_date', optional($voucher->reversed_at)->toDateString() ?: '-');
 
-        $summaryRows = [
-            [
-                'Metric' => 'Voucher No',
-                'Value' => (string) $voucher->voucher_no,
-            ],
-            [
-                'Metric' => 'Voucher Type',
-                'Value' => (string) $voucher->voucher_type,
-            ],
-            [
-                'Metric' => 'Entry Mode',
-                'Value' => $this->entryModeLabel((string) ($voucher->entry_mode ?: 'smart')),
-            ],
-            [
-                'Metric' => 'Voucher Date',
-                'Value' => optional($voucher->voucher_date)->toDateString() ?: '-',
-            ],
-            [
-                'Metric' => 'Posting Date',
-                'Value' => optional($voucher->posting_date)->toDateString() ?: '-',
-            ],
-            [
-                'Metric' => 'Branch / Business Unit',
-                'Value' => (string) ($voucher->tenant?->name ?: '-'),
-            ],
-            [
-                'Metric' => 'Cost Center',
-                'Value' => (string) ($voucher->department?->name ?: '-'),
-            ],
-            [
-                'Metric' => $voucher->voucher_type === 'JV' ? 'Main Account' : 'Payment / Receipt Account',
-                'Value' => (string) ($voucher->paymentAccount?->name ?: '-'),
-            ],
-            [
-                'Metric' => 'Reference No',
-                'Value' => (string) ($voucher->reference_no ?: '-'),
-            ],
-            [
-                'Metric' => 'External Ref',
-                'Value' => (string) ($voucher->external_reference_no ?: '-'),
-            ],
-            [
-                'Metric' => 'Currency',
-                'Value' => (string) ($voucher->currency_code ?: 'PKR'),
-            ],
-            [
-                'Metric' => 'Exchange Rate',
-                'Value' => number_format((float) ($voucher->exchange_rate ?: 1), 6, '.', ','),
-            ],
-            [
-                'Metric' => 'Status',
-                'Value' => (string) ($voucher->status ?: '-'),
-            ],
-            [
-                'Metric' => 'Amount',
-                'Value' => number_format((float) ($voucher->amount ?? 0), 2, '.', ','),
-            ],
-            [
-                'Metric' => 'Approval Reference',
-                'Value' => (string) ($voucher->approval_reference ?: '-'),
-            ],
-            [
-                'Metric' => 'Reversal Voucher',
-                'Value' => (string) ($voucher->reversalVoucher?->voucher_no ?: '-'),
-            ],
-            [
-                'Metric' => 'Reversed By',
-                'Value' => (string) ($voucher->reversedBy?->name ?: '-'),
-            ],
-            [
-                'Metric' => 'Remarks',
-                'Value' => (string) ($voucher->remarks ?: '-'),
-            ],
-            [
-                'Metric' => 'System Narration',
-                'Value' => (string) ($voucher->system_narration ?: '-'),
-            ],
-        ];
+        $totalDebit = (float) $voucher->lines->sum(fn ($line) => (float) ($line->debit ?? 0));
+        $totalCredit = (float) $voucher->lines->sum(fn ($line) => (float) ($line->credit ?? 0));
+        $difference = abs($totalDebit - $totalCredit);
+        $paymentRows = collect((array) ($voucher->payment_rows ?? []))
+            ->values()
+            ->map(function (array $row, int $index) use ($voucher) {
+                $expenseAccount = !empty($row['expense_account_id'])
+                    ? CoaAccount::query()->whereKey((int) $row['expense_account_id'])->first(['id', 'full_code', 'name'])
+                    : null;
+                $invoiceNo = '-';
+                $invoiceOutstanding = null;
+                if (!empty($row['invoice_id']) && (string) ($row['payment_mode'] ?? 'direct') === 'against_invoice') {
+                    $invoiceNo = $this->resolveAllocationDocumentNo('vendor_bill', (int) $row['invoice_id']);
+                    $invoiceOutstanding = $this->resolveAllocationOutstanding('vendor_bill', (int) $row['invoice_id']);
+                }
 
-        $lineRows = $voucher->lines->map(function ($line) {
+                return [
+                    'row_no' => $index + 1,
+                    'payment_mode' => ucfirst(str_replace('_', ' ', (string) ($row['payment_mode'] ?? 'direct'))),
+                    'expense_account' => $expenseAccount
+                        ? trim("{$expenseAccount->full_code} - {$expenseAccount->name}")
+                        : '-',
+                    'invoice_no' => $invoiceNo,
+                    'invoice_outstanding' => $invoiceOutstanding,
+                    'amount' => number_format((float) ($row['amount'] ?? 0), 2, '.', ','),
+                    'reference_no' => (string) ($row['reference_no'] ?? '-'),
+                    'remarks' => (string) ($row['remarks'] ?? '-'),
+                ];
+            })
+            ->all();
+
+        $postingLines = $voucher->lines->map(function ($line) {
             return [
-                'Account' => trim((string) (($line->account?->full_code ?: '-') . ' ' . ($line->account?->name ?: ''))),
-                'Description' => (string) ($line->description ?: '-'),
-                'Cost Center' => (string) ($line->department?->name ?: '-'),
-                'Source' => (bool) ($line->is_system_generated ?? false) ? 'Auto' : 'Manual',
-                'Debit' => number_format((float) ($line->debit ?? 0), 2, '.', ','),
-                'Credit' => number_format((float) ($line->credit ?? 0), 2, '.', ','),
+                'account' => trim((string) (($line->account?->full_code ?: '-') . ' - ' . ($line->account?->name ?: '-'))),
+                'description' => (string) ($line->description ?: '-'),
+                'cost_center' => (string) ($line->department?->name ?: '-'),
+                'source' => (bool) ($line->is_system_generated ?? false) ? 'Auto' : 'Manual',
+                'debit' => number_format((float) ($line->debit ?? 0), 2, '.', ','),
+                'credit' => number_format((float) ($line->credit ?? 0), 2, '.', ','),
             ];
         })->values()->all();
 
         $allocationRows = $voucher->allocations->map(function (AccountingVoucherAllocation $allocation) {
             return [
-                'Invoice' => $this->resolveAllocationDocumentNo((string) $allocation->invoice_type, (int) $allocation->invoice_id),
-                'Type' => (string) $allocation->invoice_type,
-                'Party' => (string) ($allocation->party_type ?: '-') . ((int) ($allocation->party_id ?: 0) > 0 ? (' #' . (int) $allocation->party_id) : ''),
-                'Allocated' => number_format((float) $allocation->allocated_amount, 2, '.', ','),
-                'Allocated At' => optional($allocation->allocated_at)->format('Y-m-d H:i:s') ?: '-',
+                'invoice_no' => $this->resolveAllocationDocumentNo((string) $allocation->invoice_type, (int) $allocation->invoice_id),
+                'invoice_type' => ucwords(str_replace('_', ' ', (string) $allocation->invoice_type)),
+                'party' => (string) ($allocation->party_type ?: '-') . ((int) ($allocation->party_id ?: 0) > 0 ? (' #' . (int) $allocation->party_id) : ''),
+                'allocated_amount' => number_format((float) $allocation->allocated_amount, 2, '.', ','),
+                'remaining_outstanding' => number_format((float) $this->resolveAllocationOutstanding((string) $allocation->invoice_type, (int) $allocation->invoice_id), 2, '.', ','),
+                'allocated_at' => optional($allocation->allocated_at)->format('d/m/Y h:i A') ?: '-',
             ];
         })->values()->all();
 
-        $totalDebit = (float) $voucher->lines->sum(fn ($line) => (float) ($line->debit ?? 0));
-        $totalCredit = (float) $voucher->lines->sum(fn ($line) => (float) ($line->credit ?? 0));
+        $paymentAccountLabel = trim((string) (($voucher->paymentAccount?->coaAccount?->full_code ?? '') . ' - ' . ($voucher->paymentAccount?->name ?: '-')), ' -');
+        $metadata = [
+            'voucher_no' => (string) $voucher->voucher_no,
+            'voucher_type' => (string) $voucher->voucher_type,
+            'entry_mode' => $entryMode,
+            'voucher_date' => optional($voucher->voucher_date)->format('d/m/Y') ?: '-',
+            'posting_date' => optional($voucher->posting_date)->format('d/m/Y') ?: '-',
+            'branch' => (string) ($voucher->tenant?->name ?: '-'),
+            'cost_center' => (string) ($voucher->department?->name ?: '-'),
+            'payment_for' => $paymentForLabel,
+            'vendor_payee' => $vendorName,
+            'payment_account' => $paymentAccountLabel !== '' ? $paymentAccountLabel : '-',
+            'reference_no' => (string) ($voucher->reference_no ?: '-'),
+            'external_reference_no' => (string) ($voucher->external_reference_no ?: '-'),
+            'currency' => (string) ($voucher->currency_code ?: 'PKR'),
+            'exchange_rate' => number_format((float) ($voucher->exchange_rate ?: 1), 6, '.', ','),
+            'status' => (string) ($voucher->status ?: '-'),
+            'amount' => number_format((float) ($voucher->amount ?? 0), 2, '.', ','),
+            'approval_reference' => (string) ($voucher->approval_reference ?: '-'),
+            'reversal_voucher' => (string) ($voucher->reversalVoucher?->voucher_no ?: '-'),
+            'reversal_date' => $reversalDate,
+            'reversal_reason' => $reversalReason,
+        ];
+
+        $audit = [
+            'prepared_by' => (string) ($voucher->createdBy?->name ?: 'N/A'),
+            'prepared_at' => optional($voucher->created_at)->format('d/m/Y h:i A') ?: 'N/A',
+            'approved_by' => (string) ($voucher->approvedBy?->name ?: ($voucher->status === 'submitted' ? 'Pending' : 'N/A')),
+            'approved_at' => optional($voucher->approved_at)->format('d/m/Y h:i A') ?: ($voucher->status === 'submitted' ? 'Pending' : 'N/A'),
+            'posted_by' => (string) ($voucher->postedBy?->name ?: ($voucher->status === 'posted' ? 'System' : 'Pending')),
+            'posted_at' => optional($voucher->posted_at)->format('d/m/Y h:i A') ?: ($voucher->status === 'posted' ? '-' : 'Pending'),
+            'cancelled_by' => (string) ($voucher->cancelledBy?->name ?: '-'),
+            'reversed_by' => (string) ($voucher->reversedBy?->name ?: '-'),
+        ];
+
+        $headerFields = [
+            ['label' => 'Voucher No', 'value' => $metadata['voucher_no']],
+            ['label' => 'Voucher Type', 'value' => $metadata['voucher_type']],
+            ['label' => 'Entry Mode', 'value' => $metadata['entry_mode']],
+            ['label' => 'Status', 'value' => $metadata['status']],
+            ['label' => 'Voucher Date', 'value' => $metadata['voucher_date']],
+            ['label' => 'Posting Date', 'value' => $metadata['posting_date']],
+            ['label' => 'Branch / Business Unit', 'value' => $metadata['branch']],
+            ['label' => 'Cost Center', 'value' => $metadata['cost_center']],
+        ];
+
+        $paymentContextFields = [
+            ['label' => 'Payment For', 'value' => $metadata['payment_for']],
+            ['label' => 'Vendor / Payee', 'value' => $metadata['vendor_payee']],
+            ['label' => 'Payment Account', 'value' => $metadata['payment_account']],
+            ['label' => 'Reference No', 'value' => $metadata['reference_no']],
+            ['label' => 'Approval Reference', 'value' => $metadata['approval_reference']],
+        ];
+
+        if ($metadata['external_reference_no'] !== '-') {
+            $paymentContextFields[] = ['label' => 'External Reference', 'value' => $metadata['external_reference_no']];
+        }
+
+        $financialContextFields = [
+            ['label' => 'Currency', 'value' => $metadata['currency']],
+            ['label' => 'Exchange Rate', 'value' => $metadata['exchange_rate']],
+            ['label' => 'Voucher Amount', 'value' => $metadata['amount']],
+            ['label' => 'Prepared By', 'value' => $audit['prepared_by']],
+            ['label' => 'Prepared At', 'value' => $audit['prepared_at']],
+        ];
+
+        if ($metadata['reversal_voucher'] !== '-') {
+            $financialContextFields[] = ['label' => 'Reversal Voucher', 'value' => $metadata['reversal_voucher']];
+            $financialContextFields[] = ['label' => 'Reversal Date', 'value' => $metadata['reversal_date']];
+            $financialContextFields[] = ['label' => 'Reversal Reason', 'value' => $metadata['reversal_reason']];
+        }
 
         return [
             'title' => 'Accounting Voucher',
             'companyName' => config('app.name', 'AFOHS Club'),
             'generatedAt' => $generatedAt,
             'logoDataUri' => $this->logoDataUri(),
-            'filters' => [
-                'Voucher No' => (string) $voucher->voucher_no,
-                'Type' => (string) $voucher->voucher_type,
-                'Date' => optional($voucher->voucher_date)->toDateString() ?: '-',
+            'voucher' => $metadata,
+            'headerFields' => $headerFields,
+            'paymentContextFields' => $paymentContextFields,
+            'financialContextFields' => $financialContextFields,
+            'paymentRows' => $paymentRows,
+            'postingLines' => $postingLines,
+            'allocations' => $allocationRows,
+            'totals' => [
+                'debit_total' => number_format($totalDebit, 2, '.', ','),
+                'credit_total' => number_format($totalCredit, 2, '.', ','),
+                'difference' => number_format($difference, 2, '.', ','),
+                'voucher_total' => number_format((float) ($voucher->amount ?? 0), 2, '.', ','),
             ],
-            'metrics' => [
-                ['label' => 'Debit Total', 'value' => number_format($totalDebit, 2, '.', ',')],
-                ['label' => 'Credit Total', 'value' => number_format($totalCredit, 2, '.', ',')],
-                ['label' => 'Difference', 'value' => number_format(abs($totalDebit - $totalCredit), 2, '.', ',')],
-            ],
-            'sections' => [
-                [
-                    'title' => 'Voucher Summary',
-                    'columns' => ['Metric', 'Value'],
-                    'rows' => $summaryRows,
-                ],
-                [
-                    'title' => 'Voucher Lines',
-                    'columns' => ['Account', 'Description', 'Cost Center', 'Source', 'Debit', 'Credit'],
-                    'rows' => $lineRows,
-                ],
-                [
-                    'title' => 'Invoice Allocations',
-                    'columns' => ['Invoice', 'Type', 'Party', 'Allocated', 'Allocated At'],
-                    'rows' => $allocationRows,
-                ],
-            ],
-            'error' => null,
-            'badges' => [
-                'Generated By: ' . (auth()->user()?->name ?: 'System'),
-                'Posting Status: ' . strtoupper((string) $voucher->status),
-                'Approval Ref: ' . ($voucher->approval_reference ?: '-'),
-            ],
+            'audit' => $audit,
+            'remarks' => (string) ($voucher->remarks ?: '-'),
+            'systemNarration' => (string) ($voucher->system_narration ?: '-'),
+            'generatedBy' => auth()->user()?->name ?: 'System',
+            'isSmartVoucher' => $isSmartVoucher,
         ];
     }
 
@@ -1587,15 +1719,12 @@ class AccountingVoucherController extends Controller
     private function normalizeSmartPaymentRows(array $data): array
     {
         $rows = array_values((array) ($data['payment_rows'] ?? []));
+        $paymentFor = (string) ($data['payment_for'] ?? 'expense');
         if (empty($rows)) {
             $rows = [[
-                'row_type' => (string) ($data['payment_for'] ?? '') === 'vendor_payment' ? 'vendor_payment' : 'expense',
                 'payment_mode' => (string) ($data['payment_mode'] ?? 'direct'),
-                'vendor_id' => (int) ($data['vendor_id'] ?: (($data['party_type'] ?? 'none') === 'vendor' ? ($data['party_id'] ?? 0) : 0)),
                 'invoice_id' => (int) ($data['invoice_id'] ?? 0),
-                'expense_type_id' => (int) ($data['expense_type_id'] ?? 0),
-                'qty' => 1,
-                'rate' => (float) ($data['amount'] ?? 0),
+                'expense_account_id' => (int) ($data['counterparty_account_id'] ?? 0),
                 'amount' => (float) ($data['amount'] ?? 0),
                 'reference_no' => (string) ($data['reference_no'] ?? ''),
                 'remarks' => (string) ($data['remarks'] ?? ''),
@@ -1605,54 +1734,34 @@ class AccountingVoucherController extends Controller
 
         $normalized = [];
         foreach ($rows as $index => $row) {
-            $rowType = (string) ($row['row_type'] ?? '');
-            if (!in_array($rowType, ['expense', 'vendor_payment'], true)) {
-                throw ValidationException::withMessages([
-                    "payment_rows.{$index}.row_type" => 'Row type is required.',
-                ]);
-            }
-
             $paymentMode = (string) ($row['payment_mode'] ?? 'direct');
             if (!in_array($paymentMode, ['direct', 'against_invoice'], true)) {
                 $paymentMode = 'direct';
             }
+            if ($paymentFor === 'expense') {
+                $paymentMode = 'direct';
+            }
 
-            $qty = (float) ($row['qty'] ?? 0);
-            $rate = (float) ($row['rate'] ?? 0);
             $inputAmount = (float) ($row['amount'] ?? 0);
-
-            if ($qty <= 0 && $rate <= 0 && $inputAmount > 0) {
-                $qty = 1;
-                $rate = $inputAmount;
-            }
-            if ($qty <= 0 && $rate > 0) {
-                $qty = 1;
-            }
-            if ($rate <= 0 && $qty > 0 && $inputAmount > 0) {
-                $rate = $inputAmount / $qty;
-            }
-
-            $amount = round($qty * $rate, 2);
+            $legacyQty = (float) ($row['qty'] ?? 0);
+            $legacyRate = (float) ($row['rate'] ?? 0);
+            $amount = $inputAmount > 0 ? round($inputAmount, 2) : round($legacyQty * $legacyRate, 2);
             if ($amount <= 0) {
                 throw ValidationException::withMessages([
-                    "payment_rows.{$index}.qty" => 'Row Qty and Rate must be greater than zero.',
+                    "payment_rows.{$index}.amount" => 'Row amount must be greater than zero.',
                 ]);
             }
 
-            if ($rowType === 'expense' && $paymentMode === 'against_invoice') {
+            if ($paymentFor === 'expense' && $paymentMode === 'against_invoice') {
                 throw ValidationException::withMessages([
                     "payment_rows.{$index}.payment_mode" => 'Expense rows support Direct mode only.',
                 ]);
             }
 
             $normalized[] = [
-                'row_type' => $rowType,
                 'payment_mode' => $paymentMode,
-                'vendor_id' => !empty($row['vendor_id']) ? (int) $row['vendor_id'] : null,
                 'invoice_id' => !empty($row['invoice_id']) ? (int) $row['invoice_id'] : null,
-                'expense_type_id' => !empty($row['expense_type_id']) ? (int) $row['expense_type_id'] : null,
-                'qty' => round($qty, 4),
-                'rate' => round($rate, 4),
+                'expense_account_id' => !empty($row['expense_account_id']) ? (int) $row['expense_account_id'] : null,
                 'amount' => $amount,
                 'reference_no' => trim((string) ($row['reference_no'] ?? '')),
                 'remarks' => trim((string) ($row['remarks'] ?? '')),
@@ -1680,21 +1789,8 @@ class AccountingVoucherController extends Controller
 
         foreach ($rows as $index => $row) {
             $amount = (float) ($row['amount'] ?? 0);
-            $rowType = (string) ($row['row_type'] ?? 'expense');
+            $paymentFor = (string) ($data['payment_for'] ?? 'expense');
             $paymentMode = (string) ($row['payment_mode'] ?? 'direct');
-            $expenseTypeId = (int) ($row['expense_type_id'] ?? 0);
-
-            if ($expenseTypeId <= 0) {
-                throw ValidationException::withMessages([
-                    "payment_rows.{$index}.expense_type_id" => 'Item Name is required.',
-                ]);
-            }
-            $expenseType = AccountingExpenseType::query()->find($expenseTypeId);
-            if (!$expenseType || !$expenseType->is_active) {
-                throw ValidationException::withMessages([
-                    "payment_rows.{$index}.expense_type_id" => 'Selected item is inactive or invalid.',
-                ]);
-            }
 
             $line = [
                 'account_id' => null,
@@ -1718,24 +1814,35 @@ class AccountingVoucherController extends Controller
             $resolvedRow = $row;
             $invoiceContext = null;
 
-            if ($rowType === 'expense') {
-                $line['account_id'] = $this->mappingResolver->resolveExpenseAccountId($expenseTypeId);
-                $line['description'] = trim((string) ($row['remarks'] ?: ("Expense payment for {$expenseType->name}")));
-            } else {
-                $vendorId = (int) ($row['vendor_id'] ?? 0);
-                if ($vendorId <= 0) {
+            if ($paymentFor === 'expense') {
+                $expenseAccountId = (int) ($row['expense_account_id'] ?? 0);
+                if ($expenseAccountId <= 0) {
                     throw ValidationException::withMessages([
-                        "payment_rows.{$index}.vendor_id" => 'Vendor is required for vendor payment rows.',
+                        "payment_rows.{$index}.expense_account_id" => 'Expense Account is required.',
+                    ]);
+                }
+                $expenseAccount = CoaAccount::query()
+                    ->whereKey($expenseAccountId)
+                    ->where('is_active', true)
+                    ->where('is_postable', true)
+                    ->where('type', 'expense')
+                    ->first();
+                if (!$expenseAccount) {
+                    throw ValidationException::withMessages([
+                        "payment_rows.{$index}.expense_account_id" => 'Selected expense account is inactive or invalid.',
                     ]);
                 }
 
-                if ($voucherVendorId === null) {
-                    $voucherVendorId = $vendorId;
-                } elseif ($voucherVendorId !== $vendorId) {
+                $line['account_id'] = (int) $expenseAccount->id;
+                $line['description'] = trim((string) ($row['remarks'] ?: ("Expense payment for {$expenseAccount->name}")));
+            } else {
+                $vendorId = (int) ($data['vendor_id'] ?? 0);
+                if ($vendorId <= 0) {
                     throw ValidationException::withMessages([
-                        "payment_rows.{$index}.vendor_id" => 'All vendor-payment rows must use the same vendor in one voucher.',
+                        'vendor_id' => 'Vendor / Payee is required for vendor payment rows.',
                     ]);
                 }
+                $voucherVendorId = $vendorId;
 
                 $line['vendor_id'] = $vendorId;
                 $line['party_type'] = 'vendor';
@@ -1785,14 +1892,14 @@ class AccountingVoucherController extends Controller
                 $line['reference_type'] = $invoiceContext['reference_type'] ?? Vendor::class;
                 $line['reference_id'] = (int) ($invoiceContext['reference_id'] ?? $vendorId);
                 $line['description'] = trim((string) ($row['remarks'] ?: ($paymentMode === 'against_invoice'
-                    ? "Vendor payment against bill {$invoiceContext['number']} for {$expenseType->name}"
-                    : "Vendor payment for {$expenseType->name}")));
+                    ? "Vendor payment against bill {$invoiceContext['number']}"
+                    : "Vendor payment")));
                 $resolvedRow['counterparty_resolution'] = $counterpartyResolution;
             }
 
             if (!(int) $line['account_id']) {
                 throw ValidationException::withMessages([
-                    "payment_rows.{$index}.row_type" => 'Unable to resolve a valid counterparty account for this row.',
+                    "payment_rows.{$index}.amount" => 'Unable to resolve a valid counterparty account for this row.',
                 ]);
             }
 
@@ -1949,6 +2056,15 @@ class AccountingVoucherController extends Controller
         return $this->normalizeEntryMode($entryMode) === 'manual' ? 'Manual' : 'Smart';
     }
 
+    private function paymentForLabel(AccountingVoucher $voucher): string
+    {
+        if (!in_array((string) $voucher->voucher_type, ['CPV', 'BPV'], true)) {
+            return '-';
+        }
+
+        return (string) $voucher->party_type === 'vendor' ? 'Vendor Payment' : 'Expense';
+    }
+
     private function buildSystemNarration(array $data, ?PaymentAccount $paymentAccount, ?array $invoiceContext = null): string
     {
         if (in_array((string) ($data['voucher_type'] ?? ''), ['CPV', 'BPV'], true)
@@ -1960,22 +2076,21 @@ class AccountingVoucherController extends Controller
             $accountLabel = trim((string) ($paymentAccount?->name ?: strtolower($channel) . ' account'));
             $rows = collect((array) $data['payment_rows']);
             $total = (float) $rows->sum(fn (array $row) => (float) ($row['amount'] ?? 0));
-            $vendorRows = $rows->where('row_type', 'vendor_payment');
-            $expenseRows = $rows->where('row_type', 'expense');
             $firstInvoiceNo = $rows
                 ->pluck('invoice_context')
                 ->filter()
                 ->map(fn ($ctx) => (string) (($ctx['number'] ?? '')))
                 ->filter()
                 ->first();
+            $paymentFor = (string) ($data['payment_for'] ?? 'expense');
 
             $sentence = "{$channel} payment voucher of " . number_format($total, 2, '.', ',') . " via {$accountLabel}";
-            if ($vendorRows->isNotEmpty() && $expenseRows->isEmpty()) {
-                $vendorName = optional(Vendor::query()->find((int) ($vendorRows->first()['vendor_id'] ?? 0)))->name ?: 'vendor';
+            if ($paymentFor === 'vendor_payment') {
+                $vendorName = optional(Vendor::query()->find((int) ($data['vendor_id'] ?? 0)))->name ?: 'vendor';
                 $sentence = $firstInvoiceNo
                     ? "{$channel} payment to {$vendorName} against bill {$firstInvoiceNo} via {$accountLabel}"
                     : "{$channel} payment to {$vendorName} via {$accountLabel}";
-            } elseif ($expenseRows->isNotEmpty() && $vendorRows->isEmpty()) {
+            } elseif ($paymentFor === 'expense') {
                 $sentence = "{$channel} expense payment via {$accountLabel}";
             }
 
@@ -2326,6 +2441,46 @@ class AccountingVoucherController extends Controller
             'resolved_via' => 'unresolved',
             'message' => $message,
         ];
+    }
+
+    private function autoAssignVendorDefaultMappings(): void
+    {
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $payableId = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $advanceId = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+
+        $payableValid = $this->isValidPostableAccountId($payableId);
+        $advanceValid = $this->isValidPostableAccountId($advanceId);
+
+        if (!$payableValid && !$advanceValid) {
+            return;
+        }
+
+        Vendor::query()
+            ->where('status', 'active')
+            ->where(function ($query) use ($payableValid, $advanceValid) {
+                if ($payableValid) {
+                    $query->whereNull('payable_account_id');
+                }
+                if ($advanceValid) {
+                    $method = $payableValid ? 'orWhereNull' : 'whereNull';
+                    $query->{$method}('advance_account_id');
+                }
+            })
+            ->chunkById(100, function ($vendors) use ($payableId, $advanceId, $payableValid, $advanceValid) {
+                foreach ($vendors as $vendor) {
+                    $updates = [];
+                    if ($payableValid && !$vendor->payable_account_id) {
+                        $updates['payable_account_id'] = $payableId;
+                    }
+                    if ($advanceValid && !$vendor->advance_account_id) {
+                        $updates['advance_account_id'] = $advanceId;
+                    }
+                    if (!empty($updates)) {
+                        $vendor->update($updates);
+                    }
+                }
+            });
     }
 
     private function isValidPostableAccountId(int $accountId): bool

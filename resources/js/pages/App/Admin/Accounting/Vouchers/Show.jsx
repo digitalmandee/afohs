@@ -1,16 +1,40 @@
 import React from 'react';
 import { Link, router } from '@inertiajs/react';
-import { Box, Button, Chip, Stack, TableCell, TableRow, Typography } from '@mui/material';
+import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import { formatAmount } from '@/lib/formatting';
 
-export default function Show({ voucher, approvalTrail = [], allocations = [], recentOperationalLogs = [] }) {
-    const lines = voucher?.lines || [];
-    const totalDebit = lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
-    const totalCredit = lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
+export default function Show({ voucher, approvalTrail = [], allocations = [], recentOperationalLogs = [], auditEvents = [] }) {
+    const lines = Array.isArray(voucher?.lines) ? voucher.lines : [];
+    const allocationRows = Array.isArray(allocations) ? allocations : [];
+    const operationalLogs = Array.isArray(recentOperationalLogs) ? recentOperationalLogs : [];
+    const auditTrail = Array.isArray(auditEvents) ? auditEvents : [];
+    const mediaFiles = Array.isArray(voucher?.media) ? voucher.media : [];
+    const totalDebit = lines.reduce((sum, line) => sum + Number(line?.debit || 0), 0);
+    const totalCredit = lines.reduce((sum, line) => sum + Number(line?.credit || 0), 0);
     const modeLabel = String(voucher?.entry_mode || '').toLowerCase() === 'manual' ? 'Manual' : 'Smart';
+    const [reverseOpen, setReverseOpen] = React.useState(false);
+    const [reverseReason, setReverseReason] = React.useState('');
+    const [reverseDate, setReverseDate] = React.useState(voucher?.posting_date || voucher?.voucher_date || '');
+    const reversalEvent = operationalLogs.find((log) => log?.action === 'accounting.voucher.reversed');
+    const reversalReason = reversalEvent?.context_json?.reason || '-';
+    const paymentForLabel = ['CPV', 'BPV'].includes(voucher?.voucher_type) ? (voucher?.party_type === 'vendor' ? 'Vendor Payment' : 'Expense') : '-';
+    const vendorLabel = voucher?.party_type === 'vendor' ? `Vendor #${voucher?.party_id || '-'}` : '-';
+
+    const submitReversal = () => {
+        if (!reverseReason.trim()) return;
+        router.post(route('accounting.vouchers.reverse', voucher.id), {
+            reason: reverseReason.trim(),
+            reversal_date: reverseDate || voucher?.posting_date || voucher?.voucher_date,
+        }, {
+            onSuccess: () => {
+                setReverseOpen(false);
+                setReverseReason('');
+            },
+        });
+    };
 
     return (
         <AppPage
@@ -41,6 +65,8 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     <Chip label={`Payment Account: ${voucher?.payment_account?.name || '-'}`} />
                     <Chip label={`Currency: ${voucher?.currency_code || 'PKR'}`} />
                     <Chip label={`Exchange Rate: ${voucher?.exchange_rate || '1.000000'}`} />
+                    <Chip label={`Payment For: ${paymentForLabel}`} />
+                    <Chip label={`Vendor / Payee: ${vendorLabel}`} />
                     <Chip label={`Reference: ${voucher?.reference_no || '-'}`} />
                     <Chip label={`Amount: ${formatAmount(voucher?.amount || 0)}`} />
                     <Chip label={`Approval Ref: ${voucher?.approval_reference || '-'}`} />
@@ -49,6 +75,11 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                 <Box sx={{ mt: 1.25 }}>
                     {voucher?.remarks || '-'}
                 </Box>
+                {voucher?.status === 'reversed' ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        Reversal reason: {reversalReason}
+                    </Typography>
+                ) : null}
             </SurfaceCard>
 
             <SurfaceCard title="Lines" subtitle={`Debit ${formatAmount(totalDebit)} | Credit ${formatAmount(totalCredit)}`}>
@@ -78,14 +109,14 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
 
             <SurfaceCard title="Audit Trail" subtitle="Creation, approval, posting, and workflow history.">
                 <Stack spacing={1}>
-                    <Typography variant="body2">Created By: {voucher?.created_by?.name || voucher?.created_by?.email || voucher?.created_by || '-'}</Typography>
-                    <Typography variant="body2">Approved By: {voucher?.approved_by?.name || voucher?.approved_by?.email || voucher?.approved_by || '-'}</Typography>
-                    <Typography variant="body2">Posted By: {voucher?.posted_by?.name || voucher?.posted_by?.email || voucher?.posted_by || '-'}</Typography>
-                    <Typography variant="body2">Cancelled By: {voucher?.cancelled_by?.name || voucher?.cancelled_by?.email || voucher?.cancelled_by || '-'}</Typography>
-                    <Typography variant="body2">Reversed By: {voucher?.reversed_by?.name || voucher?.reversed_by?.email || voucher?.reversed_by || '-'}</Typography>
-                    {approvalTrail.map((item) => (
+                    <Typography variant="body2">Created By: {voucher?.createdBy?.name || voucher?.createdBy?.email || voucher?.created_by || '-'}</Typography>
+                    <Typography variant="body2">Approved By: {voucher?.approvedBy?.name || voucher?.approvedBy?.email || voucher?.approved_by || '-'}</Typography>
+                    <Typography variant="body2">Posted By: {voucher?.postedBy?.name || voucher?.postedBy?.email || voucher?.posted_by || '-'}</Typography>
+                    <Typography variant="body2">Cancelled By: {voucher?.cancelledBy?.name || voucher?.cancelledBy?.email || voucher?.cancelled_by || '-'}</Typography>
+                    <Typography variant="body2">Reversed By: {voucher?.reversedBy?.name || voucher?.reversedBy?.email || voucher?.reversed_by || '-'}</Typography>
+                    {auditTrail.map((item) => (
                         <Typography key={item.id} variant="body2" color="text.secondary">
-                            {item.action} · {item.remarks || '-'} · {item.created_at || ''}
+                            {item.action} · {item.message || '-'} · {item.actor?.name || ''} {item.created_at || ''}
                         </Typography>
                     ))}
                 </Stack>
@@ -100,7 +131,7 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                         { key: 'remaining', label: 'Remaining', minWidth: 140, align: 'right' },
                         { key: 'date', label: 'Allocated At', minWidth: 180 },
                     ]}
-                    rows={allocations}
+                    rows={allocationRows}
                     pagination={null}
                     emptyMessage="No settlement allocations for this voucher."
                     tableMinWidth={840}
@@ -118,7 +149,7 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
 
             <SurfaceCard title="Attachments" subtitle="Supporting documents linked to this voucher.">
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {(voucher?.media || []).length ? (voucher.media || []).map((file) => (
+                    {mediaFiles.length ? mediaFiles.map((file) => (
                         <Button
                             key={file.id}
                             variant="outlined"
@@ -135,9 +166,9 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
             </SurfaceCard>
 
             <SurfaceCard title="Recent Failures & Events" subtitle="Latest operational logs for this voucher.">
-                {(recentOperationalLogs || []).length ? (
+                {operationalLogs.length ? (
                     <Stack spacing={0.75}>
-                        {recentOperationalLogs.map((log) => (
+                        {operationalLogs.map((log) => (
                             <Box key={log.id} sx={{ border: '1px solid rgba(220,229,238,0.9)', borderRadius: 1.5, p: 1 }}>
                                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
                                     <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -193,15 +224,46 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     <Button
                         color="error"
                         variant="contained"
-                        onClick={() => {
-                            if (!window.confirm('Reverse this posted voucher? This will create a linked reversal voucher.')) return;
-                            router.post(route('accounting.vouchers.reverse', voucher.id), { reason: 'Manual reversal', reversal_date: voucher?.posting_date || voucher?.voucher_date });
-                        }}
+                        onClick={() => setReverseOpen(true)}
                     >
                         Reverse Voucher
                     </Button>
                 </Box>
             ) : null}
+
+            <Dialog open={reverseOpen} onClose={() => setReverseOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Reverse Posted Voucher</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2}>
+                        <Typography variant="body2" color="text.secondary">
+                            This will create a linked reversal voucher and keep the original posted voucher unchanged.
+                        </Typography>
+                        <TextField
+                            label="Reversal Reason"
+                            value={reverseReason}
+                            onChange={(event) => setReverseReason(event.target.value)}
+                            required
+                            fullWidth
+                            multiline
+                            minRows={3}
+                        />
+                        <TextField
+                            type="date"
+                            label="Reversal Date"
+                            value={reverseDate}
+                            onChange={(event) => setReverseDate(event.target.value)}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                        />
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setReverseOpen(false)}>Close</Button>
+                    <Button color="error" variant="contained" onClick={submitReversal} disabled={!reverseReason.trim()}>
+                        Create Reversal
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </AppPage>
     );
 }
