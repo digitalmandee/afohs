@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Procurement;
 use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\ApprovalAction;
+use App\Models\ApprovalWorkflow;
 use App\Models\Ingredient;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
@@ -308,6 +309,7 @@ class PurchaseOrderController extends Controller
                 branchId: $branchId,
                 documentDate: $data['order_date']
             );
+            $initialStatus = $this->purchaseOrderApprovalWorkflowEnabled() ? 'submitted' : 'draft';
 
             $order = PurchaseOrder::create([
                 'po_no' => $poNo,
@@ -316,7 +318,7 @@ class PurchaseOrderController extends Controller
                 'warehouse_id' => $data['warehouse_id'],
                 'order_date' => $data['order_date'],
                 'expected_date' => $data['expected_date'] ?? null,
-                'status' => 'draft',
+                'status' => $initialStatus,
                 'currency' => $data['currency'] ?? 'PKR',
                 'remarks' => $data['remarks'] ?? null,
                 'created_by' => $request->user()?->id,
@@ -353,13 +355,15 @@ class PurchaseOrderController extends Controller
                 'grand_total' => $subTotal,
             ]);
 
-            ApprovalAction::create([
-                'document_type' => 'purchase_order',
-                'document_id' => $order->id,
-                'action' => 'submitted',
-                'remarks' => 'PO created and submitted.',
-                'action_by' => $request->user()?->id,
-            ]);
+            if ($initialStatus === 'submitted') {
+                ApprovalAction::create([
+                    'document_type' => 'purchase_order',
+                    'document_id' => $order->id,
+                    'action' => 'submitted',
+                    'remarks' => 'PO created and submitted by workflow.',
+                    'action_by' => $request->user()?->id,
+                ]);
+            }
 
             return redirect()->route('procurement.purchase-orders.index')->with('success', 'Purchase order created.');
         } catch (ValidationException $e) {
@@ -849,5 +853,13 @@ class PurchaseOrderController extends Controller
         }
 
         return false;
+    }
+
+    private function purchaseOrderApprovalWorkflowEnabled(): bool
+    {
+        return ApprovalWorkflow::query()
+            ->where('document_type', 'purchase_order')
+            ->where('is_active', true)
+            ->exists();
     }
 }

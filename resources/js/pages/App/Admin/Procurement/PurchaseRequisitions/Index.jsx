@@ -134,9 +134,7 @@ function PurchaseRequisitionRowActions({ row, mutation, openConvertModal }) {
                 title="View Requisition"
                 color="primary"
                 icon={<VisibilityOutlinedIcon fontSize="small" />}
-                href={route('procurement.purchase-requisitions.show', row.id)}
-                target="_blank"
-                rel="noreferrer"
+                onClick={() => router.get(route('procurement.purchase-requisitions.show', row.id))}
             />
 
             {actionItems.length > 0 ? (
@@ -178,6 +176,7 @@ function PurchaseRequisitionRowActions({ row, mutation, openConvertModal }) {
 export default function Index({ requisitions, summary = {}, vendors = [], warehouses = [] }) {
     const rows = requisitions?.data || [];
     const [convertModal, setConvertModal] = React.useState({ open: false, requisition: null });
+    const lastConversionRequisitionIdRef = React.useRef(null);
     const mutation = useMutationAction();
     const convertForm = useForm({
         vendor_id: '',
@@ -188,6 +187,7 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
     });
 
     const openConvertModal = (row) => {
+        const isDifferentRequisition = Number(lastConversionRequisitionIdRef.current || 0) !== Number(row.id || 0);
         const lines = (row.items || [])
             .map((item) => {
                 const requested = Number(item.qty_requested || 0);
@@ -203,19 +203,28 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
             })
             .filter((item) => item.max_qty > 0);
 
-        convertForm.setData({
-            vendor_id: '',
-            warehouse_id: '',
-            order_date: new Date().toISOString().slice(0, 10),
-            expected_date: '',
-            items: lines,
-        });
+        // Preserve entered values for the same requisition. Reset only for a different requisition.
+        if (isDifferentRequisition) {
+            convertForm.setData({
+                vendor_id: '',
+                warehouse_id: '',
+                order_date: new Date().toISOString().slice(0, 10),
+                expected_date: '',
+                items: lines,
+            });
+            lastConversionRequisitionIdRef.current = Number(row.id || 0);
+        } else if (!Array.isArray(convertForm.data.items) || convertForm.data.items.length === 0) {
+            convertForm.setData('items', lines);
+        }
+
         setConvertModal({ open: true, requisition: row });
     };
 
     const closeConvertModal = () => {
         setConvertModal({ open: false, requisition: null });
         convertForm.reset();
+        convertForm.clearErrors();
+        lastConversionRequisitionIdRef.current = null;
     };
 
     const updateConvertItem = (index, field, value) => {
@@ -362,6 +371,13 @@ export default function Index({ requisitions, summary = {}, vendors = [], wareho
                                         <MenuItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</MenuItem>
                                     ))}
                                 </TextField>
+                                {String(convertForm.errors.warehouse_id || '').toLowerCase().includes('branch mapping missing') ? (
+                                    <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: 'block' }}>
+                                        Branch mapping is required for document numbering. Set branch code in{' '}
+                                        <Link href={route('branches.index')}>Branch Settings</Link> and assign branch in{' '}
+                                        <Link href={route('locations.index')}>Restaurant/Location Settings</Link>.
+                                    </Typography>
+                                ) : null}
                             </Grid>
                             <Grid item xs={12} md={2}>
                                 <TextField

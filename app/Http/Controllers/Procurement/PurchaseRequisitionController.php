@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalAction;
+use App\Models\ApprovalWorkflow;
 use App\Models\Branch;
 use App\Models\Department;
 use App\Models\InventoryItem;
@@ -330,10 +331,10 @@ class PurchaseRequisitionController extends Controller
             $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
 
             $tenantId = $warehouse->tenant_id ?: $purchaseRequisition->tenant_id;
-            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            $branchId = $this->resolveBranchIdForRequisitionConversion($purchaseRequisition, $warehouse);
             if ($branchId <= 0) {
                 throw ValidationException::withMessages([
-                    'warehouse_id' => 'Branch mapping missing for numbering. Assign branch to selected context before converting to PO.',
+                    'warehouse_id' => 'Branch mapping missing for numbering. Configure Branch Code in Branch Settings and assign branch to Restaurant/Location context.',
                 ]);
             }
 
@@ -342,6 +343,7 @@ class PurchaseRequisitionController extends Controller
                 branchId: $branchId,
                 documentDate: $data['order_date']
             );
+            $initialStatus = $this->purchaseOrderApprovalWorkflowEnabled() ? 'submitted' : 'draft';
 
             $po = PurchaseOrder::query()->create([
                 'po_no' => $poNo,
@@ -351,7 +353,7 @@ class PurchaseRequisitionController extends Controller
                 'purchase_requisition_id' => $purchaseRequisition->id,
                 'order_date' => $data['order_date'],
                 'expected_date' => $data['expected_date'] ?? null,
-                'status' => 'draft',
+                'status' => $initialStatus,
                 'currency' => 'PKR',
                 'remarks' => 'Converted from ' . $purchaseRequisition->pr_no,
                 'created_by' => auth()->id(),
@@ -392,6 +394,16 @@ class PurchaseRequisitionController extends Controller
                 'status' => $allConverted ? 'converted_to_po' : 'partially_converted',
             ]);
 
+            if ($initialStatus === 'submitted') {
+                ApprovalAction::query()->create([
+                    'document_type' => 'purchase_order',
+                    'document_id' => $po->id,
+                    'action' => 'submitted',
+                    'remarks' => 'PO created from requisition and submitted by workflow.',
+                    'action_by' => auth()->id(),
+                ]);
+            }
+
             return $po;
         });
 
@@ -406,6 +418,43 @@ class PurchaseRequisitionController extends Controller
             ['value' => 'warehouse', 'label' => 'Warehouse'],
             ['value' => 'other', 'label' => 'Other'],
         ];
+    }
+
+    private function purchaseOrderApprovalWorkflowEnabled(): bool
+    {
+        return ApprovalWorkflow::query()
+            ->where('document_type', 'purchase_order')
+            ->where('is_active', true)
+            ->exists();
+    }
+
+    private function resolveBranchIdForRequisitionConversion(PurchaseRequisition $purchaseRequisition, Warehouse $warehouse): int
+    {
+        // 1) Selected warehouse tenant branch
+        $warehouseTenantId = (int) ($warehouse->tenant_id ?? 0);
+        if ($warehouseTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($warehouseTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        // 2) Requisition restaurant tenant branch
+        $requisitionTenantId = (int) ($purchaseRequisition->tenant_id ?? 0);
+        if ($requisitionTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($requisitionTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        // 3) Requisition office branch context
+        $branchId = (int) ($purchaseRequisition->branch_id ?? 0);
+        if ($branchId > 0) {
+            return $branchId;
+        }
+
+        return 0;
     }
 
     private function normalizeRequestContext(array $data): array

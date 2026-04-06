@@ -7,6 +7,7 @@ use App\Notifications\ActivityNotification;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\AccountingEventQueue;
 use App\Models\ApprovalAction;
+use App\Models\Branch;
 use App\Models\GoodsReceipt;
 use App\Models\InventoryItem;
 use App\Models\JournalEntry;
@@ -307,7 +308,7 @@ class GoodsReceiptController extends Controller
         $receipt = null;
         DB::transaction(function () use ($data, $locationId, $po, $request, $verifier, $acceptanceWorkflowEnabled, $inventoryMovementService, &$receipt) {
             $tenantId = $po->tenant_id ?: $po->warehouse?->tenant_id;
-            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            $branchId = $this->resolveBranchIdForGoodsReceiptNumbering($po);
             if ($branchId <= 0) {
                 throw ValidationException::withMessages([
                     'purchase_order_id' => 'Branch mapping missing for numbering. Assign branch to restaurant before creating GRN.',
@@ -384,6 +385,50 @@ class GoodsReceiptController extends Controller
                 ? 'Goods receipt submitted for requester acceptance.'
                 : 'Goods receipt posted successfully.'
         );
+    }
+
+    private function resolveBranchIdForGoodsReceiptNumbering(PurchaseOrder $po): int
+    {
+        // Primary source: PO tenant mapping.
+        $tenantId = (int) ($po->tenant_id ?? 0);
+        if ($tenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        // Fallback #1: warehouse tenant mapping.
+        $warehouseTenantId = (int) ($po->warehouse?->tenant_id ?? 0);
+        if ($warehouseTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($warehouseTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        // Fallback #2: vendor tenant mapping.
+        $vendorTenantId = (int) ($po->vendor?->tenant_id ?? 0);
+        if ($vendorTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($vendorTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        // Fallback #3: infer from existing PO number prefix: BRANCHCODE-PO-YYMM-####
+        $poNo = trim((string) ($po->po_no ?? ''));
+        if (preg_match('/^([A-Z0-9]+)-PO-\d{4}-\d{4}$/', strtoupper($poNo), $matches)) {
+            $branchCode = strtoupper((string) ($matches[1] ?? ''));
+            if ($branchCode !== '') {
+                $branchId = (int) (Branch::query()->whereRaw('UPPER(branch_code) = ?', [$branchCode])->value('id') ?? 0);
+                if ($branchId > 0) {
+                    return $branchId;
+                }
+            }
+        }
+
+        return 0;
     }
 
     public function accept(Request $request, GoodsReceipt $goodsReceipt, InventoryMovementService $inventoryMovementService)
