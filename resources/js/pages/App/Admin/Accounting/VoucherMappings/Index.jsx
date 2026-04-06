@@ -9,6 +9,8 @@ import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
 export default function VoucherMappingsIndex({ accounts = [], mappings = [], expenseTypes = [], defaults = {}, health = {} }) {
     const defaultForm = useForm({
         default_payable_account_id: String(defaults.default_payable_account_id || ''),
+        default_advance_account_id: String(defaults.default_advance_account_id || ''),
+        default_expense_account_id: String(defaults.default_expense_account_id || ''),
         default_receivable_account_id: String(defaults.default_receivable_account_id || ''),
     });
     const entityForm = useForm({
@@ -42,13 +44,15 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], exp
                     <Chip color={health.unmapped_vendors ? 'warning' : 'success'} label={`Unmapped Vendors: ${health.unmapped_vendors || 0}`} />
                     <Chip color={health.inactive_or_non_postable_mappings ? 'warning' : 'success'} label={`Invalid Mappings: ${health.inactive_or_non_postable_mappings || 0}`} />
                     <Chip color={health.missing_default_payable ? 'warning' : 'success'} label={`Default Payable: ${health.missing_default_payable ? 'Missing' : 'Set'}`} />
+                    <Chip color={health.missing_default_advance ? 'warning' : 'success'} label={`Default Advance: ${health.missing_default_advance ? 'Missing' : 'Set'}`} />
+                    <Chip color={health.missing_default_expense ? 'warning' : 'success'} label={`Default Expense: ${health.missing_default_expense ? 'Missing' : 'Set'}`} />
                     <Chip color={health.missing_default_receivable ? 'warning' : 'success'} label={`Default Receivable: ${health.missing_default_receivable ? 'Missing' : 'Set'}`} />
                 </Stack>
             </SurfaceCard>
 
             <SurfaceCard title="Default Fallback Accounts" subtitle="Used when entity-specific mapping is not available.">
                 <Grid container spacing={2}>
-                    <Grid item xs={12} md={5}>
+                    <Grid item xs={12} md={3}>
                         <TextField
                             select
                             label="Default Payable Account"
@@ -64,7 +68,39 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], exp
                             ))}
                         </TextField>
                     </Grid>
-                    <Grid item xs={12} md={5}>
+                    <Grid item xs={12} md={3}>
+                        <TextField
+                            select
+                            label="Default Advance Account"
+                            fullWidth
+                            size="small"
+                            value={defaultForm.data.default_advance_account_id}
+                            onChange={(event) => defaultForm.setData('default_advance_account_id', event.target.value)}
+                        >
+                            {accounts.map((account) => (
+                                <MenuItem key={account.id} value={String(account.id)}>
+                                    {account.full_code} - {account.name}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                        <TextField
+                            select
+                            label="Default Expense Account"
+                            fullWidth
+                            size="small"
+                            value={defaultForm.data.default_expense_account_id}
+                            onChange={(event) => defaultForm.setData('default_expense_account_id', event.target.value)}
+                        >
+                            {accounts.map((account) => (
+                                <MenuItem key={account.id} value={String(account.id)}>
+                                    {account.full_code} - {account.name}
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                    </Grid>
+                    <Grid item xs={12} md={2}>
                         <TextField
                             select
                             label="Default Receivable Account"
@@ -80,7 +116,7 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], exp
                             ))}
                         </TextField>
                     </Grid>
-                    <Grid item xs={12} md={2} sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Grid item xs={12} md={1} sx={{ display: 'flex', alignItems: 'center' }}>
                         <AppLoadingButton
                             fullWidth
                             loading={defaultForm.processing}

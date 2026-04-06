@@ -27,7 +27,7 @@ class ProcurementDocumentNumberService
         return DB::transaction(function () use ($type, $branchId, $periodYm) {
             $branch = Branch::query()
                 ->lockForUpdate()
-                ->find($branchId, ['id', 'branch_code']);
+                ->find($branchId, ['id', 'name', 'branch_code']);
 
             if (!$branch) {
                 throw ValidationException::withMessages([
@@ -37,9 +37,9 @@ class ProcurementDocumentNumberService
 
             $branchCode = strtoupper(trim((string) ($branch->branch_code ?? '')));
             if ($branchCode === '') {
-                throw ValidationException::withMessages([
-                    'branch_code' => 'Branch code is missing. Set branch code in Branch settings before creating documents.',
-                ]);
+                $branchCode = $this->generateFallbackBranchCode($branch->id, (string) ($branch->name ?? ''));
+                $branch->branch_code = $branchCode;
+                $branch->save();
             }
 
             $sequence = ProcurementDocumentSequence::query()
@@ -64,5 +64,24 @@ class ProcurementDocumentNumberService
             return sprintf('%s-%s-%s-%04d', $branchCode, $type, $periodYm, $next);
         }, 5);
     }
-}
 
+    private function generateFallbackBranchCode(int $branchId, string $branchName): string
+    {
+        $normalized = strtoupper(preg_replace('/[^A-Z0-9]/', '', strtoupper($branchName)) ?? '');
+        $base = $normalized !== '' ? substr($normalized, 0, 8) : 'BR' . $branchId;
+        $candidate = $base;
+        $suffix = 1;
+
+        while (
+            Branch::query()
+                ->whereRaw('UPPER(branch_code) = ?', [$candidate])
+                ->where('id', '!=', $branchId)
+                ->exists()
+        ) {
+            $candidate = substr($base, 0, 6) . str_pad((string) $suffix, 2, '0', STR_PAD_LEFT);
+            $suffix++;
+        }
+
+        return $candidate;
+    }
+}

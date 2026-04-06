@@ -18,9 +18,10 @@ import {
     TableCell,
     TableRow,
     TextField,
+    Tooltip,
     Typography,
 } from '@mui/material';
-import { Add, ArrowDownward, ArrowUpward, ContentCopy, Delete, Preview, Refresh } from '@mui/icons-material';
+import { Add, ArrowDownward, ArrowUpward, AttachFile, ContentCopy, Delete, Preview, Refresh } from '@mui/icons-material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
@@ -128,10 +129,11 @@ export default function VoucherForm({
 
     const [previewOpen, setPreviewOpen] = React.useState(false);
     const [confirmState, setConfirmState] = React.useState({ open: false, intent: 'draft' });
-    const [templates, setTemplates] = React.useState([]);
     const [openInvoices, setOpenInvoices] = React.useState([]);
     const [loadingInvoices, setLoadingInvoices] = React.useState(false);
     const [serverPreview, setServerPreview] = React.useState(null);
+    const [showAdvanced, setShowAdvanced] = React.useState(Boolean(voucher?.external_reference_no));
+    const attachmentInputRef = React.useRef(null);
 
     const isJournalVoucher = data.voucher_type === 'JV';
     const isPaymentVoucher = ['CPV', 'BPV'].includes(data.voucher_type);
@@ -183,10 +185,10 @@ export default function VoucherForm({
         ? (defaultSmartPaymentAccount || selectedPaymentAccount || null)
         : (selectedPaymentAccount || null);
     const selectedPaymentCoa = accounts.find((account) => String(account.id) === String(effectivePaymentAccount?.coa_account_id || ''));
-    const selectedTemplate = templates.find((template) => String(template.id) === String(data.template_id));
     const selectedInvoice = openInvoices.find((invoice) => String(invoice.id) === String(data.invoice_id) && String(invoice.invoice_type) === String(data.invoice_type));
     const selectedVendor = vendors.find((vendor) => String(vendor.id) === String(data.vendor_id));
     const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(data.tenant_id));
+    const isForeignCurrency = String(data.currency_code || '').toUpperCase() !== String(baseCurrency).toUpperCase();
 
     const getPartyOptions = React.useMemo(() => {
         if (data.party_type === 'vendor') return vendors;
@@ -254,13 +256,6 @@ export default function VoucherForm({
         expenseTypes,
         isSmartMode,
     ]);
-
-    React.useEffect(() => {
-        fetch(route('accounting.vouchers.templates'))
-            .then((response) => response.json())
-            .then((json) => setTemplates(json.data || []))
-            .catch(() => setTemplates([]));
-    }, []);
 
     React.useEffect(() => {
         if (isJournalVoucher && data.entry_mode !== 'manual') {
@@ -478,7 +473,7 @@ export default function VoucherForm({
         return acc;
     }, { debit: 0, credit: 0 }));
     const difference = Math.abs(totals.debit - totals.credit);
-    const lineWarnings = buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount: effectivePaymentAccount });
+    const lineWarnings = buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount: effectivePaymentAccount, isManualEntry });
 
     const canPost = (() => {
         if (!data.voucher_date || !data.posting_date || !data.tenant_id) return false;
@@ -490,7 +485,6 @@ export default function VoucherForm({
 
         if (isPaymentVoucher) {
             if (!['expense', 'vendor_payment'].includes(data.payment_for)) return false;
-            if (data.payment_for === 'expense' && !data.expense_type_id) return false;
             if (data.payment_for === 'vendor_payment' && !data.vendor_id) return false;
             if (data.payment_mode === 'against_invoice' && !data.invoice_id) return false;
             if (requiresCounterpartySelection && !data.counterparty_account_id) return false;
@@ -517,27 +511,6 @@ export default function VoucherForm({
     const updateLine = (index, key, value) => {
         const next = data.lines.map((line, i) => (i === index ? { ...line, [key]: value } : line));
         setData('lines', next);
-    };
-
-    const applyTemplate = async () => {
-        if (!selectedTemplate) return;
-        try {
-            const response = await fetch(route('accounting.vouchers.template', selectedTemplate.id));
-            const json = await response.json();
-            if (json.data) {
-                Object.entries(json.data).forEach(([key, value]) => {
-                    if (value !== undefined && value !== null) {
-                        if (key === 'entry_mode') {
-                            setData('entry_mode', String(value).toLowerCase() === 'manual' ? 'manual' : 'smart');
-                            return;
-                        }
-                        setData(key, typeof value === 'number' ? String(value) : value);
-                    }
-                });
-            }
-        } catch (error) {
-            // best-effort load
-        }
     };
 
     const loadLastDefaults = async () => {
@@ -593,26 +566,18 @@ export default function VoucherForm({
             ]}
         >
             <form onSubmit={(e) => e.preventDefault()}>
-                <SurfaceCard title="Voucher Header" subtitle="Choose mode, business entity, and posting context.">
+                <SurfaceCard title="Voucher Header">
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                        <Chip size="small" label={`Mode: ${isJournalVoucher ? 'Manual' : 'Smart'}`} />
+                        <Button size="small" variant="text" onClick={() => setShowAdvanced((prev) => !prev)}>
+                            {showAdvanced ? 'Hide Advanced' : 'More Options'}
+                        </Button>
+                    </Stack>
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={2}>
                             <TextField select label="Voucher Type" value={data.voucher_type} onChange={(e) => setData('voucher_type', e.target.value)} fullWidth size="small" disabled={mode === 'edit'}>
                                 {VOUCHER_TYPES.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
                             </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField select label="Entry Mode" value={data.entry_mode} onChange={(e) => setData('entry_mode', e.target.value)} fullWidth size="small" disabled={mode === 'edit'}>
-                                {entryModes
-                                    .filter((entryMode) => isJournalVoucher ? entryMode === 'manual' : entryMode === 'smart')
-                                    .map((entryMode) => (
-                                        <MenuItem key={entryMode} value={entryMode}>
-                                            {entryMode === 'smart' ? 'Smart' : 'Manual'}
-                                        </MenuItem>
-                                    ))}
-                            </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="Voucher Number" value={voucher?.voucher_no || 'Auto-generated'} fullWidth size="small" InputProps={{ readOnly: true }} />
                         </Grid>
                         <Grid item xs={12} md={2}>
                             <TextField type="date" label="Voucher Date" value={data.voucher_date} onChange={(e) => setData('voucher_date', e.target.value)} fullWidth size="small" InputLabelProps={{ shrink: true }} onKeyDown={focusNextField} error={!!errors.voucher_date} helperText={errors.voucher_date} />
@@ -635,13 +600,17 @@ export default function VoucherForm({
                         <Grid item xs={12} md={2}>
                             <TextField label="Reference No" value={data.reference_no} onChange={(e) => setData('reference_no', e.target.value)} fullWidth size="small" onKeyDown={focusNextField} error={!!errors.reference_no} helperText={errors.reference_no} />
                         </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="External Ref No" value={data.external_reference_no} onChange={(e) => setData('external_reference_no', e.target.value)} fullWidth size="small" onKeyDown={focusNextField} error={!!errors.external_reference_no} helperText={errors.external_reference_no} />
-                        </Grid>
-                        <Grid item xs={12} md={2}>
-                            <TextField label="Currency" value={data.currency_code} onChange={(e) => setData('currency_code', e.target.value.toUpperCase())} fullWidth size="small" onKeyDown={focusNextField} />
-                        </Grid>
-                        {String(data.currency_code || '').toUpperCase() !== String(baseCurrency).toUpperCase() ? (
+                        {showAdvanced ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField label="External Ref No" value={data.external_reference_no} onChange={(e) => setData('external_reference_no', e.target.value)} fullWidth size="small" onKeyDown={focusNextField} error={!!errors.external_reference_no} helperText={errors.external_reference_no} />
+                            </Grid>
+                        ) : null}
+                        {(showAdvanced || isForeignCurrency || isManualEntry) ? (
+                            <Grid item xs={12} md={2}>
+                                <TextField label="Currency" value={data.currency_code} onChange={(e) => setData('currency_code', e.target.value.toUpperCase())} fullWidth size="small" onKeyDown={focusNextField} />
+                            </Grid>
+                        ) : null}
+                        {isForeignCurrency ? (
                             <Grid item xs={12} md={2}>
                                 <TextField type="number" label="Exchange Rate" value={data.exchange_rate} onChange={(e) => setData('exchange_rate', e.target.value)} fullWidth size="small" inputProps={{ min: 0, step: '0.000001' }} error={!!errors.exchange_rate} helperText={errors.exchange_rate} />
                             </Grid>
@@ -658,7 +627,7 @@ export default function VoucherForm({
                                             size="small"
                                             InputProps={{ readOnly: true }}
                                             error={!!errors.payment_account_id}
-                                            helperText={errors.payment_account_id || `Recommended for ${selectedTenant?.name || 'selected branch'} and system-controlled in Smart mode.`}
+                                            helperText={errors.payment_account_id || `Recommended for ${selectedTenant?.name || 'selected branch'}.`}
                                         />
                                     ) : (
                                         <TextField
@@ -669,7 +638,7 @@ export default function VoucherForm({
                                             fullWidth
                                             size="small"
                                             error={!!errors.payment_account_id}
-                                            helperText={errors.payment_account_id || `No default ${paymentLabel?.toLowerCase()} configured for ${selectedTenant?.name || 'this branch'}. Select one and optionally save as default.`}
+                                            helperText={errors.payment_account_id || `No default configured for ${selectedTenant?.name || 'this branch'}.`}
                                         >
                                             <MenuItem value="">Select account</MenuItem>
                                             {filteredPaymentAccounts.map((account) => (
@@ -842,25 +811,16 @@ export default function VoucherForm({
                                     helperText={
                                         errors.expense_type_id
                                         || (expenseTypes.length === 0
-                                            ? 'No active expense types configured. Add mappings from Voucher Mappings first.'
+                                            ? 'No expense type configured. Default Expense Account will be used if available.'
                                             : '')
                                     }
                                 >
-                                    <MenuItem value="">Select expense type</MenuItem>
+                                    <MenuItem value="">Use Default Expense Account</MenuItem>
                                     {expenseTypes.length === 0 ? (
                                         <MenuItem value="" disabled>No expense types available</MenuItem>
                                     ) : null}
                                     {expenseTypes.map((item) => <MenuItem key={item.id} value={item.id}>{item.code} - {item.name}</MenuItem>)}
                                 </TextField>
-                                {expenseTypes.length === 0 ? (
-                                    <Button
-                                        size="small"
-                                        sx={{ mt: 1 }}
-                                        onClick={() => router.visit(route('accounting.vouchers.mappings.index'))}
-                                    >
-                                        Open Expense Type Mapping
-                                    </Button>
-                                ) : null}
                             </Grid>
                         ) : null}
 
@@ -923,7 +883,7 @@ export default function VoucherForm({
                         ) : null}
 
                         <Grid item xs={12}>
-                            <TextField label="Remarks / Narration" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth multiline minRows={2} size="small" error={!!errors.remarks} helperText={errors.remarks || 'Narration is auto-generated in business language and can include your remarks.'} />
+                            <TextField label="Remarks / Narration" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth multiline minRows={2} size="small" error={!!errors.remarks} helperText={errors.remarks} />
                         </Grid>
 
                         {isSmartMode && !defaultSmartPaymentAccount ? (
@@ -941,13 +901,24 @@ export default function VoucherForm({
                             </Grid>
                         ) : null}
 
-                        <Grid item xs={12} md={4}>
-                            <Button component="label" variant="outlined" fullWidth>
-                                Attach Supporting Documents
-                                <input hidden multiple type="file" onChange={(e) => setData('attachments', Array.from(e.target.files || []))} />
-                            </Button>
+                        <Grid item xs={12}>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                <Tooltip title="Attach documents">
+                                    <IconButton onClick={() => attachmentInputRef.current?.click()} size="small" sx={{ border: '1px solid rgba(15,23,42,0.16)', borderRadius: 1.5 }}>
+                                        <AttachFile fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <input
+                                    ref={attachmentInputRef}
+                                    hidden
+                                    multiple
+                                    type="file"
+                                    onChange={(e) => setData('attachments', Array.from(e.target.files || []))}
+                                />
+                                <Typography variant="caption" color="text.secondary">Attachments</Typography>
+                            </Stack>
                         </Grid>
-                        <Grid item xs={12} md={8}>
+                        <Grid item xs={12}>
                             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                                 {(data.attachments || []).map((file, index) => <Chip key={`${file.name}-${index}`} label={file.name} variant="outlined" />)}
                                 {(voucher?.media || []).map((file) => (
@@ -966,42 +937,6 @@ export default function VoucherForm({
                                 ))}
                             </Stack>
                         </Grid>
-                    </Grid>
-                </SurfaceCard>
-
-                <SurfaceCard title="Smart Defaults & Templates" subtitle="Apply previous defaults and reusable voucher templates.">
-                    <Grid container spacing={2}>
-                        <Grid item xs={12} md={4}>
-                            <TextField select label="Template" value={data.template_id} onChange={(e) => setData('template_id', e.target.value)} fullWidth size="small">
-                                <MenuItem value="">Select template</MenuItem>
-                                {templates.map((template) => (
-                                    <MenuItem key={template.id} value={template.id}>{template.name} ({template.scope})</MenuItem>
-                                ))}
-                            </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={8}>
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                <Button variant="outlined" onClick={applyTemplate} disabled={!selectedTemplate}>Apply Template</Button>
-                                <Button variant="outlined" startIcon={<Refresh />} onClick={loadLastDefaults}>Use Last Defaults</Button>
-                                <FormControlLabel
-                                    control={<Checkbox checked={Boolean(data.save_template)} onChange={(e) => setData('save_template', e.target.checked)} />}
-                                    label="Save as template"
-                                />
-                            </Stack>
-                        </Grid>
-                        {data.save_template ? (
-                            <>
-                                <Grid item xs={12} md={4}>
-                                    <TextField label="Template Name" value={data.template_name} onChange={(e) => setData('template_name', e.target.value)} fullWidth size="small" error={!!errors.template_name} helperText={errors.template_name} />
-                                </Grid>
-                                <Grid item xs={12} md={3}>
-                                    <TextField select label="Template Scope" value={data.template_scope} onChange={(e) => setData('template_scope', e.target.value)} fullWidth size="small">
-                                        <MenuItem value="user">My Template</MenuItem>
-                                        <MenuItem value="global">Global Template</MenuItem>
-                                    </TextField>
-                                </Grid>
-                            </>
-                        ) : null}
                     </Grid>
                 </SurfaceCard>
 
@@ -1083,10 +1018,7 @@ export default function VoucherForm({
                         {errors.lines ? <Alert severity="error" sx={{ mt: 1 }}>{errors.lines}</Alert> : null}
                     </SurfaceCard>
                 ) : (
-                    <SurfaceCard title="System-Generated Entries" subtitle="Lines will be generated from mode, entity mappings, and voucher type rules.">
-                        <Alert severity="info">
-                            Counterparty and cash/bank lines are generated by the posting engine from your business inputs.
-                        </Alert>
+                    <SurfaceCard title="System-Generated Entries">
                         {counterpartyResolution?.requires_selection ? (
                             <Alert severity="warning" sx={{ mt: 1 }}>
                                 {counterpartyResolution?.message || `${counterpartyRoleLabel} mapping is missing. Select an account to continue.`}
@@ -1139,13 +1071,20 @@ export default function VoucherForm({
                                 </Typography>
                             )}
                         </Box>
-                        <Box sx={{ mt: 1.25 }}>
-                            <Chip label={`Debit ${formatAmount(totals.debit)}`} color="primary" variant="outlined" sx={{ mr: 1 }} />
-                            <Chip label={`Credit ${formatAmount(totals.credit)}`} color="primary" variant="outlined" sx={{ mr: 1 }} />
-                            <Chip label={`Difference ${formatAmount(difference)}`} color={difference < 0.0001 ? 'success' : 'error'} />
+                        <Box sx={{ mt: 1.25, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip label={`Debit ${formatAmount(totals.debit)}`} color="primary" variant="outlined" />
+                            <Chip label={`Credit ${formatAmount(totals.credit)}`} color="primary" variant="outlined" />
+                            <Chip label={`Total ${formatAmount(totals.debit)}`} color="default" variant="outlined" />
                         </Box>
                     </SurfaceCard>
                 )}
+
+                <SurfaceCard lowChrome>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                        <Typography variant="body2" color="text.secondary">Smart Defaults</Typography>
+                        <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={loadLastDefaults}>Use Last Defaults</Button>
+                    </Stack>
+                </SurfaceCard>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
                     <Button variant="outlined" startIcon={<Preview />} onClick={() => setPreviewOpen(true)}>
@@ -1191,8 +1130,10 @@ export default function VoucherForm({
                                 {serverPreview?.allocation ? ` · Allocating ${formatAmount(serverPreview.allocation.allocated_now)} · After post ${formatAmount(serverPreview.allocation.remaining_after)}` : ''}
                             </Alert>
                         ) : null}
-                        <Alert severity={difference < 0.0001 ? 'success' : 'error'}>
-                            Debit {formatAmount(totals.debit)} | Credit {formatAmount(totals.credit)} | Difference {formatAmount(difference)}
+                        <Alert severity={isManualEntry ? (difference < 0.0001 ? 'success' : 'error') : 'info'}>
+                            {isManualEntry
+                                ? `Debit ${formatAmount(totals.debit)} | Credit ${formatAmount(totals.credit)} | Difference ${formatAmount(difference)}`
+                                : `Debit ${formatAmount(totals.debit)} | Credit ${formatAmount(totals.credit)}`}
                         </Alert>
                         <AdminDataTable
                             columns={[
@@ -1304,7 +1245,7 @@ function accountLabel(accounts, accountId) {
     return `${account.full_code} - ${account.name}`;
 }
 
-function buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount }) {
+function buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount, isManualEntry }) {
     const warnings = [];
     if (data.posting_date && data.voucher_date && data.posting_date < data.voucher_date) {
         warnings.push('Posting date is earlier than voucher date.');
@@ -1318,7 +1259,7 @@ function buildWarnings({ data, selectedInvoice, difference, baseCurrency, select
     if (selectedInvoice && Number(data.amount || 0) > Number(selectedInvoice.outstanding || 0)) {
         warnings.push('Entered amount exceeds selected invoice outstanding.');
     }
-    if (difference > 0.0001) {
+    if (isManualEntry && difference > 0.0001) {
         warnings.push('Voucher is currently unbalanced.');
     }
     return Array.from(new Set(warnings));

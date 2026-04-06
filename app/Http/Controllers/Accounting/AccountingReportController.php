@@ -78,9 +78,10 @@ class AccountingReportController extends Controller
         }
 
         $accounts = CoaAccount::orderBy('full_code')->get(['id', 'full_code', 'name']);
-        $query = JournalLine::with(['account', 'entry'])->orderBy('journal_entries.entry_date');
+        $query = JournalLine::with(['account', 'entry'])->orderBy('journal_entries.entry_date')->orderBy('journal_lines.id');
 
         $query->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id');
+        $query->where('journal_entries.status', 'posted');
 
         if ($request->filled('account_id')) {
             $query->where('journal_lines.account_id', $request->account_id);
@@ -101,6 +102,10 @@ class AccountingReportController extends Controller
         if ($request->filled('tenant_id')) {
             $query->where('journal_entries.tenant_id', $request->tenant_id);
         }
+
+        $summaryRow = (clone $query)
+            ->selectRaw('COUNT(journal_lines.id) as records, COALESCE(SUM(journal_lines.debit), 0) as total_debit, COALESCE(SUM(journal_lines.credit), 0) as total_credit')
+            ->first();
 
         $lines = $query->select('journal_lines.*', 'journal_entries.entry_date as entry_date', 'journal_entries.entry_no as entry_no')
             ->paginate($perPage)
@@ -132,8 +137,8 @@ class AccountingReportController extends Controller
 
         $summary = [
             'records' => $lines->total(),
-            'total_debit' => (float) collect($lines->items())->sum(fn ($line) => (float) ($line->debit ?? 0)),
-            'total_credit' => (float) collect($lines->items())->sum(fn ($line) => (float) ($line->credit ?? 0)),
+            'total_debit' => (float) ($summaryRow->total_debit ?? 0),
+            'total_credit' => (float) ($summaryRow->total_credit ?? 0),
         ];
 
         return Inertia::render('App/Admin/Accounting/GeneralLedger', [
@@ -487,6 +492,7 @@ class AccountingReportController extends Controller
                 $actual = (float) JournalLine::query()
                     ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
                     ->whereIn('journal_lines.account_id', $budgetAccountIds)
+                    ->where('journal_entries.status', 'posted')
                     ->whereBetween('journal_entries.entry_date', [$from, $to])
                     ->select(DB::raw('SUM(journal_lines.debit - journal_lines.credit) as actual'))
                     ->value('actual');
@@ -1293,6 +1299,7 @@ class AccountingReportController extends Controller
         $query = JournalLine::query()
             ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit) as debit'), DB::raw('SUM(journal_lines.credit) as credit'))
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id');
+        $query->where('journal_entries.status', 'posted');
 
         if ($from && $to) {
             $query->whereBetween('journal_entries.entry_date', [$from, $to]);
@@ -1619,6 +1626,7 @@ class AccountingReportController extends Controller
 
         $entryQuery = JournalEntry::query()
             ->with('tenant:id,name')
+            ->where('status', 'posted')
             ->whereBetween('entry_date', [$from, $to]);
 
         if ($request->filled('tenant_id')) {
@@ -1648,6 +1656,11 @@ class AccountingReportController extends Controller
                 $entryQuery->whereHas('lines', fn ($lines) => $lines->where('account_id', (int) $paymentAccount->coa_account_id));
             }
         }
+
+        $summaryRow = (clone $entryQuery)
+            ->leftJoin('journal_lines', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->selectRaw('COUNT(DISTINCT journal_entries.id) as records, COALESCE(SUM(journal_lines.debit), 0) as total_debit, COALESCE(SUM(journal_lines.credit), 0) as total_credit')
+            ->first();
 
         $rows = $entryQuery
             ->orderBy('entry_date')
@@ -1685,11 +1698,12 @@ class AccountingReportController extends Controller
 
         $summary = [
             'records' => $rows->total(),
-            'total_debit' => (float) $pageRows->sum('debit_total'),
-            'total_credit' => (float) $pageRows->sum('credit_total'),
+            'total_debit' => (float) ($summaryRow->total_debit ?? 0),
+            'total_credit' => (float) ($summaryRow->total_credit ?? 0),
         ];
 
         $sourceOptions = JournalEntry::query()
+            ->where('status', 'posted')
             ->whereNotNull('module_type')
             ->distinct()
             ->orderBy('module_type')
@@ -1803,6 +1817,7 @@ class AccountingReportController extends Controller
             ->with(['entry:id,entry_date,entry_no,module_type,module_id,tenant_id', 'entry.tenant:id,name', 'account:id,full_code,name'])
             ->whereIn('account_id', $accountIds)
             ->whereHas('entry', function ($builder) use ($from, $to, $request) {
+                $builder->where('status', 'posted');
                 $builder->whereBetween('entry_date', [$from, $to]);
 
                 if ($request->filled('tenant_id')) {
@@ -1823,6 +1838,10 @@ class AccountingReportController extends Controller
             })
             ->orderBy('journal_entry_id')
             ->orderBy('id');
+
+        $summaryRow = (clone $query)
+            ->selectRaw('COUNT(journal_lines.id) as records, COALESCE(SUM(journal_lines.debit), 0) as total_debit, COALESCE(SUM(journal_lines.credit), 0) as total_credit')
+            ->first();
 
         $rows = $query->paginate($perPage)->withQueryString();
 
@@ -1857,12 +1876,13 @@ class AccountingReportController extends Controller
 
         $summary = [
             'records' => $rows->total(),
-            'total_debit' => (float) $pageRows->sum('debit'),
-            'total_credit' => (float) $pageRows->sum('credit'),
-            'closing_balance' => (float) ($pageRows->last()['running_balance'] ?? 0),
+            'total_debit' => (float) ($summaryRow->total_debit ?? 0),
+            'total_credit' => (float) ($summaryRow->total_credit ?? 0),
+            'closing_balance' => (float) (($summaryRow->total_debit ?? 0) - ($summaryRow->total_credit ?? 0)),
         ];
 
         $sourceOptions = JournalEntry::query()
+            ->where('status', 'posted')
             ->whereNotNull('module_type')
             ->distinct()
             ->orderBy('module_type')

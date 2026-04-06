@@ -243,15 +243,6 @@ class GoodsReceiptController extends Controller
             }
         }
 
-        $inputItemIds = collect($data['items'])->pluck('purchase_order_item_id')->all();
-        $previousReceived = DB::table('goods_receipt_items')
-            ->join('goods_receipts', 'goods_receipts.id', '=', 'goods_receipt_items.goods_receipt_id')
-            ->whereIn('goods_receipt_items.purchase_order_item_id', $inputItemIds)
-            ->where('goods_receipts.status', '!=', 'cancelled')
-            ->select('goods_receipt_items.purchase_order_item_id', DB::raw('SUM(goods_receipt_items.qty_received) as qty_received'))
-            ->groupBy('goods_receipt_items.purchase_order_item_id')
-            ->pluck('qty_received', 'purchase_order_item_id');
-
         foreach ($data['items'] as $index => $item) {
             $poItem = $poItems->get($item['purchase_order_item_id']);
             if (!$poItem || (int) $poItem->purchase_order_id !== (int) $po->id) {
@@ -266,7 +257,9 @@ class GoodsReceiptController extends Controller
                 lineIndex: $index
             );
 
-            $alreadyReceived = (float) ($previousReceived[$poItem->id] ?? 0);
+            // Available quantity should always follow PO progress:
+            // ordered_qty - previously_received_qty (from PO line).
+            $alreadyReceived = (float) ($poItem->qty_received ?? 0);
             $available = max(0, (float) $poItem->qty_ordered - $alreadyReceived);
             if ((float) $item['qty_received'] > $available + 0.0001) {
                 throw ValidationException::withMessages([

@@ -20,6 +20,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class VendorController extends Controller
@@ -258,11 +259,21 @@ class VendorController extends Controller
 
     public function store(Request $request)
     {
+        $defaultMappingWarnings = [];
         if (!Schema::hasTable('coa_accounts')) {
             $request->merge([
                 'payable_account_id' => null,
                 'advance_account_id' => null,
             ]);
+        } else {
+            $defaults = $this->resolveVendorDefaultAccounts();
+            if (!$request->filled('payable_account_id') && $defaults['payable_account_id']) {
+                $request->merge(['payable_account_id' => $defaults['payable_account_id']]);
+            }
+            if (!$request->filled('advance_account_id') && $defaults['advance_account_id']) {
+                $request->merge(['advance_account_id' => $defaults['advance_account_id']]);
+            }
+            $defaultMappingWarnings = $defaults['warnings'];
         }
 
         $data = $request->validate([
@@ -276,8 +287,8 @@ class VendorController extends Controller
             'payment_terms_days' => 'nullable|integer|min:0',
             'currency' => 'nullable|string|max:8',
             'opening_balance' => 'nullable|numeric',
-            'payable_account_id' => 'nullable|exists:coa_accounts,id',
-            'advance_account_id' => 'nullable|exists:coa_accounts,id',
+            'payable_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
+            'advance_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'default_payment_account_id' => 'nullable|exists:payment_accounts,id',
             'tax_treatment' => 'nullable|string|max:50',
             'approval_status' => 'required|in:approved,pending,blocked',
@@ -288,7 +299,12 @@ class VendorController extends Controller
 
         Vendor::create($data);
 
-        return redirect()->back()->with('success', 'Vendor created.');
+        $response = redirect()->back()->with('success', 'Vendor created.');
+        if (!empty($defaultMappingWarnings)) {
+            $response->with('warning', implode(' ', $defaultMappingWarnings));
+        }
+
+        return $response;
     }
 
     public function update(Request $request, Vendor $vendor)
@@ -311,8 +327,8 @@ class VendorController extends Controller
             'payment_terms_days' => 'nullable|integer|min:0',
             'currency' => 'nullable|string|max:8',
             'opening_balance' => 'nullable|numeric',
-            'payable_account_id' => 'nullable|exists:coa_accounts,id',
-            'advance_account_id' => 'nullable|exists:coa_accounts,id',
+            'payable_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
+            'advance_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'default_payment_account_id' => 'nullable|exists:payment_accounts,id',
             'tax_treatment' => 'nullable|string|max:50',
             'approval_status' => 'required|in:approved,pending,blocked',
@@ -324,6 +340,43 @@ class VendorController extends Controller
         $vendor->update($data);
 
         return redirect()->back()->with('success', 'Vendor updated.');
+    }
+
+    private function resolveVendorDefaultAccounts(): array
+    {
+        $defaults = \App\Models\Setting::getGroup('accounting_voucher_defaults');
+        $payableId = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $advanceId = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+
+        $warnings = [];
+        if (!$this->isValidPostableCoa($payableId)) {
+            $payableId = null;
+            $warnings[] = 'Default payable account is missing or inactive/non-postable in Voucher Mappings.';
+        }
+
+        if (!$this->isValidPostableCoa($advanceId)) {
+            $advanceId = null;
+            $warnings[] = 'Default advance account is missing or inactive/non-postable in Voucher Mappings.';
+        }
+
+        return [
+            'payable_account_id' => $payableId,
+            'advance_account_id' => $advanceId,
+            'warnings' => $warnings,
+        ];
+    }
+
+    private function isValidPostableCoa(?int $accountId): bool
+    {
+        if (!$accountId) {
+            return false;
+        }
+
+        return CoaAccount::query()
+            ->whereKey($accountId)
+            ->where('is_active', true)
+            ->where('is_postable', true)
+            ->exists();
     }
 
     public function destroy(Vendor $vendor)

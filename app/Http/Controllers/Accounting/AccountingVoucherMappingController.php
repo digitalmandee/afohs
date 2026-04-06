@@ -18,6 +18,8 @@ class AccountingVoucherMappingController extends Controller
     {
         $defaults = Setting::getGroup('accounting_voucher_defaults');
         $payableDefault = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $advanceDefault = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+        $expenseDefault = (int) ($defaults['default_expense_account_id'] ?? config('accounting.vouchers.default_expense_account_id', 0));
         $receivableDefault = (int) ($defaults['default_receivable_account_id'] ?? config('accounting.vouchers.default_receivable_account_id', 0));
 
         $accounts = CoaAccount::query()
@@ -38,9 +40,17 @@ class AccountingVoucherMappingController extends Controller
             ->get();
 
         $health = [
-            'unmapped_vendors' => Vendor::query()->where('status', 'active')->whereNull('payable_account_id')->count(),
+            'unmapped_vendors' => Vendor::query()
+                ->where('status', 'active')
+                ->where(function ($query) {
+                    $query->whereNull('payable_account_id')
+                        ->orWhereNull('advance_account_id');
+                })
+                ->count(),
             'inactive_or_non_postable_mappings' => $mappings->filter(fn ($m) => !$m->account || !$m->account->is_active || !$m->account->is_postable)->count(),
             'missing_default_payable' => $payableDefault <= 0,
+            'missing_default_advance' => $advanceDefault <= 0,
+            'missing_default_expense' => $expenseDefault <= 0,
             'missing_default_receivable' => $receivableDefault <= 0,
         ];
 
@@ -50,6 +60,8 @@ class AccountingVoucherMappingController extends Controller
             'expenseTypes' => $expenseTypes,
             'defaults' => [
                 'default_payable_account_id' => $payableDefault > 0 ? $payableDefault : '',
+                'default_advance_account_id' => $advanceDefault > 0 ? $advanceDefault : '',
+                'default_expense_account_id' => $expenseDefault > 0 ? $expenseDefault : '',
                 'default_receivable_account_id' => $receivableDefault > 0 ? $receivableDefault : '',
             ],
             'health' => $health,
@@ -89,16 +101,28 @@ class AccountingVoucherMappingController extends Controller
             'id' => 'nullable|exists:accounting_expense_types,id',
             'code' => 'required|string|max:30',
             'name' => 'required|string|max:120',
-            'expense_account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
+            'expense_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
             'is_active' => 'nullable|boolean',
         ]);
+
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $defaultExpenseId = (int) ($defaults['default_expense_account_id'] ?? config('accounting.vouchers.default_expense_account_id', 0));
+        $resolvedExpenseAccountId = (int) ($data['expense_account_id'] ?? 0);
+        if ($resolvedExpenseAccountId <= 0 && $defaultExpenseId > 0) {
+            $resolvedExpenseAccountId = $defaultExpenseId;
+        }
+        if ($resolvedExpenseAccountId <= 0) {
+            return redirect()->back()->withErrors([
+                'expense_account_id' => 'Select expense account or configure Default Expense Account in Voucher Mappings.',
+            ]);
+        }
 
         AccountingExpenseType::query()->updateOrCreate(
             ['id' => $data['id'] ?? null],
             [
                 'code' => $data['code'],
                 'name' => $data['name'],
-                'expense_account_id' => (int) $data['expense_account_id'],
+                'expense_account_id' => $resolvedExpenseAccountId,
                 'is_active' => (bool) ($data['is_active'] ?? true),
                 'created_by' => $request->user()?->id,
                 'updated_by' => $request->user()?->id,
@@ -112,15 +136,18 @@ class AccountingVoucherMappingController extends Controller
     {
         $data = $request->validate([
             'default_payable_account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
+            'default_advance_account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
+            'default_expense_account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
             'default_receivable_account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
         ]);
 
         Setting::updateGroup('accounting_voucher_defaults', [
             'default_payable_account_id' => (int) $data['default_payable_account_id'],
+            'default_advance_account_id' => (int) $data['default_advance_account_id'],
+            'default_expense_account_id' => (int) $data['default_expense_account_id'],
             'default_receivable_account_id' => (int) $data['default_receivable_account_id'],
         ]);
 
         return redirect()->back()->with('success', 'Voucher default accounts updated.');
     }
 }
-

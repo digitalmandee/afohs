@@ -1,5 +1,5 @@
 import React from 'react';
-import { useForm } from '@inertiajs/react';
+import { useForm, router } from '@inertiajs/react';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -67,6 +67,15 @@ export default function WarehouseCategoriesIndex({ categories = [], error = null
                 ]}
             >
                 {error ? <Alert severity="warning" variant="outlined">{error}</Alert> : null}
+                <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+                    Item-level stock is tracked in Inventory Items and Warehouse Stock views.
+                    <Button size="small" sx={{ ml: 1 }} onClick={() => router.visit(route('inventory.index'))}>
+                        Open Inventory Items
+                    </Button>
+                    <Button size="small" sx={{ ml: 1 }} onClick={() => router.visit(route('inventory.warehouses.index'))}>
+                        Open Warehouse Stock
+                    </Button>
+                </Alert>
                 <SurfaceCard title="Category Register" subtitle="Central, back-store, sellable, production, transit, and custom warehouse groups.">
                     <AdminDataTable
                         columns={[

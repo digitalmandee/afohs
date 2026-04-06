@@ -46,6 +46,7 @@ class WarehouseController extends Controller
                     'legacy_only_ingredients' => 0,
                     'sellable_assignments' => 0,
                     'back_store_assignments' => 0,
+                    'readiness_alerts' => collect(),
                     'assignments' => collect(),
                 ],
                 'filters' => $request->only(['search', 'status', 'coverage_type', 'restaurant_id', 'has_primary_source', 'per_page']),
@@ -125,6 +126,17 @@ class WarehouseController extends Controller
                     'legacy_only_ingredients' => Ingredient::query()->whereNull('inventory_item_id')->count(),
                     'sellable_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'sellable')->count(),
                     'back_store_assignments' => RestaurantWarehouseAssignment::query()->where('is_active', true)->where('role', 'back_store')->count(),
+                    'readiness_alerts' => RestaurantWarehouseAssignment::query()
+                        ->selectRaw('restaurant_id, SUM(CASE WHEN role = "back_store" AND is_active = 1 THEN 1 ELSE 0 END) AS back_store_count, SUM(CASE WHEN role = "sellable" AND is_active = 1 THEN 1 ELSE 0 END) AS sellable_count')
+                        ->groupBy('restaurant_id')
+                        ->with('restaurant:id,name')
+                        ->get()
+                        ->filter(fn ($row) => (int) $row->back_store_count > 0 && (int) $row->sellable_count === 0)
+                        ->values()
+                        ->map(fn ($row) => [
+                            'restaurant_name' => $row->restaurant?->name,
+                            'message' => 'Back-store sources exist but no active sellable source is assigned for POS.',
+                        ]),
                     'assignments' => RestaurantWarehouseAssignment::query()
                         ->with([
                             'restaurant:id,name',

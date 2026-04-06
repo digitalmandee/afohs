@@ -39,3 +39,9 @@ Schedule::command('accounting:journals:automation --overdue-limit=300 --retry-li
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/accounting-journal-automation.log'));
+
+Schedule::command('accounting:mappings:health --heal')
+    ->dailyAt('03:15')
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/accounting-mapping-health.log'));

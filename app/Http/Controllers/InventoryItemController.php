@@ -46,14 +46,36 @@ class InventoryItemController extends Controller
             $query->where('status', $request->status);
         }
 
+        $paginatedItems = $query->paginate(15)->withQueryString();
+        $itemIds = $paginatedItems->getCollection()->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
+        $stockByItemId = collect();
+
+        if (!empty($itemIds)) {
+            $stockByItemId = InventoryTransaction::query()
+                ->selectRaw('inventory_item_id, COALESCE(SUM(qty_in - qty_out), 0) as available_qty')
+                ->whereIn('inventory_item_id', $itemIds)
+                ->groupBy('inventory_item_id')
+                ->pluck('available_qty', 'inventory_item_id');
+        }
+
+        $paginatedItems->getCollection()->transform(function (InventoryItem $item) use ($stockByItemId) {
+            $item->current_stock_available = (float) ($stockByItemId->get($item->id, 0));
+            return $item;
+        });
+
         return Inertia::render('App/Inventory/Items/Index', [
-            'items' => $query->paginate(15)->withQueryString(),
+            'items' => $paginatedItems,
             'filters' => $request->only(['search', 'status']),
             'summary' => [
                 'count' => InventoryItem::query()->count(),
                 'active' => InventoryItem::query()->where('status', 'active')->count(),
                 'purchasable' => InventoryItem::query()->where('is_purchasable', true)->count(),
                 'linked_ingredients' => \App\Models\Ingredient::query()->whereNotNull('inventory_item_id')->count(),
+                'stocked_items' => InventoryTransaction::query()
+                    ->selectRaw('inventory_item_id, COALESCE(SUM(qty_in - qty_out), 0) as available_qty')
+                    ->groupBy('inventory_item_id')
+                    ->havingRaw('COALESCE(SUM(qty_in - qty_out), 0) > 0')
+                    ->count(),
             ],
         ]);
     }

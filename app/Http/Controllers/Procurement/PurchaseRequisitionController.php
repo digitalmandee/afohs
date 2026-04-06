@@ -100,7 +100,7 @@ class PurchaseRequisitionController extends Controller
             ->get(['id', 'name']);
 
         $departmentOptionsByRequestFor = $this->buildDepartmentOptionsByRequestFor($departments);
-        $headOfficeBranchId = config('procurement.head_office_branch_id');
+        $headOfficeBranchId = $this->resolveHeadOfficeBranchId();
         $headOfficeBranch = $headOfficeBranchId ? Branch::query()->find($headOfficeBranchId) : null;
 
         return Inertia::render('App/Admin/Procurement/PurchaseRequisitions/Create', [
@@ -479,10 +479,10 @@ class PurchaseRequisitionController extends Controller
         }
 
         if ($requestFor === 'office') {
-            $headOfficeBranchId = config('procurement.head_office_branch_id');
-            if (!$headOfficeBranchId || !Branch::query()->whereKey($headOfficeBranchId)->exists()) {
+            $headOfficeBranchId = $this->resolveHeadOfficeBranchId();
+            if (!$headOfficeBranchId) {
                 throw ValidationException::withMessages([
-                    'request_for' => 'Head Office branch is not configured. Set procurement.head_office_branch_id.',
+                    'request_for' => 'Head Office branch is not available. Please create at least one branch in Branch Settings.',
                 ]);
             }
 
@@ -516,6 +516,40 @@ class PurchaseRequisitionController extends Controller
         $normalized['warehouse_id'] = null;
 
         return $normalized;
+    }
+
+    private function resolveHeadOfficeBranchId(): ?int
+    {
+        $configured = (int) (config('procurement.head_office_branch_id') ?? 0);
+        if ($configured > 0 && Branch::query()->whereKey($configured)->exists()) {
+            return $configured;
+        }
+
+        $namedHeadOffice = Branch::query()
+            ->where(function ($query) {
+                $query->whereRaw('LOWER(name) like ?', ['%head office%'])
+                    ->orWhereRaw('LOWER(name) like ?', ['%headoffice%']);
+            })
+            ->orderBy('id')
+            ->value('id');
+        if ($namedHeadOffice) {
+            return (int) $namedHeadOffice;
+        }
+
+        $activeBranch = Branch::query()
+            ->where(function ($query) {
+                $query->where('status', true)
+                    ->orWhere('status', 1)
+                    ->orWhere('status', 'active');
+            })
+            ->orderBy('id')
+            ->value('id');
+        if ($activeBranch) {
+            return (int) $activeBranch;
+        }
+
+        $anyBranch = Branch::query()->orderBy('id')->value('id');
+        return $anyBranch ? (int) $anyBranch : null;
     }
 
     private function buildDepartmentOptionsByRequestFor(Collection $departments): array

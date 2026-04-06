@@ -1645,7 +1645,7 @@ class OrderController extends Controller
 
     private function resolveRestaurantInventoryContext(int $restaurantId): array
     {
-        $assignment = app(RestaurantInventoryResolver::class)->resolvePrimaryIssueSource($restaurantId);
+        $assignment = app(RestaurantInventoryResolver::class)->resolveOrProvisionPrimaryIssueSource($restaurantId);
 
         return [
             'warehouse_id' => (int) $assignment->warehouse_id,

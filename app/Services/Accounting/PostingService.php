@@ -4,13 +4,17 @@ namespace App\Services\Accounting;
 
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Models\Setting;
 use App\Models\User;
+use App\Models\Vendor;
 use App\Services\Accounting\Support\AccountingPeriodGate;
 use App\Services\OperationalAuditLogger;
 use Illuminate\Support\Facades\DB;
 
 class PostingService
 {
+    private ?array $vendorSubledgerControlAccountIds = null;
+
     public function __construct(
         private readonly AccountingPeriodGate $accountingPeriodGate,
         private readonly OperationalAuditLogger $operationalAuditLogger
@@ -179,6 +183,7 @@ class PostingService
             if (empty($line['account_id'])) {
                 throw new \InvalidArgumentException("Journal line at index {$idx} is missing account_id.");
             }
+            $this->assertVendorSubledgerTagging($line, $idx);
             $debit += (float) ($line['debit'] ?? 0);
             $credit += (float) ($line['credit'] ?? 0);
         }
@@ -186,5 +191,55 @@ class PostingService
         if (abs($debit - $credit) > 0.0001) {
             throw new \InvalidArgumentException('Journal lines are unbalanced and cannot be posted.');
         }
+    }
+
+    private function assertVendorSubledgerTagging(array $line, int $idx): void
+    {
+        $accountId = (int) ($line['account_id'] ?? 0);
+        if ($accountId <= 0) {
+            return;
+        }
+
+        if (!in_array($accountId, $this->vendorPayableAdvanceAccountIds(), true)) {
+            return;
+        }
+
+        $debit = (float) ($line['debit'] ?? 0);
+        $credit = (float) ($line['credit'] ?? 0);
+        if ($debit <= 0.0001 && $credit <= 0.0001) {
+            return;
+        }
+
+        $vendorId = (int) ($line['vendor_id'] ?? 0);
+        if ($vendorId <= 0) {
+            throw new \InvalidArgumentException(
+                "Journal line at index {$idx} posts to vendor payable/advance account {$accountId} without vendor subledger tag."
+            );
+        }
+    }
+
+    private function vendorPayableAdvanceAccountIds(): array
+    {
+        if ($this->vendorSubledgerControlAccountIds !== null) {
+            return $this->vendorSubledgerControlAccountIds;
+        }
+
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $ids = [
+            (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0)),
+            (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0)),
+        ];
+
+        $vendorAccounts = Vendor::query()
+            ->select(['payable_account_id', 'advance_account_id'])
+            ->get();
+
+        foreach ($vendorAccounts as $vendor) {
+            $ids[] = (int) ($vendor->payable_account_id ?? 0);
+            $ids[] = (int) ($vendor->advance_account_id ?? 0);
+        }
+
+        $this->vendorSubledgerControlAccountIds = array_values(array_unique(array_filter($ids, fn ($id) => (int) $id > 0)));
+        return $this->vendorSubledgerControlAccountIds;
     }
 }

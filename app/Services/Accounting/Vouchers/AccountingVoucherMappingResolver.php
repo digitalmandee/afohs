@@ -17,6 +17,19 @@ class AccountingVoucherMappingResolver
             return $this->resolveExpenseAccountId((int) ($data['expense_type_id'] ?? 0));
         }
 
+        $isExpensePayment = in_array((string) ($data['voucher_type'] ?? ''), ['CPV', 'BPV'], true)
+            && (string) ($data['payment_for'] ?? '') === 'expense';
+        if ($isExpensePayment) {
+            $defaultExpenseId = $this->resolveDefaultExpenseAccountId();
+            if ($defaultExpenseId > 0) {
+                return $defaultExpenseId;
+            }
+
+            throw ValidationException::withMessages([
+                'expense_type_id' => 'Select Expense Type or configure Default Expense Account in Voucher Mappings.',
+            ]);
+        }
+
         $partyType = (string) ($data['party_type'] ?? 'none');
         $partyId = (int) ($data['party_id'] ?? 0);
         $role = in_array((string) ($data['voucher_type'] ?? ''), ['CPV', 'BPV'], true) ? 'payable' : 'receivable';
@@ -71,5 +84,16 @@ class AccountingVoucherMappingResolver
         }
 
         return (int) $type->expense_account_id;
+    }
+
+    public function resolveDefaultExpenseAccountId(): int
+    {
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $fallbackId = (int) ($defaults['default_expense_account_id'] ?? config('accounting.vouchers.default_expense_account_id', 0));
+        if ($fallbackId > 0 && CoaAccount::query()->whereKey($fallbackId)->where('is_active', true)->where('is_postable', true)->exists()) {
+            return $fallbackId;
+        }
+
+        return 0;
     }
 }

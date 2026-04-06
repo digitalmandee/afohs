@@ -3,8 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\AccountingVoucher;
+use App\Models\CoaAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Models\Setting;
+use App\Models\Vendor;
 use Illuminate\Console\Command;
 
 class VerifyVoucherPosting extends Command
@@ -176,6 +179,113 @@ class VerifyVoucherPosting extends Command
             $failures
         ));
 
+        $vendorMappingIssues = Vendor::query()
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('payable_account_id')
+                    ->orWhereNull('advance_account_id');
+            })
+            ->orderBy('id')
+            ->limit(100)
+            ->get(['id', 'code', 'name', 'payable_account_id', 'advance_account_id']);
+
+        if ($vendorMappingIssues->isNotEmpty()) {
+            $failures++;
+            $this->newLine();
+            $this->warn('Active vendors missing payable/advance defaults:');
+            $this->table(
+                ['vendor_id', 'code', 'name', 'payable_account_id', 'advance_account_id'],
+                $vendorMappingIssues->map(fn ($vendor) => [
+                    'vendor_id' => (int) $vendor->id,
+                    'code' => (string) $vendor->code,
+                    'name' => (string) $vendor->name,
+                    'payable_account_id' => $vendor->payable_account_id ?: '-',
+                    'advance_account_id' => $vendor->advance_account_id ?: '-',
+                ])->all()
+            );
+        }
+
+        $controlAccountIds = $this->vendorPayableAdvanceAccountIds();
+        if (!empty($controlAccountIds)) {
+            $subledgerTagIssues = JournalLine::query()
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                ->leftJoin('coa_accounts', 'coa_accounts.id', '=', 'journal_lines.account_id')
+                ->whereIn('journal_lines.account_id', $controlAccountIds)
+                ->whereNull('journal_lines.vendor_id')
+                ->where(function ($query) {
+                    $query->where('journal_lines.debit', '>', 0)
+                        ->orWhere('journal_lines.credit', '>', 0);
+                })
+                ->orderByDesc('journal_lines.id')
+                ->limit(100)
+                ->get([
+                    'journal_lines.id as journal_line_id',
+                    'journal_lines.journal_entry_id',
+                    'journal_entries.module_type',
+                    'journal_entries.module_id',
+                    'journal_lines.account_id',
+                    'coa_accounts.full_code',
+                    'coa_accounts.name as account_name',
+                    'journal_lines.debit',
+                    'journal_lines.credit',
+                    'journal_lines.reference_type',
+                    'journal_lines.reference_id',
+                ]);
+
+            if ($subledgerTagIssues->isNotEmpty()) {
+                $failures++;
+                $this->newLine();
+                $this->warn('Posted payable/advance lines missing vendor subledger tagging:');
+                $this->table(
+                    ['line_id', 'journal_id', 'module', 'module_id', 'account', 'debit', 'credit', 'reference'],
+                    $subledgerTagIssues->map(function ($row) {
+                        $accountLabel = trim((string) ($row->full_code ? ($row->full_code . ' - ' . $row->account_name) : ('#' . $row->account_id)));
+                        $reference = $row->reference_type && $row->reference_id
+                            ? class_basename((string) $row->reference_type) . '#' . $row->reference_id
+                            : '-';
+
+                        return [
+                            'line_id' => (int) $row->journal_line_id,
+                            'journal_id' => (int) $row->journal_entry_id,
+                            'module' => (string) $row->module_type,
+                            'module_id' => (int) $row->module_id,
+                            'account' => $accountLabel,
+                            'debit' => number_format((float) $row->debit, 2, '.', ''),
+                            'credit' => number_format((float) $row->credit, 2, '.', ''),
+                            'reference' => $reference,
+                        ];
+                    })->all()
+                );
+            }
+        }
+
         return $failures > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function vendorPayableAdvanceAccountIds(): array
+    {
+        $defaults = Setting::getGroup('accounting_voucher_defaults');
+        $ids = [
+            (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0)),
+            (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0)),
+        ];
+
+        $vendors = Vendor::query()->get(['payable_account_id', 'advance_account_id']);
+        foreach ($vendors as $vendor) {
+            $ids[] = (int) ($vendor->payable_account_id ?? 0);
+            $ids[] = (int) ($vendor->advance_account_id ?? 0);
+        }
+
+        $ids = array_values(array_unique(array_filter($ids, fn ($id) => (int) $id > 0)));
+        if (empty($ids)) {
+            return [];
+        }
+
+        return CoaAccount::query()
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
     }
 }

@@ -71,7 +71,10 @@ export default function InventoryItemsIndex({ items, filters = {}, summary = {} 
                     <StatCard label="Purchasable" value={summary.purchasable || 0} tone="light" />
                 </Grid>
                 <Grid item xs={12} md={3}>
-                    <StatCard label="Linked Ingredients" value={summary.linked_ingredients || 0} tone="muted" />
+                    <StatCard label="Linked Ingredients" value={summary.linked_ingredients || 0} tone="light" />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                    <StatCard label="Items With Stock" value={summary.stocked_items || 0} tone="muted" />
                 </Grid>
             </Grid>
 
@@ -137,6 +140,7 @@ export default function InventoryItemsIndex({ items, filters = {}, summary = {} 
                         { key: 'category', label: 'Category', minWidth: 170 },
                         { key: 'unit', label: 'Unit', minWidth: 120 },
                         { key: 'default_cost', label: 'Default Cost', minWidth: 140 },
+                        { key: 'current_stock', label: 'Current Stock Available', minWidth: 180, align: 'right' },
                         { key: 'minimum_stock', label: 'Minimum Stock', minWidth: 160 },
                         { key: 'status', label: 'Status', minWidth: 140 },
                         { key: 'ingredients', label: 'Ingredients', minWidth: 140 },
@@ -156,6 +160,7 @@ export default function InventoryItemsIndex({ items, filters = {}, summary = {} 
                             <TableCell>{item.category?.name || '-'}</TableCell>
                             <TableCell>{item.unit?.name || '-'}</TableCell>
                             <TableCell>{Number(item.default_unit_cost || 0).toFixed(2)}</TableCell>
+                            <TableCell align="right">{Number(item.current_stock_available || 0).toFixed(3)}</TableCell>
                             <TableCell>{Number(item.minimum_stock || 0).toFixed(3)}</TableCell>
                             <TableCell>
                                 <Chip

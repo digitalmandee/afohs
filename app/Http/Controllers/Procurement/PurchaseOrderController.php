@@ -289,6 +289,7 @@ class PurchaseOrderController extends Controller
 
         try {
             $warehouse = Warehouse::query()->findOrFail($data['warehouse_id']);
+            $vendor = Vendor::query()->findOrFail($data['vendor_id']);
 
             if ((string) ($warehouse->status ?? 'inactive') !== 'active') {
                 throw ValidationException::withMessages([
@@ -296,11 +297,11 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
-            $tenantId = $warehouse->tenant_id ?: null;
-            $branchId = $tenantId ? (int) (Tenant::query()->whereKey($tenantId)->value('branch_id') ?? 0) : 0;
+            $tenantId = $this->resolveTenantIdForPurchaseOrderCreation($warehouse, $vendor);
+            $branchId = $this->resolveBranchIdForPurchaseOrderCreation($warehouse, $vendor, $tenantId);
             if ($branchId <= 0) {
                 throw ValidationException::withMessages([
-                    'warehouse_id' => 'Branch mapping missing for numbering. Assign a branch to the selected restaurant before creating PO.',
+                    'warehouse_id' => 'Branch mapping missing for numbering. Assign branch mapping in Warehouse/Restaurant settings or vendor context before creating PO.',
                 ]);
             }
 
@@ -861,5 +862,45 @@ class PurchaseOrderController extends Controller
             ->where('document_type', 'purchase_order')
             ->where('is_active', true)
             ->exists();
+    }
+
+    private function resolveTenantIdForPurchaseOrderCreation(Warehouse $warehouse, Vendor $vendor): ?int
+    {
+        $warehouseTenantId = (int) ($warehouse->tenant_id ?? 0);
+        if ($warehouseTenantId > 0) {
+            return $warehouseTenantId;
+        }
+
+        $vendorTenantId = (int) ($vendor->tenant_id ?? 0);
+        return $vendorTenantId > 0 ? $vendorTenantId : null;
+    }
+
+    private function resolveBranchIdForPurchaseOrderCreation(Warehouse $warehouse, Vendor $vendor, ?int $tenantId): int
+    {
+        $warehouseTenantId = (int) ($warehouse->tenant_id ?? 0);
+        if ($warehouseTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($warehouseTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        $vendorTenantId = (int) ($vendor->tenant_id ?? 0);
+        if ($vendorTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($vendorTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        $resolvedTenantId = (int) ($tenantId ?? 0);
+        if ($resolvedTenantId > 0) {
+            $branchId = (int) (Tenant::query()->whereKey($resolvedTenantId)->value('branch_id') ?? 0);
+            if ($branchId > 0) {
+                return $branchId;
+            }
+        }
+
+        return 0;
     }
 }

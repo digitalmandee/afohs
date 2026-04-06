@@ -12,11 +12,12 @@ export default function Create({ purchaseOrder, purchaseOrders, prefillError = n
   const { enqueueSnackbar } = useSnackbar();
   const mutation = useMutationAction();
   const selectedOrder = purchaseOrder || null;
-  const defaultItems = selectedOrder?.items?.map((item) => ({
+const defaultItems = selectedOrder?.items?.map((item) => ({
     purchase_order_item_id: item.id,
     inventory_item_id: item.resolved_inventory_item_id || item.inventory_item_id || item.product_id || '',
     qty_ordered: item.qty_ordered || 0,
     qty_received_before: item.qty_received || 0,
+    qty_available: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
     qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
     unit_cost: item.unit_cost,
     product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
@@ -45,6 +46,7 @@ export default function Create({ purchaseOrder, purchaseOrders, prefillError = n
       inventory_item_id: item.resolved_inventory_item_id || item.inventory_item_id || item.product_id || '',
       qty_ordered: item.qty_ordered || 0,
       qty_received_before: item.qty_received || 0,
+      qty_available: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
       qty_received: Math.max(0, Number(item.qty_ordered || 0) - Number(item.qty_received || 0)),
       unit_cost: item.unit_cost,
       product_name: item.inventory_item?.name || item.product?.name || `Inventory Item #${item.inventory_item_id || item.product_id}`,
@@ -251,6 +253,14 @@ export default function Create({ purchaseOrder, purchaseOrders, prefillError = n
                   </Grid>
                   <Grid item xs={12} md={2}>
                     <TextField
+                      label="Available Qty"
+                      value={Number(item.qty_available ?? (Number(item.qty_ordered || 0) - Number(item.qty_received_before || 0)))}
+                      fullWidth
+                      disabled
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={1}>
+                    <TextField
                       label="Qty Received"
                       type="number"
                       value={item.qty_received}
@@ -260,7 +270,7 @@ export default function Create({ purchaseOrder, purchaseOrders, prefillError = n
                       fullWidth
                     />
                   </Grid>
-                  <Grid item xs={12} md={2}>
+                  <Grid item xs={12} md={1}>
                     <TextField
                       label="Unit Cost"
                       type="number"

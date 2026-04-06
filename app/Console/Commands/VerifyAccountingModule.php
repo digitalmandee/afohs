@@ -209,6 +209,8 @@ class VerifyAccountingModule extends Command
         $this->info('Voucher Mapping Health');
         $voucherDefaults = Setting::getGroup('accounting_voucher_defaults');
         $defaultPayableId = (int) ($voucherDefaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $defaultAdvanceId = (int) ($voucherDefaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+        $defaultExpenseId = (int) ($voucherDefaults['default_expense_account_id'] ?? config('accounting.vouchers.default_expense_account_id', 0));
         $defaultReceivableId = (int) ($voucherDefaults['default_receivable_account_id'] ?? config('accounting.vouchers.default_receivable_account_id', 0));
 
         $entityMappings = AccountingEntityAccountMapping::query()->with('account:id,is_active,is_postable')->get();
@@ -225,6 +227,8 @@ class VerifyAccountingModule extends Command
         $this->line('Invalid/inactive mapping accounts: ' . $inactiveMappings);
         $this->line('Active expense types missing valid account map: ' . $missingExpenseMappings);
         $this->line('Default payable fallback: ' . ($defaultPayableId > 0 ? ('set #' . $defaultPayableId) : 'missing'));
+        $this->line('Default advance fallback: ' . ($defaultAdvanceId > 0 ? ('set #' . $defaultAdvanceId) : 'missing'));
+        $this->line('Default expense fallback: ' . ($defaultExpenseId > 0 ? ('set #' . $defaultExpenseId) : 'missing'));
         $this->line('Default receivable fallback: ' . ($defaultReceivableId > 0 ? ('set #' . $defaultReceivableId) : 'missing'));
 
         $this->newLine();
@@ -293,6 +297,8 @@ class VerifyAccountingModule extends Command
             || $inactiveMappings > 0
             || $missingExpenseMappings > 0
             || $defaultPayableId <= 0
+            || $defaultAdvanceId <= 0
+            || $defaultExpenseId <= 0
             || $defaultReceivableId <= 0
             || $levelMismatches > 0
             || $codeMismatches > 0

@@ -249,7 +249,10 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                 <TableCell align="right">
                                     <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
                                         <Tooltip title="View GRN">
-                                            <IconButton size="small" component="a" href={route('procurement.goods-receipts.view', grn.id)} target="_blank" rel="noreferrer">
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => router.visit(route('procurement.goods-receipts.view', grn.id))}
+                                            >
                                                 <VisibilityOutlinedIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>

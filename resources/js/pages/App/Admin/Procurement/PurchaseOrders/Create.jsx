@@ -203,7 +203,7 @@ export default function Create({ vendors, warehouses, products, inventorySummary
                                 {selectedWarehouse ? (
                                     <Grid item xs={12}>
                                         <Alert severity="info" variant="outlined">
-                                            Restaurant scope will be inherited from <strong>{selectedWarehouse.name}</strong>: {selectedWarehouse.tenant?.name || 'Shared / global warehouse'}.
+                                            Procurement context will be inherited from <strong>{selectedWarehouse.name}</strong>: {selectedWarehouse.tenant?.name || 'Shared / global warehouse'}.
                                         </Alert>
                                     </Grid>
                                 ) : null}

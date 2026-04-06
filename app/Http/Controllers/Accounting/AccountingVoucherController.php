@@ -920,11 +920,6 @@ class AccountingVoucherController extends Controller
             }
 
             if ($data['payment_for'] === 'expense') {
-                if (empty($data['expense_type_id'])) {
-                    throw ValidationException::withMessages([
-                        'expense_type_id' => 'Expense type is required when Payment For is Expense.',
-                    ]);
-                }
                 if ($data['payment_mode'] === 'against_invoice') {
                     throw ValidationException::withMessages([
                         'payment_mode' => 'Against Invoice is only available for Vendor Payment.',
@@ -1006,7 +1001,8 @@ class AccountingVoucherController extends Controller
         }
 
         if ($isSmartMode) {
-            $hasExpenseContext = !empty($data['expense_type_id']);
+            $hasExpenseContext = !empty($data['expense_type_id'])
+                || ($isSmartPaymentVoucher && ($data['payment_for'] ?? null) === 'expense');
             $hasPartyContext = !empty($data['party_id']) && ($data['party_type'] ?? 'none') !== 'none';
             $hasInvoiceContext = !empty($data['invoice_type']) && !empty($data['invoice_id']);
 
@@ -2001,16 +1997,29 @@ class AccountingVoucherController extends Controller
         }
 
         $defaults = Setting::getGroup('accounting_voucher_defaults');
-        $fallbackApId = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
-        if ($this->isValidPostableAccountId($fallbackApId)) {
+        $fallbackPayableId = (int) ($defaults['default_payable_account_id'] ?? config('accounting.vouchers.default_payable_account_id', 0));
+        $fallbackAdvanceId = (int) ($defaults['default_advance_account_id'] ?? config('accounting.vouchers.default_advance_account_id', 0));
+
+        $preferredFallbackId = $isAgainstInvoice ? $fallbackPayableId : $fallbackAdvanceId;
+        if ($this->isValidPostableAccountId($preferredFallbackId)) {
             return [
-                'account_id' => $fallbackApId,
+                'account_id' => $preferredFallbackId,
                 'requires_selection' => false,
                 'account_role' => $accountRole,
-                'resolved_via' => 'default_ap',
+                'resolved_via' => $isAgainstInvoice ? 'default_payable' : 'default_advance',
                 'message' => $vendorMappedAccountId > 0
                     ? null
-                    : "{$accountRole} mapping missing on vendor. Using system default AP.",
+                    : "{$accountRole} mapping missing on vendor. Using system default.",
+            ];
+        }
+
+        if (!$isAgainstInvoice && $this->isValidPostableAccountId($fallbackPayableId)) {
+            return [
+                'account_id' => $fallbackPayableId,
+                'requires_selection' => false,
+                'account_role' => $accountRole,
+                'resolved_via' => 'default_payable_fallback',
+                'message' => "{$accountRole} default missing. Using payable fallback.",
             ];
         }
 

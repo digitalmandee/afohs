@@ -1,6 +1,7 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
+    Alert,
     Autocomplete,
     Box,
     Button,
@@ -321,6 +322,15 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                             </Box>
                         </Grid>
                     </Grid>
+                    {(locationSummary.readiness_alerts || []).length > 0 ? (
+                        <Stack spacing={1.25} sx={{ mb: 2 }}>
+                            {(locationSummary.readiness_alerts || []).map((alert, index) => (
+                                <Alert key={`${alert.restaurant_name || 'restaurant'}-${index}`} severity="warning" variant="outlined">
+                                    <strong>{alert.restaurant_name || 'Restaurant'}:</strong> {alert.message}
+                                </Alert>
+                            ))}
+                        </Stack>
+                    ) : null}
                     <AdminDataTable
                         columns={[
                             { key: 'restaurant', label: 'Restaurant', minWidth: 180 },
