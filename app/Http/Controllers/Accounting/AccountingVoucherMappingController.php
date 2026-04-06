@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountingEntityAccountMapping;
 use App\Models\AccountingExpenseType;
 use App\Models\CoaAccount;
+use App\Models\CorporateMember;
+use App\Models\Customer;
+use App\Models\Member;
 use App\Models\Setting;
 use App\Models\Vendor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -33,6 +37,118 @@ class AccountingVoucherMappingController extends Controller
             ->latest('id')
             ->limit(250)
             ->get();
+        $mappingIndex = AccountingEntityAccountMapping::query()
+            ->where('is_active', true)
+            ->get(['id', 'entity_type', 'entity_id', 'role', 'account_id'])
+            ->keyBy(fn ($row) => "{$row->entity_type}:{$row->entity_id}:{$row->role}");
+
+        $memberNameColumn = $this->firstExistingColumn('members', ['name', 'full_name', 'first_name']);
+        $corporateMemberNameColumn = $this->firstExistingColumn('corporate_members', ['name', 'full_name', 'first_name']);
+
+        $entityCandidates = collect()
+            ->concat(
+                Vendor::query()
+                    ->orderBy('name')
+                    ->get(['id', 'code', 'name', 'status', 'payable_account_id', 'advance_account_id'])
+                    ->flatMap(function ($vendor) use ($mappingIndex) {
+                        $payableMapping = $mappingIndex->get("vendor:{$vendor->id}:payable");
+                        $advanceMapping = $mappingIndex->get("vendor:{$vendor->id}:advance");
+                        $payableAccountId = $payableMapping?->account_id ?: $vendor->payable_account_id;
+                        $advanceAccountId = $advanceMapping?->account_id ?: $vendor->advance_account_id;
+
+                        return [
+                            [
+                                'entity_type' => 'vendor',
+                                'entity_id' => (int) $vendor->id,
+                                'entity_code' => (string) ($vendor->code ?: ''),
+                                'entity_name' => (string) $vendor->name,
+                                'status' => (string) ($vendor->status ?: 'active'),
+                                'role' => 'payable',
+                                'mapping_id' => $payableMapping?->id,
+                                'account_id' => $payableAccountId ? (int) $payableAccountId : null,
+                                'is_mapped' => (bool) ($payableAccountId),
+                                'mapping_source' => $payableMapping ? 'entity_mapping' : ($vendor->payable_account_id ? 'vendor_default' : null),
+                            ],
+                            [
+                                'entity_type' => 'vendor',
+                                'entity_id' => (int) $vendor->id,
+                                'entity_code' => (string) ($vendor->code ?: ''),
+                                'entity_name' => (string) $vendor->name,
+                                'status' => (string) ($vendor->status ?: 'active'),
+                                'role' => 'advance',
+                                'mapping_id' => $advanceMapping?->id,
+                                'account_id' => $advanceAccountId ? (int) $advanceAccountId : null,
+                                'is_mapped' => (bool) ($advanceAccountId),
+                                'mapping_source' => $advanceMapping ? 'entity_mapping' : ($vendor->advance_account_id ? 'vendor_default' : null),
+                            ],
+                        ];
+                    })
+            )
+            ->concat(
+                Customer::query()->orderBy('name')->get(['id', 'name'])->map(function ($customer) use ($mappingIndex) {
+                    $mapping = $mappingIndex->get("customer:{$customer->id}:receivable");
+                    return [
+                        'entity_type' => 'customer',
+                        'entity_id' => (int) $customer->id,
+                        'entity_code' => '',
+                        'entity_name' => (string) $customer->name,
+                        'status' => 'active',
+                        'role' => 'receivable',
+                        'mapping_id' => $mapping?->id,
+                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                        'is_mapped' => (bool) ($mapping?->account_id),
+                        'mapping_source' => $mapping ? 'entity_mapping' : null,
+                    ];
+                })
+            )
+            ->concat(
+                Member::query()
+                    ->orderBy($memberNameColumn ?: 'id')
+                    ->get(array_values(array_unique(['id', $memberNameColumn ?: 'id'])))
+                    ->map(function ($member) use ($mappingIndex, $memberNameColumn) {
+                    $mapping = $mappingIndex->get("member:{$member->id}:receivable");
+                    $memberName = $memberNameColumn ? data_get($member, $memberNameColumn) : "Member #{$member->id}";
+                    return [
+                        'entity_type' => 'member',
+                        'entity_id' => (int) $member->id,
+                        'entity_code' => '',
+                        'entity_name' => (string) ($memberName ?: "Member #{$member->id}"),
+                        'status' => 'active',
+                        'role' => 'receivable',
+                        'mapping_id' => $mapping?->id,
+                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                        'is_mapped' => (bool) ($mapping?->account_id),
+                        'mapping_source' => $mapping ? 'entity_mapping' : null,
+                    ];
+                })
+            )
+            ->concat(
+                CorporateMember::query()
+                    ->orderBy($corporateMemberNameColumn ?: 'id')
+                    ->get(array_values(array_unique(['id', $corporateMemberNameColumn ?: 'id'])))
+                    ->map(function ($corp) use ($mappingIndex, $corporateMemberNameColumn) {
+                    $mapping = $mappingIndex->get("corporate_member:{$corp->id}:receivable");
+                    $corpName = $corporateMemberNameColumn ? data_get($corp, $corporateMemberNameColumn) : "Corporate Member #{$corp->id}";
+                    return [
+                        'entity_type' => 'corporate_member',
+                        'entity_id' => (int) $corp->id,
+                        'entity_code' => '',
+                        'entity_name' => (string) ($corpName ?: "Corporate Member #{$corp->id}"),
+                        'status' => 'active',
+                        'role' => 'receivable',
+                        'mapping_id' => $mapping?->id,
+                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                        'is_mapped' => (bool) ($mapping?->account_id),
+                        'mapping_source' => $mapping ? 'entity_mapping' : null,
+                    ];
+                })
+            )
+            ->sortBy([
+                ['entity_type', 'asc'],
+                ['entity_name', 'asc'],
+                ['role', 'asc'],
+            ])
+            ->values();
 
         $expenseTypes = AccountingExpenseType::query()
             ->with('expenseAccount:id,full_code,name,is_active,is_postable')
@@ -57,6 +173,7 @@ class AccountingVoucherMappingController extends Controller
         return Inertia::render('App/Admin/Accounting/VoucherMappings/Index', [
             'accounts' => $accounts,
             'mappings' => $mappings,
+            'entityCandidates' => $entityCandidates,
             'expenseTypes' => $expenseTypes,
             'defaults' => [
                 'default_payable_account_id' => $payableDefault > 0 ? $payableDefault : '',
@@ -73,7 +190,7 @@ class AccountingVoucherMappingController extends Controller
         $data = $request->validate([
             'entity_type' => 'required|in:vendor,customer,member,corporate_member',
             'entity_id' => 'required|integer|min:1',
-            'role' => 'required|in:payable,receivable',
+            'role' => 'required|in:payable,advance,receivable',
             'account_id' => ['required', Rule::exists('coa_accounts', 'id')->where(fn ($q) => $q->where('is_active', true)->where('is_postable', true))],
             'is_active' => 'nullable|boolean',
         ]);
@@ -149,5 +266,16 @@ class AccountingVoucherMappingController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Voucher default accounts updated.');
+    }
+
+    private function firstExistingColumn(string $table, array $candidates): ?string
+    {
+        foreach ($candidates as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                return $column;
+            }
+        }
+
+        return null;
     }
 }

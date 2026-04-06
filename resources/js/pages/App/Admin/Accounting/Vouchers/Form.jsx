@@ -45,6 +45,20 @@ const emptyLine = () => ({
     tax_amount: '',
 });
 
+const emptyPaymentRow = () => ({
+    row_type: 'expense',
+    payment_mode: 'direct',
+    qty: '1',
+    rate: '',
+    vendor_id: '',
+    invoice_id: '',
+    expense_type_id: '',
+    amount: '',
+    reference_no: '',
+    remarks: '',
+    counterparty_account_id: '',
+});
+
 const paymentLabelMap = {
     CPV: 'Cash Account',
     CRV: 'Cash Account',
@@ -87,6 +101,42 @@ export default function VoucherForm({
         }))
         : [emptyLine(), emptyLine()];
 
+    const initialPaymentRows = (() => {
+        if (Array.isArray(voucher?.payment_rows) && voucher.payment_rows.length > 0) {
+            return voucher.payment_rows.map((row) => ({
+                row_type: row?.row_type || 'expense',
+                payment_mode: row?.payment_mode || 'direct',
+                qty: row?.qty ? String(row.qty) : '1',
+                rate: row?.rate ? String(row.rate) : (row?.amount ? String(row.amount) : ''),
+                vendor_id: row?.vendor_id ? String(row.vendor_id) : '',
+                invoice_id: row?.invoice_id ? String(row.invoice_id) : '',
+                expense_type_id: row?.expense_type_id ? String(row.expense_type_id) : '',
+                amount: row?.amount ? String(row.amount) : '',
+                reference_no: row?.reference_no || '',
+                remarks: row?.remarks || '',
+                counterparty_account_id: row?.counterparty_account_id ? String(row.counterparty_account_id) : '',
+            }));
+        }
+
+        if (['CPV', 'BPV'].includes(voucher?.voucher_type || '')) {
+            return [{
+                row_type: voucher?.party_type === 'vendor' ? 'vendor_payment' : 'expense',
+                payment_mode: voucher?.invoice_id ? 'against_invoice' : 'direct',
+                qty: '1',
+                rate: voucher?.amount ? String(voucher.amount) : '',
+                vendor_id: voucher?.party_type === 'vendor' ? String(voucher?.party_id || '') : '',
+                invoice_id: voucher?.invoice_id ? String(voucher.invoice_id) : '',
+                expense_type_id: voucher?.expense_type_id ? String(voucher.expense_type_id) : '',
+                amount: voucher?.amount ? String(voucher.amount) : '',
+                reference_no: voucher?.reference_no || '',
+                remarks: '',
+                counterparty_account_id: '',
+            }];
+        }
+
+        return [emptyPaymentRow()];
+    })();
+
     const intentRef = React.useRef('draft');
     const { data, setData, post, put, processing, errors, transform } = useForm({
         voucher_type: voucher?.voucher_type || 'JV',
@@ -101,6 +151,7 @@ export default function VoucherForm({
         expense_type_id: String(voucher?.expense_type_id || ''),
         template_id: String(voucher?.template_id || ''),
         amount: voucher?.amount || '',
+        payment_rows: initialPaymentRows,
         voucher_date: voucher?.voucher_date || new Date().toISOString().slice(0, 10),
         posting_date: voucher?.posting_date || voucher?.voucher_date || new Date().toISOString().slice(0, 10),
         tenant_id: String(voucher?.tenant_id || ''),
@@ -129,8 +180,8 @@ export default function VoucherForm({
 
     const [previewOpen, setPreviewOpen] = React.useState(false);
     const [confirmState, setConfirmState] = React.useState({ open: false, intent: 'draft' });
-    const [openInvoices, setOpenInvoices] = React.useState([]);
-    const [loadingInvoices, setLoadingInvoices] = React.useState(false);
+    const [openInvoicesByVendor, setOpenInvoicesByVendor] = React.useState({});
+    const [loadingInvoiceVendorId, setLoadingInvoiceVendorId] = React.useState('');
     const [serverPreview, setServerPreview] = React.useState(null);
     const [showAdvanced, setShowAdvanced] = React.useState(Boolean(voucher?.external_reference_no));
     const attachmentInputRef = React.useRef(null);
@@ -143,8 +194,8 @@ export default function VoucherForm({
     const isManualEntry = data.entry_mode === 'manual' || isJournalVoucher;
     const isSmartMode = !isJournalVoucher && data.entry_mode === 'smart';
     const isSmartPaymentVoucher = isSmartMode && isPaymentVoucher;
-    const showPaymentFor = isSmartPaymentVoucher;
-    const showVendorPayee = isSmartPaymentVoucher && data.payment_for === 'vendor_payment';
+    const showPaymentFor = false;
+    const showVendorPayee = false;
     const allowedPartyTypeOptions = isPaymentVoucher
         ? [{ value: 'vendor', label: 'Vendor' }, { value: 'none', label: 'None (Expense Context)' }]
         : (isReceiptVoucher
@@ -155,14 +206,14 @@ export default function VoucherForm({
             ]
             : []);
     const showParty = isSmartMode && isReceiptVoucher;
-    const showInvoice = isSmartMode && (
+    const showInvoice = !isSmartPaymentVoucher && isSmartMode && (
         isPaymentVoucher
             ? (data.payment_mode === 'against_invoice' && data.vendor_id)
             : (data.party_type !== 'none' && data.party_id)
     );
-    const showExpense = isSmartPaymentVoucher && data.payment_for === 'expense';
+    const showExpense = !isSmartPaymentVoucher && data.payment_for === 'expense';
     const counterpartyResolution = serverPreview?.counterparty_resolution || null;
-    const requiresCounterpartySelection = isSmartPaymentVoucher
+    const requiresCounterpartySelection = !isSmartPaymentVoucher && isSmartPaymentVoucher
         && data.voucher_type === 'CPV'
         && data.payment_for === 'vendor_payment'
         && Boolean(counterpartyResolution?.requires_selection);
@@ -185,10 +236,12 @@ export default function VoucherForm({
         ? (defaultSmartPaymentAccount || selectedPaymentAccount || null)
         : (selectedPaymentAccount || null);
     const selectedPaymentCoa = accounts.find((account) => String(account.id) === String(effectivePaymentAccount?.coa_account_id || ''));
-    const selectedInvoice = openInvoices.find((invoice) => String(invoice.id) === String(data.invoice_id) && String(invoice.invoice_type) === String(data.invoice_type));
+    const selectedInvoice = null;
     const selectedVendor = vendors.find((vendor) => String(vendor.id) === String(data.vendor_id));
     const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(data.tenant_id));
     const isForeignCurrency = String(data.currency_code || '').toUpperCase() !== String(baseCurrency).toUpperCase();
+    const smartPaymentRows = Array.isArray(data.payment_rows) ? data.payment_rows : [];
+    const smartRowsTotal = smartPaymentRows.reduce((sum, row) => sum + (Number(row?.qty || 0) * Number(row?.rate || 0)), 0);
 
     const getPartyOptions = React.useMemo(() => {
         if (data.party_type === 'vendor') return vendors;
@@ -200,6 +253,21 @@ export default function VoucherForm({
 
     const autoNarration = React.useMemo(() => {
         const remarks = (data.remarks || '').trim();
+        if (isSmartPaymentVoucher && smartPaymentRows.length > 0) {
+            const channel = data.voucher_type === 'CPV' ? 'Cash' : 'Bank';
+            const accountName = effectivePaymentAccount?.name || `${channel.toLowerCase()} account`;
+            const total = smartRowsTotal;
+            const vendorRows = smartPaymentRows.filter((row) => row?.row_type === 'vendor_payment');
+            const expenseRows = smartPaymentRows.filter((row) => row?.row_type === 'expense');
+            let sentence = `${channel} payment voucher of ${formatAmount(total)} via ${accountName}`;
+            if (vendorRows.length > 0 && expenseRows.length === 0) {
+                sentence = `${channel} payment to vendor via ${accountName}`;
+            } else if (expenseRows.length > 0 && vendorRows.length === 0) {
+                sentence = `${channel} expense payment via ${accountName}`;
+            }
+            return remarks ? `${sentence}. ${remarks}` : sentence;
+        }
+
         if (data.voucher_type === 'CPV' && isSmartMode) {
             const cashAccountName = effectivePaymentAccount?.name || 'cash account';
             const expense = expenseTypes.find((item) => String(item.id) === String(data.expense_type_id));
@@ -255,6 +323,8 @@ export default function VoucherForm({
         effectivePaymentAccount?.name,
         expenseTypes,
         isSmartMode,
+        smartRowsTotal,
+        JSON.stringify(smartPaymentRows),
     ]);
 
     React.useEffect(() => {
@@ -268,6 +338,7 @@ export default function VoucherForm({
 
     React.useEffect(() => {
         if (!isSmartMode) return;
+        if (isSmartPaymentVoucher) return;
 
         if (isPaymentVoucher) {
             if (!['expense', 'vendor_payment'].includes(data.payment_for)) {
@@ -330,6 +401,7 @@ export default function VoucherForm({
         data.expense_type_id,
         data.counterparty_account_id,
         data.set_vendor_counterparty_default,
+        isSmartPaymentVoucher,
     ]);
 
     React.useEffect(() => {
@@ -363,35 +435,51 @@ export default function VoucherForm({
     ]);
 
     React.useEffect(() => {
+        if (isSmartPaymentVoucher) {
+            const vendorIdsToFetch = Array.from(new Set(
+                (smartPaymentRows || [])
+                    .filter((row) => row?.row_type === 'vendor_payment' && row?.payment_mode === 'against_invoice' && row?.vendor_id)
+                    .map((row) => String(row.vendor_id))
+            ));
+
+            vendorIdsToFetch.forEach((vendorId) => {
+                if (openInvoicesByVendor[vendorId]) return;
+                setLoadingInvoiceVendorId(vendorId);
+                fetch(`${route('accounting.vouchers.open-invoices')}?party_type=vendor&party_id=${encodeURIComponent(vendorId)}`)
+                    .then((response) => response.json())
+                    .then((json) => {
+                        setOpenInvoicesByVendor((prev) => ({ ...prev, [vendorId]: json.data || [] }));
+                    })
+                    .catch(() => {
+                        setOpenInvoicesByVendor((prev) => ({ ...prev, [vendorId]: [] }));
+                    })
+                    .finally(() => setLoadingInvoiceVendorId((prev) => (prev === vendorId ? '' : prev)));
+            });
+
+            return;
+        }
+
         if (!showInvoice) {
-            setOpenInvoices([]);
             setData('invoice_id', '');
             setData('invoice_type', '');
             return;
         }
 
-        setLoadingInvoices(true);
         const partyType = isPaymentVoucher ? 'vendor' : data.party_type;
         const partyId = isPaymentVoucher ? data.vendor_id : data.party_id;
+        const key = `${partyType}:${partyId}`;
+        if (openInvoicesByVendor[key]) {
+            return;
+        }
+        setLoadingInvoiceVendorId(key);
         fetch(`${route('accounting.vouchers.open-invoices')}?party_type=${encodeURIComponent(partyType)}&party_id=${encodeURIComponent(partyId)}`)
             .then((response) => response.json())
             .then((json) => {
-                const rows = json.data || [];
-                setOpenInvoices(rows);
+                setOpenInvoicesByVendor((prev) => ({ ...prev, [key]: json.data || [] }));
             })
-            .catch(() => setOpenInvoices([]))
-            .finally(() => setLoadingInvoices(false));
-    }, [showInvoice, data.party_type, data.party_id, data.vendor_id, isPaymentVoucher]);
-
-    React.useEffect(() => {
-        if (!selectedInvoice) return;
-        if (!data.amount || Number(data.amount) <= 0) {
-            setData('amount', String(selectedInvoice.outstanding || ''));
-        }
-        if (!data.reference_no) {
-            setData('reference_no', selectedInvoice.number || '');
-        }
-    }, [selectedInvoice?.id]);
+            .catch(() => setOpenInvoicesByVendor((prev) => ({ ...prev, [key]: [] })))
+            .finally(() => setLoadingInvoiceVendorId((prev) => (prev === key ? '' : prev)));
+    }, [showInvoice, data.party_type, data.party_id, data.vendor_id, isPaymentVoucher, isSmartPaymentVoucher, JSON.stringify(smartPaymentRows)]);
 
     React.useEffect(() => {
         const controller = new AbortController();
@@ -449,6 +537,7 @@ export default function VoucherForm({
         data.currency_code,
         data.exchange_rate,
         data.remarks,
+        JSON.stringify(data.payment_rows),
         JSON.stringify(data.lines),
         isJournalVoucher,
     ]);
@@ -479,19 +568,39 @@ export default function VoucherForm({
         if (!data.voucher_date || !data.posting_date || !data.tenant_id) return false;
         if (!isJournalVoucher && !data.payment_account_id) return false;
         if (isManualEntry) return difference < 0.0001 && previewLines.length >= 2;
-        if (!data.amount || Number(data.amount) <= 0) return false;
+        if (isSmartPaymentVoucher) {
+            if (!Array.isArray(data.payment_rows) || data.payment_rows.length === 0) return false;
+            if (smartRowsTotal <= 0) return false;
+        } else if (!data.amount || Number(data.amount) <= 0) {
+            return false;
+        }
         if (!isSmartMode) return false;
         if ((data.invoice_type && !data.invoice_id) || (data.invoice_id && !data.invoice_type)) return false;
 
         if (isPaymentVoucher) {
-            if (!['expense', 'vendor_payment'].includes(data.payment_for)) return false;
-            if (data.payment_for === 'vendor_payment' && !data.vendor_id) return false;
-            if (data.payment_mode === 'against_invoice' && !data.invoice_id) return false;
-            if (requiresCounterpartySelection && !data.counterparty_account_id) return false;
+            if (isSmartPaymentVoucher) {
+                const vendorIds = new Set();
+                for (const row of data.payment_rows) {
+                    if (!row?.row_type) return false;
+                    if (!row?.expense_type_id) return false;
+                    if (Number(row?.qty || 0) <= 0 || Number(row?.rate || 0) <= 0) return false;
+                    if (row.row_type === 'vendor_payment') {
+                        if (!row.vendor_id) return false;
+                        vendorIds.add(String(row.vendor_id));
+                        if (row.payment_mode === 'against_invoice' && !row.invoice_id) return false;
+                    }
+                }
+                if (vendorIds.size > 1) return false;
+            } else {
+                if (!['expense', 'vendor_payment'].includes(data.payment_for)) return false;
+                if (data.payment_for === 'vendor_payment' && !data.vendor_id) return false;
+                if (data.payment_mode === 'against_invoice' && !data.invoice_id) return false;
+                if (requiresCounterpartySelection && !data.counterparty_account_id) return false;
+            }
         }
         if (showParty && data.party_type !== 'none' && !data.party_id) return false;
         if (isReceiptVoucher && (!data.party_type || data.party_type === 'none' || !data.party_id)) return false;
-        if (!data.expense_type_id && !data.invoice_id && !data.party_id && !data.vendor_id) return false;
+        if (!isSmartPaymentVoucher && !data.expense_type_id && !data.invoice_id && !data.party_id && !data.vendor_id) return false;
         return true;
     })();
 
@@ -512,6 +621,26 @@ export default function VoucherForm({
         const next = data.lines.map((line, i) => (i === index ? { ...line, [key]: value } : line));
         setData('lines', next);
     };
+
+    const addPaymentRow = () => setData('payment_rows', [...smartPaymentRows, emptyPaymentRow()]);
+    const removePaymentRow = (index) => {
+        const next = smartPaymentRows.filter((_, i) => i !== index);
+        setData('payment_rows', next.length ? next : [emptyPaymentRow()]);
+    };
+    const updatePaymentRow = (index, patch) => {
+        const next = smartPaymentRows.map((row, i) => {
+            if (i !== index) return row;
+            const merged = { ...row, ...patch };
+            const qty = Number(merged.qty || 0);
+            const rate = Number(merged.rate || 0);
+            return {
+                ...merged,
+                amount: qty > 0 && rate > 0 ? String((qty * rate).toFixed(2)) : '',
+            };
+        });
+        setData('payment_rows', next);
+    };
+    const invoiceOptionsForVendor = (vendorId) => openInvoicesByVendor[String(vendorId || '')] || [];
 
     const loadLastDefaults = async () => {
         try {
@@ -555,6 +684,64 @@ export default function VoucherForm({
         });
     };
 
+    const renderVoucherActions = ({ top = false } = {}) => (
+        <Box
+            sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 1.25,
+                flexWrap: 'wrap',
+                mb: top ? 1.5 : 0,
+                mt: top ? 0 : 0.5,
+            }}
+        >
+            <Button variant="outlined" startIcon={<Preview />} onClick={() => setPreviewOpen(true)}>
+                Preview
+            </Button>
+            <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+                <Button variant="outlined" href={route('accounting.vouchers.index')}>Cancel</Button>
+                {mode === 'edit' && voucher?.status !== 'posted' ? (
+                    <Button color="warning" variant="outlined" onClick={() => setConfirmState({ open: true, intent: 'cancel' })}>
+                        Cancel Voucher
+                    </Button>
+                ) : null}
+                <AppLoadingButton variant="outlined" loading={processing && intentRef.current === 'draft'} onClick={() => submitForm('draft')}>
+                    Save Draft
+                </AppLoadingButton>
+                <AppLoadingButton
+                    variant="outlined"
+                    loading={processing && intentRef.current === 'submit'}
+                    onClick={() => submitForm('submit')}
+                    disabled={!canPost}
+                    sx={{
+                        '&.Mui-disabled': {
+                            color: 'rgba(15, 23, 42, 0.48)',
+                            borderColor: 'rgba(15, 23, 42, 0.18)',
+                        },
+                    }}
+                >
+                    Submit for Approval
+                </AppLoadingButton>
+                <AppLoadingButton
+                    variant="contained"
+                    loading={processing && intentRef.current === 'post'}
+                    onClick={() => setConfirmState({ open: true, intent: 'post' })}
+                    disabled={!canPost}
+                    sx={{
+                        color: '#fff !important',
+                        '& .MuiButton-label': { color: '#fff !important' },
+                        '&.Mui-disabled': {
+                            color: 'rgba(255, 255, 255, 0.72) !important',
+                        },
+                    }}
+                >
+                    Post Voucher
+                </AppLoadingButton>
+            </Stack>
+        </Box>
+    );
+
     return (
         <AppPage
             eyebrow="Accounting"
@@ -566,6 +753,7 @@ export default function VoucherForm({
             ]}
         >
             <form onSubmit={(e) => e.preventDefault()}>
+                {renderVoucherActions({ top: true })}
                 <SurfaceCard title="Voucher Header">
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
                         <Chip size="small" label={`Mode: ${isJournalVoucher ? 'Manual' : 'Smart'}`} />
@@ -776,7 +964,7 @@ export default function VoucherForm({
                             <Grid item xs={12} md={4}>
                                 <TextField
                                     select
-                                    label={loadingInvoices ? 'Loading invoices...' : (isPaymentVoucher ? 'Against Invoice' : 'Against Invoice (Optional)')}
+                                    label={(loadingInvoiceVendorId === `${isPaymentVoucher ? 'vendor' : data.party_type}:${isPaymentVoucher ? data.vendor_id : data.party_id}`) ? 'Loading invoices...' : (isPaymentVoucher ? 'Against Invoice' : 'Against Invoice (Optional)')}
                                     value={data.invoice_id ? `${data.invoice_type}:${data.invoice_id}` : ''}
                                     onChange={(e) => {
                                         const [invoiceType, invoiceId] = String(e.target.value).split(':');
@@ -789,7 +977,7 @@ export default function VoucherForm({
                                     helperText={errors.invoice_id}
                                 >
                                     <MenuItem value="">Select invoice</MenuItem>
-                                    {openInvoices.map((invoice) => (
+                                    {(openInvoicesByVendor[`${isPaymentVoucher ? 'vendor' : data.party_type}:${isPaymentVoucher ? data.vendor_id : data.party_id}`] || []).map((invoice) => (
                                         <MenuItem key={`${invoice.invoice_type}:${invoice.id}`} value={`${invoice.invoice_type}:${invoice.id}`}>
                                             {invoice.number} | Outstanding {formatAmount(invoice.outstanding)}
                                         </MenuItem>
@@ -824,49 +1012,180 @@ export default function VoucherForm({
                             </Grid>
                         ) : null}
 
-                        {isSmartPaymentVoucher && data.voucher_type === 'CPV' && data.payment_for === 'vendor_payment' && (requiresCounterpartySelection || !!errors.counterparty_account_id || !!data.counterparty_account_id) ? (
-                            <Grid item xs={12} md={4}>
-                                <TextField
-                                    select
-                                    label={counterpartyRoleLabel}
-                                    value={data.counterparty_account_id}
-                                    onChange={(e) => setData('counterparty_account_id', e.target.value)}
-                                    fullWidth
-                                    size="small"
-                                    error={!!errors.counterparty_account_id}
-                                    helperText={
-                                        errors.counterparty_account_id
-                                        || counterpartyResolution?.message
-                                        || `${counterpartyRoleLabel} is auto-resolved from vendor/default mapping.`
-                                    }
-                                    required={requiresCounterpartySelection}
-                                >
-                                    <MenuItem value="">
-                                        {requiresCounterpartySelection ? `Select ${counterpartyRoleLabel}` : `Auto (${counterpartyRoleLabel})`}
-                                    </MenuItem>
-                                    {accounts.map((account) => (
-                                        <MenuItem key={account.id} value={account.id}>
-                                            {account.full_code} - {account.name}
-                                        </MenuItem>
-                                    ))}
-                                </TextField>
-                                {requiresCounterpartySelection ? (
-                                    <FormControlLabel
-                                        sx={{ mt: 0.5 }}
-                                        control={
-                                            <Checkbox
-                                                checked={Boolean(data.set_vendor_counterparty_default)}
-                                                onChange={(e) => setData('set_vendor_counterparty_default', e.target.checked)}
-                                                disabled={!canSetVendorCounterpartyDefault}
-                                            />
-                                        }
-                                        label={`Save as vendor ${data.payment_mode === 'against_invoice' ? 'payable' : 'advance'} default`}
+                        {isSmartPaymentVoucher ? (
+                            <Grid item xs={12}>
+                                <SurfaceCard lowChrome title="Payment Rows" subtitle="Add multiple expense/vendor payments in one voucher.">
+                                    <AdminDataTable
+                                        columns={[
+                                            { key: 'type', label: 'Type', minWidth: 130 },
+                                            { key: 'item', label: 'Item Name', minWidth: 240 },
+                                            { key: 'qty', label: 'Qty', minWidth: 110 },
+                                            { key: 'rate', label: 'Rate', minWidth: 130 },
+                                            { key: 'total', label: 'Total', minWidth: 150 },
+                                            { key: 'vendor', label: 'Vendor', minWidth: 220 },
+                                            { key: 'invoice', label: 'Invoice', minWidth: 230 },
+                                            { key: 'reference', label: 'Reference', minWidth: 150 },
+                                            { key: 'actions', label: 'Actions', minWidth: 90, align: 'right' },
+                                        ]}
+                                        rows={smartPaymentRows}
+                                        pagination={null}
+                                        emptyMessage="No payment rows added."
+                                        renderRow={(row, index) => {
+                                            const vendorOptions = invoiceOptionsForVendor(row.vendor_id);
+                                            return (
+                                                <TableRow key={`payment-row-${index}`}>
+                                                    <TableCell>
+                                                        <TextField
+                                                            select
+                                                            size="small"
+                                                            value={row.row_type || 'expense'}
+                                                            onChange={(e) => updatePaymentRow(index, {
+                                                                row_type: e.target.value,
+                                                                payment_mode: e.target.value === 'expense' ? 'direct' : (row.payment_mode || 'direct'),
+                                                                vendor_id: e.target.value === 'expense' ? '' : row.vendor_id,
+                                                                invoice_id: '',
+                                                            })}
+                                                            fullWidth
+                                                            error={!!errors[`payment_rows.${index}.row_type`]}
+                                                            helperText={errors[`payment_rows.${index}.row_type`]}
+                                                        >
+                                                            <MenuItem value="expense">Expense</MenuItem>
+                                                            <MenuItem value="vendor_payment">Vendor Payment</MenuItem>
+                                                        </TextField>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                            <TextField
+                                                                select
+                                                                size="small"
+                                                                value={row.expense_type_id || ''}
+                                                                onChange={(e) => updatePaymentRow(index, { expense_type_id: e.target.value })}
+                                                                fullWidth
+                                                                label="Item Name"
+                                                                error={!!errors[`payment_rows.${index}.expense_type_id`]}
+                                                                helperText={errors[`payment_rows.${index}.expense_type_id`]}
+                                                            >
+                                                            <MenuItem value="">Select item</MenuItem>
+                                                            {expenseTypes.map((item) => <MenuItem key={item.id} value={String(item.id)}>{item.code} - {item.name}</MenuItem>)}
+                                                        </TextField>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <TextField
+                                                            type="number"
+                                                            size="small"
+                                                            value={row.qty || ''}
+                                                            onChange={(e) => updatePaymentRow(index, { qty: e.target.value })}
+                                                            fullWidth
+                                                            inputProps={{ min: 0, step: '0.01' }}
+                                                            error={!!errors[`payment_rows.${index}.qty`]}
+                                                            helperText={errors[`payment_rows.${index}.qty`]}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <TextField
+                                                            type="number"
+                                                            size="small"
+                                                            value={row.rate || ''}
+                                                            onChange={(e) => updatePaymentRow(index, { rate: e.target.value })}
+                                                            fullWidth
+                                                            inputProps={{ min: 0, step: '0.01' }}
+                                                            error={!!errors[`payment_rows.${index}.rate`]}
+                                                            helperText={errors[`payment_rows.${index}.rate`]}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <TextField
+                                                            size="small"
+                                                            value={formatAmount((Number(row.qty || 0) * Number(row.rate || 0)))}
+                                                            fullWidth
+                                                            InputProps={{ readOnly: true }}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {row.row_type === 'vendor_payment' ? (
+                                                            <Autocomplete
+                                                                options={vendors}
+                                                                size="small"
+                                                                value={vendors.find((option) => String(option.id) === String(row.vendor_id)) || null}
+                                                                onChange={(_, value) => updatePaymentRow(index, { vendor_id: value ? String(value.id) : '', invoice_id: '' })}
+                                                                getOptionLabel={(option) => option.name || ''}
+                                                                renderInput={(params) => (
+                                                                    <TextField
+                                                                        {...params}
+                                                                        label="Vendor"
+                                                                        error={!!errors[`payment_rows.${index}.vendor_id`]}
+                                                                        helperText={errors[`payment_rows.${index}.vendor_id`]}
+                                                                    />
+                                                                )}
+                                                            />
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">Not required</Typography>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Stack spacing={0.75}>
+                                                            <TextField
+                                                                select
+                                                                size="small"
+                                                                label="Mode"
+                                                                value={row.payment_mode || 'direct'}
+                                                                onChange={(e) => updatePaymentRow(index, { payment_mode: e.target.value, invoice_id: '' })}
+                                                                disabled={row.row_type !== 'vendor_payment'}
+                                                            >
+                                                                <MenuItem value="direct">Direct</MenuItem>
+                                                                <MenuItem value="against_invoice">Against Invoice</MenuItem>
+                                                            </TextField>
+                                                            {row.row_type === 'vendor_payment' && row.payment_mode === 'against_invoice' ? (
+                                                                <TextField
+                                                                    select
+                                                                    size="small"
+                                                                    value={row.invoice_id || ''}
+                                                                    onChange={(e) => {
+                                                                        const nextId = e.target.value;
+                                                                        const selected = vendorOptions.find((opt) => String(opt.id) === String(nextId));
+                                                                        updatePaymentRow(index, {
+                                                                            invoice_id: nextId,
+                                                                            qty: !row.qty ? '1' : row.qty,
+                                                                            rate: selected ? String(selected.outstanding || '') : row.rate,
+                                                                            reference_no: !row.reference_no && selected ? (selected.number || '') : row.reference_no,
+                                                                        });
+                                                                    }}
+                                                                    fullWidth
+                                                                    label={loadingInvoiceVendorId === String(row.vendor_id || '') ? 'Loading...' : 'Against Invoice'}
+                                                                    error={!!errors[`payment_rows.${index}.invoice_id`]}
+                                                                    helperText={errors[`payment_rows.${index}.invoice_id`]}
+                                                                >
+                                                                    <MenuItem value="">Select invoice</MenuItem>
+                                                                    {vendorOptions.map((invoice) => (
+                                                                        <MenuItem key={`${invoice.invoice_type}:${invoice.id}`} value={String(invoice.id)}>
+                                                                            {invoice.number} | {formatAmount(invoice.outstanding)}
+                                                                        </MenuItem>
+                                                                    ))}
+                                                                </TextField>
+                                                            ) : null}
+                                                        </Stack>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <TextField size="small" value={row.reference_no || ''} onChange={(e) => updatePaymentRow(index, { reference_no: e.target.value })} fullWidth />
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        <IconButton size="small" color="error" onClick={() => removePaymentRow(index)}>
+                                                            <Delete fontSize="inherit" />
+                                                        </IconButton>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        }}
                                     />
-                                ) : null}
+                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.25 }}>
+                                        <Button variant="outlined" size="small" startIcon={<Add />} onClick={addPaymentRow}>Add Row</Button>
+                                        <Chip color="primary" variant="outlined" label={`Rows Total ${formatAmount(smartRowsTotal)}`} />
+                                    </Stack>
+                                    {errors.payment_rows ? <Alert severity="error" sx={{ mt: 1 }}>{errors.payment_rows}</Alert> : null}
+                                </SurfaceCard>
                             </Grid>
                         ) : null}
 
-                        {!isManualEntry ? (
+                        {!isManualEntry && !isSmartPaymentVoucher ? (
                             <Grid item xs={12} md={2}>
                                 <TextField
                                     type="number"
@@ -876,6 +1195,21 @@ export default function VoucherForm({
                                     fullWidth
                                     size="small"
                                     inputProps={{ min: 0, step: '0.01' }}
+                                    InputProps={{
+                                        sx: {
+                                            fontWeight: 700,
+                                            bgcolor: 'rgba(2, 132, 199, 0.08)',
+                                        },
+                                    }}
+                                    sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                            borderRadius: 2,
+                                        },
+                                        '& .MuiOutlinedInput-root fieldset': {
+                                            borderColor: 'primary.main',
+                                            borderWidth: 1.5,
+                                        },
+                                    }}
                                     error={!!errors.amount}
                                     helperText={errors.amount}
                                 />
@@ -1039,7 +1373,7 @@ export default function VoucherForm({
                                     {previewLines.map((line, index) => {
                                         const debit = Number(line.debit || 0);
                                         const credit = Number(line.credit || 0);
-                                        const side = debit > 0 ? 'Debit' : 'Credit';
+                                        const side = debit > 0 ? 'Counterparty' : 'Payment Account';
                                         const amount = debit > 0 ? debit : credit;
 
                                         return (
@@ -1047,7 +1381,7 @@ export default function VoucherForm({
                                                 key={`generated-line-${index}`}
                                                 sx={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: { xs: '1fr', md: '120px 1fr 160px' },
+                                                    gridTemplateColumns: { xs: '1fr', md: '160px 1fr 160px' },
                                                     gap: 1,
                                                     px: 1.25,
                                                     py: 1,
@@ -1072,9 +1406,8 @@ export default function VoucherForm({
                             )}
                         </Box>
                         <Box sx={{ mt: 1.25, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                            <Chip label={`Debit ${formatAmount(totals.debit)}`} color="primary" variant="outlined" />
-                            <Chip label={`Credit ${formatAmount(totals.credit)}`} color="primary" variant="outlined" />
-                            <Chip label={`Total ${formatAmount(totals.debit)}`} color="default" variant="outlined" />
+                            <Chip label={`Rows ${previewLines.length}`} color="primary" variant="outlined" />
+                            <Chip label={`Total ${formatAmount(Math.max(totals.debit, totals.credit))}`} color="default" variant="outlined" />
                         </Box>
                     </SurfaceCard>
                 )}
@@ -1085,29 +1418,7 @@ export default function VoucherForm({
                         <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={loadLastDefaults}>Use Last Defaults</Button>
                     </Stack>
                 </SurfaceCard>
-
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
-                    <Button variant="outlined" startIcon={<Preview />} onClick={() => setPreviewOpen(true)}>
-                        Preview
-                    </Button>
-                    <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
-                        <Button variant="outlined" href={route('accounting.vouchers.index')}>Cancel</Button>
-                        {mode === 'edit' && voucher?.status !== 'posted' ? (
-                            <Button color="warning" variant="outlined" onClick={() => setConfirmState({ open: true, intent: 'cancel' })}>
-                                Cancel Voucher
-                            </Button>
-                        ) : null}
-                        <AppLoadingButton variant="outlined" loading={processing && intentRef.current === 'draft'} onClick={() => submitForm('draft')}>
-                            Save Draft
-                        </AppLoadingButton>
-                        <AppLoadingButton variant="outlined" loading={processing && intentRef.current === 'submit'} onClick={() => submitForm('submit')} disabled={!canPost}>
-                            Submit for Approval
-                        </AppLoadingButton>
-                        <AppLoadingButton variant="contained" loading={processing && intentRef.current === 'post'} onClick={() => setConfirmState({ open: true, intent: 'post' })} disabled={!canPost}>
-                            Post Voucher
-                        </AppLoadingButton>
-                    </Stack>
-                </Box>
+                {renderVoucherActions()}
             </form>
 
             <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
@@ -1121,37 +1432,61 @@ export default function VoucherForm({
                             <Chip label={`Posting Date: ${data.posting_date || '-'}`} />
                             <Chip label={`Branch: ${tenants.find((tenant) => String(tenant.id) === String(data.tenant_id))?.name || '-'}`} />
                             {!isJournalVoucher ? <Chip label={`${paymentLabel}: ${effectivePaymentAccount?.name || '-'}`} /> : null}
-                            <Chip label={`Amount: ${formatAmount(data.amount || 0)}`} />
+                            <Chip label={`Amount: ${formatAmount(isSmartPaymentVoucher ? smartRowsTotal : (data.amount || 0))}`} />
                         </Stack>
-                        {serverPreview?.allocation || selectedInvoice ? (
+                        {(serverPreview?.allocation_rows?.length > 0 || serverPreview?.allocation || selectedInvoice) ? (
                             <Alert severity="info">
-                                Remaining {(serverPreview?.allocation?.invoice_type || selectedInvoice?.invoice_type) === 'vendor_bill' ? 'Payable' : 'Receivable'}:{' '}
-                                {formatAmount(serverPreview?.allocation?.original_outstanding ?? selectedInvoice?.outstanding ?? 0)}
-                                {serverPreview?.allocation ? ` · Allocating ${formatAmount(serverPreview.allocation.allocated_now)} · After post ${formatAmount(serverPreview.allocation.remaining_after)}` : ''}
+                                {serverPreview?.allocation_rows?.length > 0
+                                    ? `Invoice allocations: ${serverPreview.allocation_rows.length} row(s) selected.`
+                                    : (
+                                        <>
+                                            Remaining {(serverPreview?.allocation?.invoice_type || selectedInvoice?.invoice_type) === 'vendor_bill' ? 'Payable' : 'Receivable'}:{' '}
+                                            {formatAmount(serverPreview?.allocation?.original_outstanding ?? selectedInvoice?.outstanding ?? 0)}
+                                            {serverPreview?.allocation ? ` · Allocating ${formatAmount(serverPreview.allocation.allocated_now)} · After post ${formatAmount(serverPreview.allocation.remaining_after)}` : ''}
+                                        </>
+                                    )}
                             </Alert>
                         ) : null}
                         <Alert severity={isManualEntry ? (difference < 0.0001 ? 'success' : 'error') : 'info'}>
                             {isManualEntry
                                 ? `Debit ${formatAmount(totals.debit)} | Credit ${formatAmount(totals.credit)} | Difference ${formatAmount(difference)}`
-                                : `Debit ${formatAmount(totals.debit)} | Credit ${formatAmount(totals.credit)}`}
+                                : `Posting Summary | Total ${formatAmount(Math.max(totals.debit, totals.credit))} | Auto-generated from smart rows`}
                         </Alert>
                         <AdminDataTable
-                            columns={[
-                                { key: 'account', label: 'Account', minWidth: 300 },
-                                { key: 'description', label: 'Narration', minWidth: 260 },
-                                { key: 'debit', label: 'Debit', minWidth: 120, align: 'right' },
-                                { key: 'credit', label: 'Credit', minWidth: 120, align: 'right' },
-                            ]}
+                            columns={isManualEntry
+                                ? [
+                                    { key: 'account', label: 'Account', minWidth: 300 },
+                                    { key: 'description', label: 'Narration', minWidth: 260 },
+                                    { key: 'debit', label: 'Debit', minWidth: 120, align: 'right' },
+                                    { key: 'credit', label: 'Credit', minWidth: 120, align: 'right' },
+                                ]
+                                : [
+                                    { key: 'effect', label: 'Posting Side', minWidth: 160 },
+                                    { key: 'account', label: 'Account', minWidth: 320 },
+                                    { key: 'description', label: 'Narration', minWidth: 260 },
+                                    { key: 'amount', label: 'Amount', minWidth: 140, align: 'right' },
+                                ]}
                             rows={previewLines}
                             pagination={null}
                             emptyMessage="No lines."
                             tableMinWidth={920}
                             renderRow={(line, index) => (
                                 <TableRow key={`preview-${index}`}>
-                                    <TableCell>{line.account_label}</TableCell>
-                                    <TableCell>{line.description || '-'}</TableCell>
-                                    <TableCell align="right">{formatAmount(line.debit)}</TableCell>
-                                    <TableCell align="right">{formatAmount(line.credit)}</TableCell>
+                                    {isManualEntry ? (
+                                        <>
+                                            <TableCell>{line.account_label}</TableCell>
+                                            <TableCell>{line.description || '-'}</TableCell>
+                                            <TableCell align="right">{formatAmount(line.debit)}</TableCell>
+                                            <TableCell align="right">{formatAmount(line.credit)}</TableCell>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <TableCell>{Number(line.debit || 0) > 0 ? 'Counterparty' : 'Payment Account'}</TableCell>
+                                            <TableCell>{line.account_label}</TableCell>
+                                            <TableCell>{line.description || '-'}</TableCell>
+                                            <TableCell align="right">{formatAmount(Math.max(Number(line.debit || 0), Number(line.credit || 0)))}</TableCell>
+                                        </>
+                                    )}
                                 </TableRow>
                             )}
                         />
@@ -1208,6 +1543,36 @@ function buildPreviewLines({ data, accounts, selectedPaymentCoa, selectedInvoice
                 debit: ['CRV', 'BRV'].includes(data.voucher_type) ? amount : 0,
                 credit: ['CPV', 'BPV'].includes(data.voucher_type) ? amount : 0,
                 description: 'System cash/bank line',
+            },
+        ];
+    }
+
+    if (['CPV', 'BPV'].includes(data.voucher_type) && Array.isArray(data.payment_rows) && data.payment_rows.length > 0) {
+        const paymentRows = data.payment_rows
+            .filter((row) => (Number(row?.qty || 0) * Number(row?.rate || 0)) > 0)
+            .map((row, index) => ({
+                account_label: row.row_type === 'expense'
+                    ? (row.expense_type_id ? `Expense account (Item #${row.expense_type_id})` : 'Expense account')
+                    : (row.payment_mode === 'against_invoice'
+                        ? `Vendor payable (Invoice #${row.invoice_id || '-'})`
+                        : 'Vendor advance/payable account'),
+                debit: Number(row.qty || 0) * Number(row.rate || 0),
+                credit: 0,
+                description: row.remarks || `Payment row ${index + 1}`,
+            }));
+
+        const total = paymentRows.reduce((sum, row) => sum + Number(row.debit || 0), 0);
+        if (!selectedPaymentCoa || total <= 0) {
+            return paymentRows;
+        }
+
+        return [
+            ...paymentRows,
+            {
+                account_label: `${selectedPaymentCoa.full_code} - ${selectedPaymentCoa.name}`,
+                debit: 0,
+                credit: total,
+                description: 'Cash/Bank line',
             },
         ];
     }

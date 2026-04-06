@@ -114,7 +114,27 @@ class AccountingVoucherController extends Controller
         ];
 
         $allocation = null;
-        if ($data['invoice_context']) {
+        $allocationRows = collect($data['payment_rows'] ?? [])
+            ->filter(fn (array $row) => (string) ($row['payment_mode'] ?? 'direct') === 'against_invoice' && !empty($row['invoice_context']))
+            ->values()
+            ->map(function (array $row) {
+                $context = (array) ($row['invoice_context'] ?? []);
+                $amount = (float) ($row['amount'] ?? 0);
+
+                return [
+                    'invoice_type' => (string) ($context['invoice_type'] ?? 'vendor_bill'),
+                    'invoice_id' => (int) ($context['invoice_id'] ?? 0),
+                    'invoice_no' => (string) ($context['number'] ?? '-'),
+                    'original_outstanding' => (float) ($context['outstanding'] ?? 0),
+                    'allocated_now' => $amount,
+                    'remaining_after' => max(0, (float) ($context['outstanding'] ?? 0) - $amount),
+                ];
+            })
+            ->all();
+
+        if (!empty($allocationRows)) {
+            $allocation = $allocationRows[0];
+        } elseif ($data['invoice_context']) {
             $invoiceAmount = (float) ($data['amount'] ?? 0);
             $allocation = [
                 'invoice_type' => $data['invoice_context']['invoice_type'],
@@ -131,6 +151,7 @@ class AccountingVoucherController extends Controller
                 'effective_lines' => $data['effective_lines'],
                 'totals' => $totals,
                 'allocation' => $allocation,
+                'allocation_rows' => $allocationRows,
                 'system_narration' => $data['system_narration'] ?? null,
                 'counterparty_resolution' => $data['counterparty_resolution'] ?? null,
             ],
@@ -420,6 +441,7 @@ class AccountingVoucherController extends Controller
                 'expense_type_id' => $data['expense_type_id'] ?? null,
                 'template_id' => $data['template_id'] ?? null,
                 'amount' => (float) ($data['amount'] ?? 0),
+                'payment_rows' => $data['payment_rows'] ?? null,
                 'voucher_date' => $data['voucher_date'],
                 'posting_date' => $data['posting_date'],
                 'tenant_id' => $data['tenant_id'] ?? null,
@@ -481,6 +503,7 @@ class AccountingVoucherController extends Controller
                 'expense_type_id' => $data['expense_type_id'] ?? null,
                 'template_id' => $data['template_id'] ?? null,
                 'amount' => (float) ($data['amount'] ?? 0),
+                'payment_rows' => $data['payment_rows'] ?? null,
                 'voucher_date' => $data['voucher_date'],
                 'posting_date' => $data['posting_date'],
                 'tenant_id' => $data['tenant_id'] ?? null,
@@ -838,6 +861,18 @@ class AccountingVoucherController extends Controller
             'set_payment_account_as_default' => 'nullable|boolean',
             'counterparty_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'set_vendor_counterparty_default' => 'nullable|boolean',
+            'payment_rows' => 'nullable|array',
+            'payment_rows.*.row_type' => 'nullable|in:expense,vendor_payment',
+            'payment_rows.*.payment_mode' => 'nullable|in:direct,against_invoice',
+            'payment_rows.*.vendor_id' => 'nullable|exists:vendors,id',
+            'payment_rows.*.invoice_id' => 'nullable|integer|min:1',
+            'payment_rows.*.expense_type_id' => 'nullable|exists:accounting_expense_types,id',
+            'payment_rows.*.qty' => 'nullable|numeric|min:0',
+            'payment_rows.*.rate' => 'nullable|numeric|min:0',
+            'payment_rows.*.amount' => 'nullable|numeric|min:0',
+            'payment_rows.*.reference_no' => 'nullable|string|max:255',
+            'payment_rows.*.remarks' => 'nullable|string|max:500',
+            'payment_rows.*.counterparty_account_id' => ['nullable', Rule::exists('coa_accounts', 'id')->where(fn ($query) => $query->where('is_active', true)->where('is_postable', true))],
             'reference_no' => 'nullable|string|max:255',
             'external_reference_no' => 'nullable|string|max:255',
             'currency_code' => 'required|string|max:12',
@@ -885,6 +920,15 @@ class AccountingVoucherController extends Controller
         $data['set_payment_account_as_default'] = (bool) ($data['set_payment_account_as_default'] ?? false);
         $data['counterparty_account_id'] = !empty($data['counterparty_account_id']) ? (int) $data['counterparty_account_id'] : null;
         $data['set_vendor_counterparty_default'] = (bool) ($data['set_vendor_counterparty_default'] ?? false);
+        $data['payment_rows'] = array_values(array_filter((array) ($data['payment_rows'] ?? []), function (array $row) {
+            return !empty($row['row_type'])
+                || !empty($row['vendor_id'])
+                || !empty($row['expense_type_id'])
+                || !empty($row['invoice_id'])
+                || (float) ($row['amount'] ?? 0) > 0
+                || !empty($row['remarks'])
+                || !empty($row['reference_no']);
+        }));
         $data['lines'] = array_values(array_filter((array) ($data['lines'] ?? []), function (array $line) {
             return !empty($line['account_id']) || (float) ($line['debit'] ?? 0) > 0 || (float) ($line['credit'] ?? 0) > 0 || !empty($line['description']);
         }));
@@ -913,53 +957,21 @@ class AccountingVoucherController extends Controller
         $isSmartPaymentVoucher = $isSmartMode && in_array((string) $data['voucher_type'], $paymentVoucherTypes, true);
 
         if ($isSmartPaymentVoucher) {
-            if (!$data['payment_for']) {
-                $data['payment_for'] = (!empty($data['expense_type_id']) || (string) ($data['party_type'] ?? 'none') === 'none')
-                    ? 'expense'
-                    : 'vendor_payment';
-            }
+            $data['payment_rows'] = $this->normalizeSmartPaymentRows($data);
 
-            if ($data['payment_for'] === 'expense') {
-                if ($data['payment_mode'] === 'against_invoice') {
-                    throw ValidationException::withMessages([
-                        'payment_mode' => 'Against Invoice is only available for Vendor Payment.',
-                    ]);
-                }
-                $data['vendor_id'] = null;
-                $data['party_type'] = 'none';
-                $data['party_id'] = null;
-                $data['invoice_type'] = null;
-                $data['invoice_id'] = null;
-                $data['counterparty_account_id'] = null;
-                $data['set_vendor_counterparty_default'] = false;
-            } else {
-                $resolvedVendorId = $data['vendor_id'] ?: ((string) ($data['party_type'] ?? '') === 'vendor' ? (int) ($data['party_id'] ?? 0) : 0);
-                if ($resolvedVendorId <= 0) {
-                    throw ValidationException::withMessages([
-                        'vendor_id' => 'Vendor / Payee is required when Payment For is Vendor Payment.',
-                    ]);
-                }
-                $data['vendor_id'] = $resolvedVendorId;
-                $data['party_type'] = 'vendor';
-                $data['party_id'] = $resolvedVendorId;
-            }
+            $vendorRows = collect($data['payment_rows'])->where('row_type', 'vendor_payment')->values();
+            $firstVendorId = $vendorRows->isEmpty() ? null : (int) ($vendorRows->first()['vendor_id'] ?? 0);
 
-            if ($data['payment_mode'] === 'direct') {
-                $data['invoice_type'] = null;
-                $data['invoice_id'] = null;
-            } else {
-                if ($data['payment_for'] !== 'vendor_payment') {
-                    throw ValidationException::withMessages([
-                        'payment_mode' => 'Against Invoice requires Vendor Payment.',
-                    ]);
-                }
-                if (empty($data['invoice_id'])) {
-                    throw ValidationException::withMessages([
-                        'invoice_id' => 'Invoice is required when Payment Mode is Against Invoice.',
-                    ]);
-                }
-                $data['invoice_type'] = 'vendor_bill';
-            }
+            $data['party_type'] = $firstVendorId ? 'vendor' : 'none';
+            $data['party_id'] = $firstVendorId ?: null;
+            $data['vendor_id'] = $firstVendorId ?: null;
+            $data['invoice_type'] = null;
+            $data['invoice_id'] = null;
+            $data['expense_type_id'] = null;
+            $data['payment_for'] = null;
+            $data['payment_mode'] = null;
+            $data['counterparty_account_id'] = null;
+            $data['set_vendor_counterparty_default'] = false;
         }
 
         $defaultSmartPaymentAccount = null;
@@ -988,7 +1000,7 @@ class AccountingVoucherController extends Controller
             ]);
         }
 
-        if ($isSmartMode && (float) ($data['amount'] ?? 0) <= 0) {
+        if ($isSmartMode && !$isSmartPaymentVoucher && (float) ($data['amount'] ?? 0) <= 0) {
             throw ValidationException::withMessages([
                 'amount' => 'Amount is required in smart mode.',
             ]);
@@ -1002,9 +1014,10 @@ class AccountingVoucherController extends Controller
 
         if ($isSmartMode) {
             $hasExpenseContext = !empty($data['expense_type_id'])
-                || ($isSmartPaymentVoucher && ($data['payment_for'] ?? null) === 'expense');
+                || ($isSmartPaymentVoucher && collect($data['payment_rows'] ?? [])->contains(fn (array $row) => (string) ($row['row_type'] ?? '') === 'expense'));
             $hasPartyContext = !empty($data['party_id']) && ($data['party_type'] ?? 'none') !== 'none';
-            $hasInvoiceContext = !empty($data['invoice_type']) && !empty($data['invoice_id']);
+            $hasInvoiceContext = !empty($data['invoice_type']) && !empty($data['invoice_id'])
+                || ($isSmartPaymentVoucher && collect($data['payment_rows'] ?? [])->contains(fn (array $row) => (string) ($row['payment_mode'] ?? 'direct') === 'against_invoice' && !empty($row['invoice_id'])));
 
             if (!($hasExpenseContext || $hasPartyContext || $hasInvoiceContext)) {
                 throw ValidationException::withMessages([
@@ -1016,6 +1029,11 @@ class AccountingVoucherController extends Controller
                 if (!in_array((string) ($data['party_type'] ?? 'none'), ['none', 'vendor'], true)) {
                     throw ValidationException::withMessages([
                         'party_type' => 'CPV/BPV smart mode supports Vendor party context only.',
+                    ]);
+                }
+                if ($isSmartPaymentVoucher && empty($data['payment_rows'])) {
+                    throw ValidationException::withMessages([
+                        'payment_rows' => 'Add at least one payment row for CPV/BPV smart mode.',
                     ]);
                 }
                 if (!$hasExpenseContext && ((string) ($data['party_type'] ?? 'none') !== 'vendor' || empty($data['party_id']))) {
@@ -1063,13 +1081,21 @@ class AccountingVoucherController extends Controller
 
         $this->validatePaymentAccountCompatibility($data['voucher_type'], $paymentAccount, $data);
         $invoiceContext = $this->resolveInvoiceContext($data);
-        $counterpartyResolution = $this->resolveCounterpartyAccountForVoucher($data, $intent);
-        $effectiveLines = $this->buildEffectiveLines(
-            $data,
-            $paymentAccount,
-            $invoiceContext,
-            $counterpartyResolution['account_id'] ?? null
-        );
+
+        if ($isSmartPaymentVoucher && !empty($data['payment_rows'])) {
+            [$effectiveLines, $resolvedRows] = $this->buildEffectiveLinesFromPaymentRows($data, $paymentAccount, $intent);
+            $data['payment_rows'] = $resolvedRows;
+            $counterpartyResolution = null;
+            $invoiceContext = null;
+        } else {
+            $counterpartyResolution = $this->resolveCounterpartyAccountForVoucher($data, $intent);
+            $effectiveLines = $this->buildEffectiveLines(
+                $data,
+                $paymentAccount,
+                $invoiceContext,
+                $counterpartyResolution['account_id'] ?? null
+            );
+        }
         $this->assertBalanced($effectiveLines);
 
         if ($data['entry_mode'] === 'manual') {
@@ -1084,6 +1110,9 @@ class AccountingVoucherController extends Controller
         }
 
         $data['amount'] = (float) ($data['amount'] ?? 0);
+        if ($isSmartPaymentVoucher && !empty($data['payment_rows'])) {
+            $data['amount'] = (float) collect($data['payment_rows'])->sum(fn (array $row) => (float) ($row['amount'] ?? 0));
+        }
         $data['system_narration'] = $this->buildSystemNarration($data, $paymentAccount, $invoiceContext);
         if (($data['amount'] ?? 0) <= 0) {
             $data['amount'] = (float) collect($effectiveLines)->sum(fn (array $line) => (float) ($line['debit'] ?? 0));
@@ -1096,7 +1125,7 @@ class AccountingVoucherController extends Controller
             && !$defaultSmartPaymentAccount
             && $data['set_payment_account_as_default']
             && !empty($data['payment_account_id']);
-        $data['should_set_vendor_counterparty_default'] = $isSmartMode
+        $data['should_set_vendor_counterparty_default'] = !$isSmartPaymentVoucher && $isSmartMode
             && (string) ($data['voucher_type'] ?? '') === 'CPV'
             && (string) ($data['payment_for'] ?? '') === 'vendor_payment'
             && $data['set_vendor_counterparty_default']
@@ -1555,6 +1584,254 @@ class AccountingVoucherController extends Controller
         return [$counterpartyLine, $mainLine];
     }
 
+    private function normalizeSmartPaymentRows(array $data): array
+    {
+        $rows = array_values((array) ($data['payment_rows'] ?? []));
+        if (empty($rows)) {
+            $rows = [[
+                'row_type' => (string) ($data['payment_for'] ?? '') === 'vendor_payment' ? 'vendor_payment' : 'expense',
+                'payment_mode' => (string) ($data['payment_mode'] ?? 'direct'),
+                'vendor_id' => (int) ($data['vendor_id'] ?: (($data['party_type'] ?? 'none') === 'vendor' ? ($data['party_id'] ?? 0) : 0)),
+                'invoice_id' => (int) ($data['invoice_id'] ?? 0),
+                'expense_type_id' => (int) ($data['expense_type_id'] ?? 0),
+                'qty' => 1,
+                'rate' => (float) ($data['amount'] ?? 0),
+                'amount' => (float) ($data['amount'] ?? 0),
+                'reference_no' => (string) ($data['reference_no'] ?? ''),
+                'remarks' => (string) ($data['remarks'] ?? ''),
+                'counterparty_account_id' => (int) ($data['counterparty_account_id'] ?? 0),
+            ]];
+        }
+
+        $normalized = [];
+        foreach ($rows as $index => $row) {
+            $rowType = (string) ($row['row_type'] ?? '');
+            if (!in_array($rowType, ['expense', 'vendor_payment'], true)) {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.row_type" => 'Row type is required.',
+                ]);
+            }
+
+            $paymentMode = (string) ($row['payment_mode'] ?? 'direct');
+            if (!in_array($paymentMode, ['direct', 'against_invoice'], true)) {
+                $paymentMode = 'direct';
+            }
+
+            $qty = (float) ($row['qty'] ?? 0);
+            $rate = (float) ($row['rate'] ?? 0);
+            $inputAmount = (float) ($row['amount'] ?? 0);
+
+            if ($qty <= 0 && $rate <= 0 && $inputAmount > 0) {
+                $qty = 1;
+                $rate = $inputAmount;
+            }
+            if ($qty <= 0 && $rate > 0) {
+                $qty = 1;
+            }
+            if ($rate <= 0 && $qty > 0 && $inputAmount > 0) {
+                $rate = $inputAmount / $qty;
+            }
+
+            $amount = round($qty * $rate, 2);
+            if ($amount <= 0) {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.qty" => 'Row Qty and Rate must be greater than zero.',
+                ]);
+            }
+
+            if ($rowType === 'expense' && $paymentMode === 'against_invoice') {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.payment_mode" => 'Expense rows support Direct mode only.',
+                ]);
+            }
+
+            $normalized[] = [
+                'row_type' => $rowType,
+                'payment_mode' => $paymentMode,
+                'vendor_id' => !empty($row['vendor_id']) ? (int) $row['vendor_id'] : null,
+                'invoice_id' => !empty($row['invoice_id']) ? (int) $row['invoice_id'] : null,
+                'expense_type_id' => !empty($row['expense_type_id']) ? (int) $row['expense_type_id'] : null,
+                'qty' => round($qty, 4),
+                'rate' => round($rate, 4),
+                'amount' => $amount,
+                'reference_no' => trim((string) ($row['reference_no'] ?? '')),
+                'remarks' => trim((string) ($row['remarks'] ?? '')),
+                'counterparty_account_id' => !empty($row['counterparty_account_id']) ? (int) $row['counterparty_account_id'] : null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function buildEffectiveLinesFromPaymentRows(array $data, ?PaymentAccount $paymentAccount, string $intent): array
+    {
+        $rows = (array) ($data['payment_rows'] ?? []);
+        if (empty($rows)) {
+            throw ValidationException::withMessages([
+                'payment_rows' => 'At least one payment row is required.',
+            ]);
+        }
+
+        $debitLines = [];
+        $resolvedRows = [];
+        $total = 0.0;
+        $voucherVendorId = null;
+        $seenInvoiceKeys = [];
+
+        foreach ($rows as $index => $row) {
+            $amount = (float) ($row['amount'] ?? 0);
+            $rowType = (string) ($row['row_type'] ?? 'expense');
+            $paymentMode = (string) ($row['payment_mode'] ?? 'direct');
+            $expenseTypeId = (int) ($row['expense_type_id'] ?? 0);
+
+            if ($expenseTypeId <= 0) {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.expense_type_id" => 'Item Name is required.',
+                ]);
+            }
+            $expenseType = AccountingExpenseType::query()->find($expenseTypeId);
+            if (!$expenseType || !$expenseType->is_active) {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.expense_type_id" => 'Selected item is inactive or invalid.',
+                ]);
+            }
+
+            $line = [
+                'account_id' => null,
+                'department_id' => $data['department_id'] ?? null,
+                'debit' => $amount,
+                'credit' => 0.0,
+                'vendor_id' => null,
+                'member_id' => null,
+                'employee_id' => null,
+                'party_type' => null,
+                'party_id' => null,
+                'reference_type' => null,
+                'reference_id' => null,
+                'tax_code' => null,
+                'tax_amount' => 0,
+                'description' => null,
+                'dimensions' => null,
+                'is_system_generated' => true,
+            ];
+
+            $resolvedRow = $row;
+            $invoiceContext = null;
+
+            if ($rowType === 'expense') {
+                $line['account_id'] = $this->mappingResolver->resolveExpenseAccountId($expenseTypeId);
+                $line['description'] = trim((string) ($row['remarks'] ?: ("Expense payment for {$expenseType->name}")));
+            } else {
+                $vendorId = (int) ($row['vendor_id'] ?? 0);
+                if ($vendorId <= 0) {
+                    throw ValidationException::withMessages([
+                        "payment_rows.{$index}.vendor_id" => 'Vendor is required for vendor payment rows.',
+                    ]);
+                }
+
+                if ($voucherVendorId === null) {
+                    $voucherVendorId = $vendorId;
+                } elseif ($voucherVendorId !== $vendorId) {
+                    throw ValidationException::withMessages([
+                        "payment_rows.{$index}.vendor_id" => 'All vendor-payment rows must use the same vendor in one voucher.',
+                    ]);
+                }
+
+                $line['vendor_id'] = $vendorId;
+                $line['party_type'] = 'vendor';
+                $line['party_id'] = $vendorId;
+
+                if ($paymentMode === 'against_invoice') {
+                    $invoiceId = (int) ($row['invoice_id'] ?? 0);
+                    if ($invoiceId <= 0) {
+                        throw ValidationException::withMessages([
+                            "payment_rows.{$index}.invoice_id" => 'Invoice is required for Against Invoice rows.',
+                        ]);
+                    }
+                    $invoiceKey = "vendor_bill:{$invoiceId}";
+                    if (in_array($invoiceKey, $seenInvoiceKeys, true)) {
+                        throw ValidationException::withMessages([
+                            "payment_rows.{$index}.invoice_id" => 'Duplicate invoice row is not allowed in same voucher.',
+                        ]);
+                    }
+                    $seenInvoiceKeys[] = $invoiceKey;
+
+                    $invoiceContext = $this->resolveInvoiceContext([
+                        'voucher_type' => $data['voucher_type'],
+                        'invoice_type' => 'vendor_bill',
+                        'invoice_id' => $invoiceId,
+                        'party_type' => 'vendor',
+                        'party_id' => $vendorId,
+                    ]);
+
+                    if ($amount - (float) ($invoiceContext['outstanding'] ?? 0) > 0.009) {
+                        throw ValidationException::withMessages([
+                            "payment_rows.{$index}.amount" => 'Row amount cannot exceed selected invoice outstanding.',
+                        ]);
+                    }
+                }
+
+                $counterpartyResolution = $this->resolveCounterpartyAccountForVoucher([
+                    'voucher_type' => $data['voucher_type'],
+                    'entry_mode' => 'smart',
+                    'payment_for' => 'vendor_payment',
+                    'payment_mode' => $paymentMode,
+                    'party_type' => 'vendor',
+                    'party_id' => $vendorId,
+                    'counterparty_account_id' => $row['counterparty_account_id'] ?? null,
+                ], $intent);
+
+                $line['account_id'] = (int) ($counterpartyResolution['account_id'] ?? 0);
+                $line['reference_type'] = $invoiceContext['reference_type'] ?? Vendor::class;
+                $line['reference_id'] = (int) ($invoiceContext['reference_id'] ?? $vendorId);
+                $line['description'] = trim((string) ($row['remarks'] ?: ($paymentMode === 'against_invoice'
+                    ? "Vendor payment against bill {$invoiceContext['number']} for {$expenseType->name}"
+                    : "Vendor payment for {$expenseType->name}")));
+                $resolvedRow['counterparty_resolution'] = $counterpartyResolution;
+            }
+
+            if (!(int) $line['account_id']) {
+                throw ValidationException::withMessages([
+                    "payment_rows.{$index}.row_type" => 'Unable to resolve a valid counterparty account for this row.',
+                ]);
+            }
+
+            $resolvedRow['invoice_context'] = $invoiceContext;
+            $debitLines[] = $line;
+            $resolvedRows[] = $resolvedRow;
+            $total += $amount;
+        }
+
+        if ($total <= 0) {
+            throw ValidationException::withMessages([
+                'payment_rows' => 'Voucher total must be greater than zero.',
+            ]);
+        }
+
+        $creditLine = [
+            'account_id' => (int) ($paymentAccount?->coa_account_id ?? 0),
+            'department_id' => $data['department_id'] ?? null,
+            'debit' => 0.0,
+            'credit' => round($total, 2),
+            'vendor_id' => $voucherVendorId,
+            'member_id' => null,
+            'employee_id' => null,
+            'party_type' => $voucherVendorId ? 'vendor' : null,
+            'party_id' => $voucherVendorId,
+            'reference_type' => PaymentAccount::class,
+            'reference_id' => (int) ($paymentAccount?->id ?? 0),
+            'tax_code' => null,
+            'tax_amount' => 0,
+            'description' => $data['system_narration'] ?? $this->systemLineDescription((string) $data['voucher_type'], $paymentAccount),
+            'dimensions' => null,
+            'is_system_generated' => true,
+        ];
+
+        $data['amount'] = round($total, 2);
+
+        return [array_merge($debitLines, [$creditLine]), $resolvedRows];
+    }
+
     private function partyReferenceType(string $partyType): ?string
     {
         return match ($partyType) {
@@ -1674,32 +1951,32 @@ class AccountingVoucherController extends Controller
 
     private function buildSystemNarration(array $data, ?PaymentAccount $paymentAccount, ?array $invoiceContext = null): string
     {
-        if ((string) ($data['voucher_type'] ?? '') === 'CPV' && $this->normalizeEntryMode((string) ($data['entry_mode'] ?? 'smart')) === 'smart') {
+        if (in_array((string) ($data['voucher_type'] ?? ''), ['CPV', 'BPV'], true)
+            && $this->normalizeEntryMode((string) ($data['entry_mode'] ?? 'smart')) === 'smart'
+            && !empty($data['payment_rows'])
+        ) {
             $remarks = trim((string) ($data['remarks'] ?? ''));
-            $cashAccountLabel = trim((string) ($paymentAccount?->name ?: 'cash account'));
-            $vendorName = null;
-            if ((string) ($data['party_type'] ?? 'none') === 'vendor' && !empty($data['party_id'])) {
-                $vendorName = optional(Vendor::query()->find((int) $data['party_id']))->name;
-            }
+            $channel = (string) ($data['voucher_type'] ?? '') === 'CPV' ? 'Cash' : 'Bank';
+            $accountLabel = trim((string) ($paymentAccount?->name ?: strtolower($channel) . ' account'));
+            $rows = collect((array) $data['payment_rows']);
+            $total = (float) $rows->sum(fn (array $row) => (float) ($row['amount'] ?? 0));
+            $vendorRows = $rows->where('row_type', 'vendor_payment');
+            $expenseRows = $rows->where('row_type', 'expense');
+            $firstInvoiceNo = $rows
+                ->pluck('invoice_context')
+                ->filter()
+                ->map(fn ($ctx) => (string) (($ctx['number'] ?? '')))
+                ->filter()
+                ->first();
 
-            $expenseLabel = null;
-            if (!empty($data['expense_type_id'])) {
-                $expense = AccountingExpenseType::query()->find((int) $data['expense_type_id']);
-                $expenseLabel = $expense ? trim(((string) $expense->code) . ' ' . ((string) $expense->name)) : null;
-            }
-
-            $sentence = "Cash payment via {$cashAccountLabel}";
-            if ((string) ($data['payment_for'] ?? '') === 'vendor_payment') {
-                $payee = $vendorName ?: 'vendor';
-                if ($invoiceContext && !empty($invoiceContext['number'])) {
-                    $sentence = "Cash payment to {$payee} against bill {$invoiceContext['number']} via {$cashAccountLabel}";
-                } else {
-                    $sentence = "Cash payment to {$payee} via {$cashAccountLabel}";
-                }
-            } elseif ((string) ($data['payment_for'] ?? '') === 'expense') {
-                $sentence = $expenseLabel
-                    ? "Cash expense payment for {$expenseLabel} via {$cashAccountLabel}"
-                    : "Cash expense payment via {$cashAccountLabel}";
+            $sentence = "{$channel} payment voucher of " . number_format($total, 2, '.', ',') . " via {$accountLabel}";
+            if ($vendorRows->isNotEmpty() && $expenseRows->isEmpty()) {
+                $vendorName = optional(Vendor::query()->find((int) ($vendorRows->first()['vendor_id'] ?? 0)))->name ?: 'vendor';
+                $sentence = $firstInvoiceNo
+                    ? "{$channel} payment to {$vendorName} against bill {$firstInvoiceNo} via {$accountLabel}"
+                    : "{$channel} payment to {$vendorName} via {$accountLabel}";
+            } elseif ($expenseRows->isNotEmpty() && $vendorRows->isEmpty()) {
+                $sentence = "{$channel} expense payment via {$accountLabel}";
             }
 
             return $remarks !== '' ? "{$sentence}. {$remarks}" : $sentence;
@@ -1797,6 +2074,7 @@ class AccountingVoucherController extends Controller
                     'vendor_id' => $data['vendor_id'] ?? null,
                     'payment_for' => $data['payment_for'] ?? null,
                     'payment_mode' => $data['payment_mode'] ?? 'direct',
+                    'payment_rows' => $data['payment_rows'] ?? null,
                     'payment_account_id' => $data['payment_account_id'] ?? null,
                     'expense_type_id' => $data['expense_type_id'] ?? null,
                     'currency_code' => $data['currency_code'] ?? 'PKR',
@@ -1963,13 +2241,13 @@ class AccountingVoucherController extends Controller
 
     private function resolveCounterpartyAccountForVoucher(array $data, string $intent): array
     {
-        $isCpvSmartVendorPayment = (string) ($data['voucher_type'] ?? '') === 'CPV'
+        $isPaymentSmartVendor = in_array((string) ($data['voucher_type'] ?? ''), ['CPV', 'BPV'], true)
             && (string) ($data['entry_mode'] ?? '') === 'smart'
             && (string) ($data['payment_for'] ?? '') === 'vendor_payment'
             && (string) ($data['party_type'] ?? '') === 'vendor'
             && (int) ($data['party_id'] ?? 0) > 0;
 
-        if (!$isCpvSmartVendorPayment) {
+        if (!$isPaymentSmartVendor) {
             return [
                 'account_id' => $this->mappingResolver->resolveCounterpartyAccountId($data),
                 'requires_selection' => false,
