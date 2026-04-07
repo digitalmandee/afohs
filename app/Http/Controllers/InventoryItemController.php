@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\InventoryDocument;
 use App\Models\Category;
 use App\Models\GoodsReceiptItem;
 use App\Models\InventoryItem;
@@ -9,12 +10,17 @@ use App\Models\InventoryTransaction;
 use App\Models\PosManufacturer;
 use App\Models\PosUnit;
 use App\Models\PurchaseOrderItem;
+use App\Models\Tenant;
 use App\Models\Vendor;
 use App\Models\VendorItemMapping;
 use App\Models\VendorBillItem;
 use App\Models\CoaAccount;
+use App\Models\Warehouse;
+use App\Models\WarehouseLocation;
+use App\Services\Inventory\InventoryMovementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class InventoryItemController extends Controller
@@ -95,10 +101,12 @@ class InventoryItemController extends Controller
         $data = $this->validateItem($request);
         $data = $this->withGeneratedSku($data);
         $mappings = $this->validatedVendorMappings($request);
+        $openingStocks = $this->validatedOpeningStocks($request);
 
-        DB::transaction(function () use ($data, $request, $mappings) {
+        DB::transaction(function () use ($data, $request, $mappings, $openingStocks) {
             $item = InventoryItem::create($data + ['created_by' => $request->user()?->id]);
             $this->syncVendorMappings($item, $mappings);
+            $this->postOpeningStocks($item, $openingStocks, $request);
         });
 
         return $this->redirectToIndex($request)->with('success', 'Inventory item created.');
@@ -150,6 +158,68 @@ class InventoryItemController extends Controller
             'vendorMappings.vendor:id,name',
         ]);
 
+        $stockSummary = collect();
+        $openingBalanceHistory = collect();
+
+        if ($inventoryItem) {
+            $stockSummary = InventoryTransaction::query()
+                ->selectRaw('warehouse_id, warehouse_location_id, tenant_id, COALESCE(SUM(qty_in - qty_out), 0) as on_hand, COALESCE(SUM(total_cost), 0) as value')
+                ->with([
+                    'warehouse:id,name,code',
+                    'warehouseLocation:id,warehouse_id,name,code',
+                    'tenant:id,name',
+                ])
+                ->where('inventory_item_id', $inventoryItem->id)
+                ->groupBy('warehouse_id', 'warehouse_location_id', 'tenant_id')
+                ->orderBy('warehouse_id')
+                ->orderBy('warehouse_location_id')
+                ->get()
+                ->map(fn (InventoryTransaction $row) => [
+                    'warehouse_id' => $row->warehouse_id,
+                    'warehouse_name' => $row->warehouse?->name,
+                    'warehouse_code' => $row->warehouse?->code,
+                    'warehouse_location_id' => $row->warehouse_location_id,
+                    'warehouse_location_name' => $row->warehouseLocation?->name,
+                    'warehouse_location_code' => $row->warehouseLocation?->code,
+                    'tenant_id' => $row->tenant_id,
+                    'tenant_name' => $row->tenant?->name,
+                    'on_hand' => (float) $row->on_hand,
+                    'value' => (float) $row->value,
+                ])
+                ->values();
+
+            $openingBalanceHistory = InventoryDocument::query()
+                ->with([
+                    'tenant:id,name',
+                    'destinationWarehouse:id,name,code',
+                    'destinationWarehouseLocation:id,warehouse_id,name,code',
+                    'lines' => fn ($query) => $query->select('id', 'inventory_document_id', 'inventory_item_id', 'quantity', 'unit_cost', 'line_total'),
+                ])
+                ->where('type', 'opening_balance')
+                ->whereHas('lines', fn ($query) => $query->where('inventory_item_id', $inventoryItem->id))
+                ->latest('transaction_date')
+                ->latest('id')
+                ->get()
+                ->map(function (InventoryDocument $document) use ($inventoryItem) {
+                    $line = $document->lines->firstWhere('inventory_item_id', $inventoryItem->id);
+
+                    return [
+                        'document_no' => $document->document_no,
+                        'transaction_date' => optional($document->transaction_date)->toDateString(),
+                        'tenant_name' => $document->tenant?->name,
+                        'warehouse_name' => $document->destinationWarehouse?->name,
+                        'warehouse_code' => $document->destinationWarehouse?->code,
+                        'warehouse_location_name' => $document->destinationWarehouseLocation?->name,
+                        'warehouse_location_code' => $document->destinationWarehouseLocation?->code,
+                        'quantity' => (float) ($line?->quantity ?? 0),
+                        'unit_cost' => (float) ($line?->unit_cost ?? 0),
+                        'line_total' => (float) ($line?->line_total ?? 0),
+                        'remarks' => $document->remarks,
+                    ];
+                })
+                ->values();
+        }
+
         return [
             'inventoryItem' => $inventoryItem,
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
@@ -161,6 +231,17 @@ class InventoryItemController extends Controller
                 ->orderBy('full_code')
                 ->get(['id', 'full_code', 'name']),
             'vendors' => Vendor::query()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'tenant_id']),
+            'tenants' => Tenant::query()->orderBy('name')->get(['id', 'name']),
+            'warehouses' => Warehouse::query()
+                ->with(['coverageRestaurants:id,name', 'locations:id,warehouse_id,name,code,status'])
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'tenant_id', 'all_restaurants', 'status']),
+            'warehouseLocations' => WarehouseLocation::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'warehouse_id', 'tenant_id', 'name', 'code', 'status']),
+            'stockSummary' => $stockSummary,
+            'openingBalanceHistory' => $openingBalanceHistory,
         ];
     }
 
@@ -170,7 +251,7 @@ class InventoryItemController extends Controller
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:100|unique:inventory_items,sku,' . $ignoreId,
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:pos_categories,id',
             'manufacturer_id' => 'nullable|exists:pos_manufacturers,id',
             'unit_id' => 'nullable|exists:pos_units,id',
             'inventory_account_id' => 'nullable|exists:coa_accounts,id',
@@ -234,6 +315,72 @@ class InventoryItemController extends Controller
         return $data;
     }
 
+    protected function validatedOpeningStocks(Request $request): array
+    {
+        $rows = $request->input('opening_stocks', []);
+
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        $validator = validator(
+            ['opening_stocks' => $rows],
+            [
+                'opening_stocks' => 'nullable|array',
+                'opening_stocks.*.tenant_id' => 'nullable|exists:tenants,id',
+                'opening_stocks.*.warehouse_id' => 'required_with:opening_stocks|exists:warehouses,id',
+                'opening_stocks.*.warehouse_location_id' => 'nullable|exists:warehouse_locations,id',
+                'opening_stocks.*.quantity' => 'required_with:opening_stocks|numeric|min:0.001',
+                'opening_stocks.*.unit_cost' => 'required_with:opening_stocks|numeric|min:0',
+            ]
+        );
+
+        $data = $validator->validate()['opening_stocks'] ?? [];
+        $normalized = [];
+        $seenKeys = [];
+        $warehouseScope = [];
+
+        foreach ($data as $index => $row) {
+            $quantity = (float) ($row['quantity'] ?? 0);
+            $unitCost = (float) ($row['unit_cost'] ?? 0);
+            $warehouseId = (int) ($row['warehouse_id'] ?? 0);
+            $locationId = !empty($row['warehouse_location_id']) ? (int) $row['warehouse_location_id'] : null;
+            $tenantId = !empty($row['tenant_id']) ? (int) $row['tenant_id'] : null;
+
+            if ($quantity <= 0.0001) {
+                continue;
+            }
+
+            $key = implode(':', [$tenantId ?: 'global', $warehouseId, $locationId ?: 'warehouse']);
+            if (isset($seenKeys[$key])) {
+                throw ValidationException::withMessages([
+                    "opening_stocks.$index.warehouse_location_id" => 'Duplicate opening stock rows are not allowed for the same warehouse/location.',
+                ]);
+            }
+            $seenKeys[$key] = true;
+
+            $scope = $locationId ? 'location' : 'warehouse';
+            if (isset($warehouseScope[$warehouseId]) && $warehouseScope[$warehouseId] !== $scope) {
+                throw ValidationException::withMessages([
+                    "opening_stocks.$index.warehouse_location_id" => 'Use either whole-warehouse stock rows or location-level rows for the same warehouse, not both.',
+                ]);
+            }
+            $warehouseScope[$warehouseId] = $scope;
+
+            $this->assertOpeningStockWarehouseContext($warehouseId, $locationId, $tenantId, $index);
+
+            $normalized[] = [
+                'tenant_id' => $tenantId,
+                'warehouse_id' => $warehouseId,
+                'warehouse_location_id' => $locationId,
+                'quantity' => $quantity,
+                'unit_cost' => $unitCost,
+            ];
+        }
+
+        return $normalized;
+    }
+
     protected function validatedVendorMappings(Request $request): array
     {
         $mappings = $request->input('vendor_mappings', []);
@@ -281,6 +428,54 @@ class InventoryItemController extends Controller
                 'lead_time_days' => $mapping['lead_time_days'] ?? null,
                 'minimum_order_qty' => $mapping['minimum_order_qty'] ?? null,
                 'currency' => $mapping['currency'] ?? 'PKR',
+            ]);
+        }
+    }
+
+    protected function postOpeningStocks(InventoryItem $item, array $openingStocks, Request $request): void
+    {
+        if (empty($openingStocks)) {
+            return;
+        }
+
+        $movementService = app(InventoryMovementService::class);
+        $transactionDate = now()->toDateString();
+
+        foreach ($openingStocks as $row) {
+            $movementService->createOpeningBalance([
+                'tenant_id' => $row['tenant_id'],
+                'warehouse_id' => $row['warehouse_id'],
+                'warehouse_location_id' => $row['warehouse_location_id'],
+                'inventory_item_id' => $item->id,
+                'transaction_date' => $transactionDate,
+                'quantity' => $row['quantity'],
+                'unit_cost' => $row['unit_cost'],
+                'remarks' => sprintf('Opening balance on item creation for %s', $item->name),
+                'created_by' => $request->user()?->id,
+            ]);
+        }
+    }
+
+    protected function assertOpeningStockWarehouseContext(int $warehouseId, ?int $locationId, ?int $tenantId, int $index): void
+    {
+        $warehouse = Warehouse::query()
+            ->with(['coverageRestaurants:id', 'locations:id,warehouse_id'])
+            ->findOrFail($warehouseId);
+
+        $restaurantAllowed = !$tenantId
+            || $warehouse->all_restaurants
+            || (int) $warehouse->tenant_id === (int) $tenantId
+            || $warehouse->coverageRestaurants->contains('id', $tenantId);
+
+        if (!$restaurantAllowed) {
+            throw ValidationException::withMessages([
+                "opening_stocks.$index.warehouse_id" => 'Selected warehouse is not assigned to the selected restaurant.',
+            ]);
+        }
+
+        if ($locationId && !$warehouse->locations->contains('id', $locationId)) {
+            throw ValidationException::withMessages([
+                "opening_stocks.$index.warehouse_location_id" => 'Selected location does not belong to the selected warehouse.',
             ]);
         }
     }

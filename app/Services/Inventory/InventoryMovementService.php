@@ -265,7 +265,14 @@ class InventoryMovementService
                 );
 
                 if ($available + 0.0001 < $quantity) {
-                    throw new InvalidArgumentException('Adjustment quantity exceeds available stock for the selected warehouse/location.');
+                    $excess = max(0, $quantity - $available);
+
+                    throw new InvalidArgumentException(sprintf(
+                        'Adjustment quantity exceeds available stock for the selected warehouse/location. Available: %.3f, requested: %.3f, excess: %.3f.',
+                        $available,
+                        $quantity,
+                        $excess,
+                    ));
                 }
             }
 

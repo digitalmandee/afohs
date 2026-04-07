@@ -455,8 +455,13 @@ class InventoryDocumentFlowController extends Controller
 
     private function assertWarehouseContext(int $warehouseId, ?int $locationId = null, ?int $tenantId = null): void
     {
-        $warehouse = Warehouse::query()->findOrFail($warehouseId);
-        if ($tenantId && (int) $warehouse->tenant_id !== (int) $tenantId) {
+        $warehouse = Warehouse::query()->with('coverageRestaurants:id')->findOrFail($warehouseId);
+        $restaurantAllowed = ! $tenantId
+            || $warehouse->all_restaurants
+            || (int) $warehouse->tenant_id === (int) $tenantId
+            || $warehouse->coverageRestaurants->contains('id', (int) $tenantId);
+
+        if (! $restaurantAllowed) {
             throw ValidationException::withMessages([
                 'tenant_id' => 'Selected warehouse does not belong to the selected restaurant.',
             ]);

@@ -346,15 +346,20 @@ class WarehouseController extends Controller
                     'payload' => $this->sanitizePayload($request->all()),
                 ]);
                 return redirect()->back()->withErrors([
-                    'warehouse_id' => 'Selected warehouse is not assigned to the chosen restaurant.',
+                    'warehouse_id' => 'Selected warehouse is not assigned to the selected restaurant.',
                 ]);
             }
 
-            if ($data['warehouse_location_id']) {
-                abort_unless(
-                    $warehouse->locations->contains('id', (int) $data['warehouse_location_id']),
-                    422
-                );
+            if (!empty($data['warehouse_location_id']) && !$warehouse->locations->contains('id', (int) $data['warehouse_location_id'])) {
+                $this->logInventoryWarning($request, 'store_assignment', 'inventory.warehouse.validation.warning', 'location_not_in_selected_warehouse', [
+                    'warehouse_id' => $data['warehouse_id'],
+                    'warehouse_location_id' => $data['warehouse_location_id'],
+                    'restaurant_id' => $data['restaurant_id'],
+                    'payload' => $this->sanitizePayload($request->all()),
+                ]);
+                return redirect()->back()->withErrors([
+                    'warehouse_location_id' => 'Selected location does not belong to the selected warehouse.',
+                ]);
             }
 
             if (!empty($data['is_primary'])) {

@@ -189,13 +189,49 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
         return selectedWarehouse?.locations || [];
     }, [assignmentForm.data.warehouse_id, availableAssignmentWarehouses]);
 
+    React.useEffect(() => {
+        if (!assignmentForm.data.warehouse_location_id) return;
+
+        const locationStillValid = assignmentLocations.some(
+            (location) => String(location.id) === String(assignmentForm.data.warehouse_location_id),
+        );
+
+        if (!locationStillValid) {
+            assignmentForm.setData('warehouse_location_id', '');
+            assignmentForm.clearErrors('warehouse_location_id');
+        }
+    }, [assignmentForm, assignmentForm.data.warehouse_location_id, assignmentLocations]);
+
+    React.useEffect(() => {
+        if (!openAssignmentModal) {
+            assignmentForm.reset();
+            assignmentForm.setData('role', 'sellable');
+            assignmentForm.setData('is_active', true);
+            assignmentForm.clearErrors();
+        }
+    }, [assignmentForm, openAssignmentModal]);
+
     const submitAssignment = (event) => {
         event.preventDefault();
+
+        const selectedWarehouse = availableAssignmentWarehouses.find(
+            (warehouse) => String(warehouse.id) === String(assignmentForm.data.warehouse_id),
+        );
+        const selectedLocation = assignmentLocations.find(
+            (location) => String(location.id) === String(assignmentForm.data.warehouse_location_id),
+        );
+
+        if (assignmentForm.data.warehouse_location_id && (!selectedWarehouse || !selectedLocation)) {
+            assignmentForm.setError('warehouse_location_id', 'Selected location does not belong to the selected warehouse.');
+            return;
+        }
+
         assignmentForm.post(route('inventory.warehouse-assignments.store'), {
             onSuccess: () => {
                 assignmentForm.reset();
                 assignmentForm.setData('role', 'sellable');
                 assignmentForm.setData('is_active', true);
+                assignmentForm.clearErrors();
                 setOpenAssignmentModal(false);
             },
         });
@@ -709,6 +745,7 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                         assignmentForm.setData('restaurant_id', event.target.value);
                                         assignmentForm.setData('warehouse_id', '');
                                         assignmentForm.setData('warehouse_location_id', '');
+                                        assignmentForm.clearErrors('restaurant_id', 'warehouse_id', 'warehouse_location_id');
                                     }}
                                     error={!!assignmentForm.errors.restaurant_id}
                                     helperText={assignmentForm.errors.restaurant_id}
@@ -728,9 +765,10 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                     onChange={(event) => {
                                         assignmentForm.setData('warehouse_id', event.target.value);
                                         assignmentForm.setData('warehouse_location_id', '');
+                                        assignmentForm.clearErrors('warehouse_id', 'warehouse_location_id');
                                     }}
                                     error={!!assignmentForm.errors.warehouse_id}
-                                    helperText={assignmentForm.errors.warehouse_id}
+                                    helperText={assignmentForm.errors.warehouse_id || (assignmentForm.data.restaurant_id ? 'Only warehouses assigned to the selected restaurant are shown.' : '')}
                                     fullWidth
                                 >
                                     <MenuItem value="">Select warehouse</MenuItem>
@@ -744,10 +782,14 @@ export default function Index({ warehouses, assignmentWarehouses: allAssignmentW
                                     select
                                     label="Location"
                                     value={assignmentForm.data.warehouse_location_id}
-                                    onChange={(event) => assignmentForm.setData('warehouse_location_id', event.target.value)}
+                                    onChange={(event) => {
+                                        assignmentForm.setData('warehouse_location_id', event.target.value);
+                                        assignmentForm.clearErrors('warehouse_location_id');
+                                    }}
                                     error={!!assignmentForm.errors.warehouse_location_id}
                                     helperText={assignmentForm.errors.warehouse_location_id || 'Optional. Leave empty to use the warehouse scope.'}
                                     fullWidth
+                                    disabled={!assignmentForm.data.warehouse_id}
                                 >
                                     <MenuItem value="">Whole warehouse</MenuItem>
                                     {assignmentLocations.map((location) => (

@@ -1,11 +1,31 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { Add, DeleteOutline } from '@mui/icons-material';
-import { Box, Button, Card, CardContent, Grid, IconButton, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Divider, Grid, IconButton, MenuItem, TextField, Typography } from '@mui/material';
 import POSLayout from '@/components/POSLayout';
 import { isPosPath, routeNameForContext } from '@/lib/utils';
 
-export default function InventoryItemForm({ inventoryItem, categories = [], manufacturers = [], units = [], coaAccounts = [], vendors = [] }) {
+const emptyOpeningStockRow = {
+    tenant_id: '',
+    warehouse_id: '',
+    warehouse_location_id: '',
+    quantity: '',
+    unit_cost: '',
+};
+
+export default function InventoryItemForm({
+    inventoryItem,
+    categories = [],
+    manufacturers = [],
+    units = [],
+    coaAccounts = [],
+    vendors = [],
+    tenants = [],
+    warehouses = [],
+    warehouseLocations = [],
+    stockSummary = [],
+    openingBalanceHistory = [],
+}) {
     const isEdit = Boolean(inventoryItem?.id);
     const { data, setData, post, put, processing, errors } = useForm({
         name: inventoryItem?.name || '',
@@ -35,8 +55,11 @@ export default function InventoryItemForm({ inventoryItem, categories = [], manu
             minimum_order_qty: mapping.minimum_order_qty || '',
             currency: mapping.currency || 'PKR',
         })) || [],
+        opening_stocks: isEdit ? [] : [{ ...emptyOpeningStockRow }],
         status: inventoryItem?.status || 'active',
     });
+
+    const stockRows = data.opening_stocks || [];
 
     const addVendorMapping = () => {
         setData('vendor_mappings', [...data.vendor_mappings, {
@@ -66,6 +89,37 @@ export default function InventoryItemForm({ inventoryItem, categories = [], manu
     const removeVendorMapping = (index) => {
         setData('vendor_mappings', data.vendor_mappings.filter((_, idx) => idx !== index));
     };
+
+    const addOpeningStockRow = () => {
+        setData('opening_stocks', [...stockRows, { ...emptyOpeningStockRow }]);
+    };
+
+    const updateOpeningStockRow = (index, field, value) => {
+        const next = [...stockRows];
+        const updated = { ...next[index], [field]: value };
+
+        if (field === 'warehouse_id') {
+            updated.warehouse_location_id = '';
+        }
+
+        next[index] = updated;
+        setData('opening_stocks', next);
+    };
+
+    const removeOpeningStockRow = (index) => {
+        const next = stockRows.filter((_, idx) => idx !== index);
+        setData('opening_stocks', next.length ? next : [{ ...emptyOpeningStockRow }]);
+    };
+
+    const availableWarehousesForTenant = (tenantId) => warehouses.filter((warehouse) => {
+        if (!tenantId) return true;
+        if (warehouse.all_restaurants) return true;
+        if (Number(warehouse.tenant_id) === Number(tenantId)) return true;
+        const coverage = warehouse.coverage_restaurants || [];
+        return coverage.some((restaurant) => Number(restaurant.id) === Number(tenantId));
+    });
+
+    const locationsForWarehouse = (warehouseId) => warehouseLocations.filter((location) => Number(location.warehouse_id) === Number(warehouseId));
 
     const submit = (event) => {
         event.preventDefault();
@@ -208,6 +262,190 @@ export default function InventoryItemForm({ inventoryItem, categories = [], manu
                                     ))}
                                 </Box>
                             </Grid>
+                            {!isEdit ? (
+                                <Grid item xs={12}>
+                                    <Box sx={{ border: '1px solid #e7ecf2', borderRadius: 2, p: 2 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                            <Box>
+                                                <Typography sx={{ fontWeight: 700, color: '#063455' }}>Opening Stock</Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Seed this item into one or more warehouses now. Posting happens immediately after item creation.
+                                                </Typography>
+                                            </Box>
+                                            <Button size="small" startIcon={<Add />} onClick={addOpeningStockRow}>Add Stock Row</Button>
+                                        </Box>
+                                        <Alert severity="info" sx={{ mb: 2 }}>
+                                            For the same warehouse, use either a whole-warehouse row or location rows, not both.
+                                        </Alert>
+                                        {stockRows.map((row, index) => {
+                                            const availableWarehouses = availableWarehousesForTenant(row.tenant_id);
+                                            const availableLocations = locationsForWarehouse(row.warehouse_id);
+                                            const lineValue = (Number(row.quantity || 0) * Number(row.unit_cost || 0)).toFixed(2);
+
+                                            return (
+                                                <Box key={`opening-stock-${index}`} sx={{ border: '1px solid #edf2f7', borderRadius: 2, p: 1.5, mb: 1.25 }}>
+                                                    <Grid container spacing={1.25}>
+                                                        <Grid item xs={12} md={3}>
+                                                            <TextField
+                                                                select
+                                                                fullWidth
+                                                                label="Restaurant / Business Unit"
+                                                                value={row.tenant_id}
+                                                                onChange={(e) => updateOpeningStockRow(index, 'tenant_id', e.target.value)}
+                                                                error={!!errors[`opening_stocks.${index}.tenant_id`]}
+                                                                helperText={errors[`opening_stocks.${index}.tenant_id`] || 'Optional for global warehouse stock.'}
+                                                            >
+                                                                <MenuItem value="">Global / Not scoped</MenuItem>
+                                                                {tenants.map((tenant) => <MenuItem key={tenant.id} value={tenant.id}>{tenant.name}</MenuItem>)}
+                                                            </TextField>
+                                                        </Grid>
+                                                        <Grid item xs={12} md={3}>
+                                                            <TextField
+                                                                select
+                                                                fullWidth
+                                                                label="Warehouse"
+                                                                value={row.warehouse_id}
+                                                                onChange={(e) => updateOpeningStockRow(index, 'warehouse_id', e.target.value)}
+                                                                error={!!errors[`opening_stocks.${index}.warehouse_id`]}
+                                                                helperText={errors[`opening_stocks.${index}.warehouse_id`]}
+                                                            >
+                                                                <MenuItem value="">Select warehouse</MenuItem>
+                                                                {availableWarehouses.map((warehouse) => (
+                                                                    <MenuItem key={warehouse.id} value={warehouse.id}>
+                                                                        {warehouse.code} · {warehouse.name}
+                                                                    </MenuItem>
+                                                                ))}
+                                                            </TextField>
+                                                        </Grid>
+                                                        <Grid item xs={12} md={2}>
+                                                            <TextField
+                                                                select
+                                                                fullWidth
+                                                                label="Location"
+                                                                value={row.warehouse_location_id}
+                                                                onChange={(e) => updateOpeningStockRow(index, 'warehouse_location_id', e.target.value)}
+                                                                error={!!errors[`opening_stocks.${index}.warehouse_location_id`]}
+                                                                helperText={errors[`opening_stocks.${index}.warehouse_location_id`] || 'Optional. Leave empty for whole warehouse.'}
+                                                                disabled={!row.warehouse_id}
+                                                            >
+                                                                <MenuItem value="">Whole warehouse</MenuItem>
+                                                                {availableLocations.map((location) => (
+                                                                    <MenuItem key={location.id} value={location.id}>
+                                                                        {location.code} · {location.name}
+                                                                    </MenuItem>
+                                                                ))}
+                                                            </TextField>
+                                                        </Grid>
+                                                        <Grid item xs={12} md={1.5}>
+                                                            <TextField
+                                                                fullWidth
+                                                                type="number"
+                                                                label="Opening Qty"
+                                                                value={row.quantity}
+                                                                onChange={(e) => updateOpeningStockRow(index, 'quantity', e.target.value)}
+                                                                inputProps={{ min: 0.001, step: 0.001 }}
+                                                                error={!!errors[`opening_stocks.${index}.quantity`]}
+                                                                helperText={errors[`opening_stocks.${index}.quantity`]}
+                                                            />
+                                                        </Grid>
+                                                        <Grid item xs={12} md={1.5}>
+                                                            <TextField
+                                                                fullWidth
+                                                                type="number"
+                                                                label="Unit Cost"
+                                                                value={row.unit_cost}
+                                                                onChange={(e) => updateOpeningStockRow(index, 'unit_cost', e.target.value)}
+                                                                inputProps={{ min: 0, step: 0.0001 }}
+                                                                error={!!errors[`opening_stocks.${index}.unit_cost`]}
+                                                                helperText={errors[`opening_stocks.${index}.unit_cost`]}
+                                                            />
+                                                        </Grid>
+                                                        <Grid item xs={12} md={1}>
+                                                            <TextField fullWidth label="Line Value" value={lineValue} InputProps={{ readOnly: true }} />
+                                                        </Grid>
+                                                        <Grid item xs={12} md={0.5} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                                            <IconButton onClick={() => removeOpeningStockRow(index)}><DeleteOutline /></IconButton>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Box>
+                                            );
+                                        })}
+                                    </Box>
+                                </Grid>
+                            ) : null}
+                            {isEdit ? (
+                                <Grid item xs={12}>
+                                    <Box sx={{ border: '1px solid #e7ecf2', borderRadius: 2, p: 2 }}>
+                                        <Typography sx={{ fontWeight: 700, color: '#063455', mb: 1 }}>Current Stock by Warehouse / Location</Typography>
+                                        {stockSummary.length ? stockSummary.map((row, index) => (
+                                            <Box key={`stock-summary-${index}`} sx={{ py: 1 }}>
+                                                <Grid container spacing={1.25}>
+                                                    <Grid item xs={12} md={3}>
+                                                        <Typography variant="body2" color="text.secondary">Restaurant</Typography>
+                                                        <Typography>{row.tenant_name || 'Global'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={3}>
+                                                        <Typography variant="body2" color="text.secondary">Warehouse</Typography>
+                                                        <Typography>{row.warehouse_code ? `${row.warehouse_code} · ` : ''}{row.warehouse_name || '-'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Location</Typography>
+                                                        <Typography>{row.warehouse_location_name ? `${row.warehouse_location_code ? `${row.warehouse_location_code} · ` : ''}${row.warehouse_location_name}` : 'Whole warehouse'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">On Hand</Typography>
+                                                        <Typography>{Number(row.on_hand || 0).toFixed(3)}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Value</Typography>
+                                                        <Typography>{Number(row.value || 0).toFixed(2)}</Typography>
+                                                    </Grid>
+                                                </Grid>
+                                                {index < stockSummary.length - 1 ? <Divider sx={{ mt: 1.25 }} /> : null}
+                                            </Box>
+                                        )) : <Typography color="text.secondary">No posted stock movements yet.</Typography>}
+                                    </Box>
+                                </Grid>
+                            ) : null}
+                            {isEdit ? (
+                                <Grid item xs={12}>
+                                    <Box sx={{ border: '1px solid #e7ecf2', borderRadius: 2, p: 2 }}>
+                                        <Typography sx={{ fontWeight: 700, color: '#063455', mb: 1 }}>Posted Opening Balances</Typography>
+                                        {openingBalanceHistory.length ? openingBalanceHistory.map((row, index) => (
+                                            <Box key={`opening-history-${index}`} sx={{ py: 1 }}>
+                                                <Grid container spacing={1.25}>
+                                                    <Grid item xs={12} md={2.5}>
+                                                        <Typography variant="body2" color="text.secondary">Document</Typography>
+                                                        <Typography>{row.document_no || '-'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Date</Typography>
+                                                        <Typography>{row.transaction_date || '-'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Warehouse</Typography>
+                                                        <Typography>{row.warehouse_code ? `${row.warehouse_code} · ` : ''}{row.warehouse_name || '-'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Location</Typography>
+                                                        <Typography>{row.warehouse_location_name ? `${row.warehouse_location_code ? `${row.warehouse_location_code} · ` : ''}${row.warehouse_location_name}` : 'Whole warehouse'}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={1.5}>
+                                                        <Typography variant="body2" color="text.secondary">Qty</Typography>
+                                                        <Typography>{Number(row.quantity || 0).toFixed(3)}</Typography>
+                                                    </Grid>
+                                                    <Grid item xs={12} md={2}>
+                                                        <Typography variant="body2" color="text.secondary">Value</Typography>
+                                                        <Typography>{Number(row.line_total || 0).toFixed(2)}</Typography>
+                                                    </Grid>
+                                                </Grid>
+                                                {row.remarks ? <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{row.remarks}</Typography> : null}
+                                                {index < openingBalanceHistory.length - 1 ? <Divider sx={{ mt: 1.25 }} /> : null}
+                                            </Box>
+                                        )) : <Typography color="text.secondary">No opening balances posted from this item yet.</Typography>}
+                                    </Box>
+                                </Grid>
+                            ) : null}
                             <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.25 }}>
                                 <Button variant="outlined" onClick={() => router.visit(route(routeNameForContext('inventory.index')))} disabled={processing}>Cancel</Button>
                                 <Button type="submit" variant="contained" disabled={processing} sx={{ backgroundColor: '#063455', textTransform: 'none' }}>
