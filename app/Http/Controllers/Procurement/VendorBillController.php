@@ -133,12 +133,14 @@ class VendorBillController extends Controller
         }
 
         $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
-        $receipts = $this->pendingGoodsReceipts();
+        $receiptContext = $this->pendingGoodsReceipts();
+        $receipts = $receiptContext['billableReceipts'];
 
         return Inertia::render('App/Admin/Procurement/VendorBills/Create', [
             'receipt' => $receipt,
             'vendors' => $vendors,
             'receipts' => $receipts,
+            'vendorReceiptStatus' => $this->normalizeVendorReceiptStatus($vendors, $receiptContext['receiptReadinessSummary']),
             'availableAdvances' => $this->availableAdvancesByVendor($receipts),
             'procurementPolicy' => $this->policyService->all(),
         ]);
@@ -153,7 +155,8 @@ class VendorBillController extends Controller
         }
 
         $vendors = Vendor::with('tenant:id,name')->orderBy('name')->get(['id', 'name', 'tenant_id', 'default_payment_account_id']);
-        $receipts = $this->pendingGoodsReceipts($bill->id);
+        $receiptContext = $this->pendingGoodsReceipts($bill->id);
+        $receipts = $receiptContext['billableReceipts'];
         if ($bill->goodsReceipt) {
             $includedIds = collect($receipts)->pluck('id')->map(fn ($id) => (int) $id)->all();
             if (!in_array((int) $bill->goods_receipt_id, $includedIds, true)) {
@@ -169,6 +172,7 @@ class VendorBillController extends Controller
             'bill' => $bill,
             'vendors' => $vendors,
             'receipts' => $receipts,
+            'vendorReceiptStatus' => $this->normalizeVendorReceiptStatus($vendors, $receiptContext['receiptReadinessSummary']),
             'availableAdvances' => $this->availableAdvancesByVendor($receipts),
             'procurementPolicy' => $this->policyService->all(),
         ]);
@@ -539,16 +543,18 @@ class VendorBillController extends Controller
         }
     }
 
-    private function pendingGoodsReceipts(?int $existingBillId = null)
+    private function pendingGoodsReceipts(?int $existingBillId = null): array
     {
         $receipts = GoodsReceipt::with(['vendor:id,name', 'tenant:id,name', 'items.inventoryItem:id,name'])
-            ->whereIn('status', ['accepted', 'received'])
             ->orderBy('received_date')
             ->limit(500)
             ->get(['id', 'grn_no', 'vendor_id', 'tenant_id', 'purchase_order_id', 'received_date', 'status']);
 
         if ($receipts->isEmpty()) {
-            return $receipts;
+            return [
+                'billableReceipts' => $receipts,
+                'receiptReadinessSummary' => [],
+            ];
         }
 
         $receiptIds = $receipts->pluck('id')->all();
@@ -572,20 +578,93 @@ class VendorBillController extends Controller
             ->map(fn ($qty) => (float) $qty)
             ->all();
 
-        return $receipts
-            ->map(function ($receipt) use ($grnQtyByReceipt, $billedQtyByReceipt) {
+        $readinessSummary = [];
+
+        $billableReceipts = $receipts
+            ->map(function ($receipt) use ($grnQtyByReceipt, $billedQtyByReceipt, &$readinessSummary) {
                 $received = (float) ($grnQtyByReceipt[$receipt->id] ?? 0.0);
                 $billed = (float) ($billedQtyByReceipt[$receipt->id] ?? 0.0);
                 $remaining = max(0.0, $received - $billed);
+                $vendorId = (int) ($receipt->vendor_id ?? 0);
+
                 $receipt->setAttribute('billable_summary', [
                     'total_qty_received' => $received,
                     'already_billed_qty' => $billed,
                     'remaining_qty' => $remaining,
                 ]);
+
+                if ($vendorId > 0) {
+                    $summary = $readinessSummary[$vendorId] ?? [
+                        'billable_count' => 0,
+                        'fully_billed_count' => 0,
+                        'pending_acceptance_count' => 0,
+                        'other_status_count' => 0,
+                        'total_receipts_count' => 0,
+                        'latest_reason' => 'no_receipts',
+                    ];
+
+                    $summary['total_receipts_count']++;
+
+                    if (in_array((string) $receipt->status, ['accepted', 'received'], true) && $remaining > 0.0001) {
+                        $summary['billable_count']++;
+                        $summary['latest_reason'] = 'billable';
+                    } elseif (in_array((string) $receipt->status, ['accepted', 'received'], true)) {
+                        $summary['fully_billed_count']++;
+                        if ($summary['latest_reason'] !== 'billable') {
+                            $summary['latest_reason'] = 'fully_billed';
+                        }
+                    } elseif ((string) $receipt->status === 'pending_acceptance') {
+                        $summary['pending_acceptance_count']++;
+                        if (!in_array($summary['latest_reason'], ['billable', 'fully_billed'], true)) {
+                            $summary['latest_reason'] = 'pending_acceptance';
+                        }
+                    } else {
+                        $summary['other_status_count']++;
+                        if (!in_array($summary['latest_reason'], ['billable', 'fully_billed', 'pending_acceptance'], true)) {
+                            $summary['latest_reason'] = 'other_status';
+                        }
+                    }
+
+                    $readinessSummary[$vendorId] = $summary;
+                }
+
                 return $receipt;
+            })
+            ->filter(function ($receipt) {
+                return in_array((string) $receipt->status, ['accepted', 'received'], true)
+                    && ((float) ($receipt->billable_summary['remaining_qty'] ?? 0)) > 0.0001;
             })
             ->filter(fn ($receipt) => ((float) ($receipt->billable_summary['remaining_qty'] ?? 0)) > 0.0001)
             ->values();
+
+        return [
+            'billableReceipts' => $billableReceipts,
+            'receiptReadinessSummary' => $readinessSummary,
+        ];
+    }
+
+    private function normalizeVendorReceiptStatus($vendors, array $receiptReadinessSummary): array
+    {
+        return collect($vendors)->mapWithKeys(function ($vendor) use ($receiptReadinessSummary) {
+            $summary = $receiptReadinessSummary[(int) $vendor->id] ?? [
+                'billable_count' => 0,
+                'fully_billed_count' => 0,
+                'pending_acceptance_count' => 0,
+                'other_status_count' => 0,
+                'total_receipts_count' => 0,
+                'latest_reason' => 'no_receipts',
+            ];
+
+            $summary['message'] = match ($summary['latest_reason']) {
+                'billable' => 'Billable GRNs are ready for this vendor.',
+                'fully_billed' => 'All accepted GRNs for this vendor are already fully billed.',
+                'pending_acceptance' => 'GRNs exist for this vendor, but they are still awaiting acceptance.',
+                'other_status' => 'GRNs exist for this vendor, but none are in a billable status yet.',
+                default => 'No goods receipts found for this vendor.',
+            };
+
+            return [(string) $vendor->id => $summary];
+        })->all();
     }
 
     private function availableAdvancesByVendor($receipts)

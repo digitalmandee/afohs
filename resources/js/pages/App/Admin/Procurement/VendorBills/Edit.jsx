@@ -1,10 +1,10 @@
 import React from 'react';
 import { useForm } from '@inertiajs/react';
-import { Box, Button, Card, CardContent, Chip, Grid, IconButton, MenuItem, TextField, Typography, Alert } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, Grid, IconButton, MenuItem, TextField, Typography, Alert, Stack } from '@mui/material';
 import { DeleteOutline } from '@mui/icons-material';
 import { formatAmount } from '@/lib/formatting';
 
-export default function Edit({ bill, vendors, receipts, availableAdvances = [], procurementPolicy = {} }) {
+export default function Edit({ bill, vendors, receipts, vendorReceiptStatus = {}, availableAdvances = [], procurementPolicy = {} }) {
   const billRequiresGrn = Boolean(procurementPolicy.bill_requires_grn ?? true);
 
   const initialItems = (bill?.items || []).map((item) => ({
@@ -97,6 +97,13 @@ export default function Edit({ bill, vendors, receipts, availableAdvances = [], 
   const selectedReceipt = React.useMemo(() => (
     filteredReceipts.find((row) => String(row.id) === String(data.goods_receipt_id)) || null
   ), [filteredReceipts, data.goods_receipt_id]);
+  const selectedVendorReceiptStatus = React.useMemo(() => {
+    if (!data.vendor_id) {
+      return null;
+    }
+
+    return vendorReceiptStatus?.[String(data.vendor_id)] || null;
+  }, [data.vendor_id, vendorReceiptStatus]);
   const availableVendorAdvances = React.useMemo(() => {
     if (!data.vendor_id) {
       return [];
@@ -157,9 +164,27 @@ export default function Edit({ bill, vendors, receipts, availableAdvances = [], 
                 <TextField label="Remarks" value={data.remarks} onChange={(e) => setData('remarks', e.target.value)} fullWidth />
               </Grid>
             </Grid>
+            {data.vendor_id && selectedVendorReceiptStatus ? (
+              <Card sx={{ mt: 2, border: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
+                <CardContent sx={{ py: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    Vendor GRN Readiness
+                  </Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Chip size="small" color="success" variant="outlined" label={`Billable: ${selectedVendorReceiptStatus.billable_count || 0}`} />
+                    <Chip size="small" color="warning" variant="outlined" label={`Fully billed: ${selectedVendorReceiptStatus.fully_billed_count || 0}`} />
+                    <Chip size="small" color="info" variant="outlined" label={`Pending acceptance: ${selectedVendorReceiptStatus.pending_acceptance_count || 0}`} />
+                    <Chip size="small" variant="outlined" label={`Other: ${selectedVendorReceiptStatus.other_status_count || 0}`} />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {selectedVendorReceiptStatus.message}
+                  </Typography>
+                </CardContent>
+              </Card>
+            ) : null}
             {data.vendor_id && filteredReceipts.length === 0 ? (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                No pending accepted GRN found for this vendor.
+                {selectedVendorReceiptStatus?.message || 'No pending accepted GRN found for this vendor.'}
               </Alert>
             ) : null}
             {availableVendorAdvances.length > 0 ? (

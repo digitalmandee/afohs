@@ -99,12 +99,15 @@ class GoodsReceiptController extends Controller
             ->get()
             ->unique('source_id')
             ->keyBy('source_id');
-        $receipts->getCollection()->transform(function ($receipt) use ($postedLookup, $eventLookup) {
+        $currentUser = $request->user();
+        $receipts->getCollection()->transform(function ($receipt) use ($postedLookup, $eventLookup, $currentUser) {
             $event = $eventLookup->get($receipt->id);
             $receipt->gl_posted = (bool) ($postedLookup[$receipt->id] ?? false);
             $receipt->accounting_status = $event?->status ?? ($receipt->gl_posted ? 'posted' : 'pending');
             $receipt->accounting_failure_reason = $event?->error_message;
             $receipt->accounting_correlation_id = (string) ($event?->payload['correlation_id'] ?? '');
+            $receipt->can_accept = in_array((string) $receipt->status, ['pending_acceptance', 'draft'], true)
+                && $this->canAcceptReceipt($currentUser, $receipt);
             return $receipt;
         });
 
@@ -279,6 +282,13 @@ class GoodsReceiptController extends Controller
                     inputUnitCost: (float) $item['unit_cost']
                 );
             }
+
+            $this->assertPositiveReceiptValuation(
+                unitCost: (float) ($item['unit_cost'] ?? 0),
+                qtyReceived: (float) ($item['qty_received'] ?? 0),
+                lineIndex: $index,
+                itemName: $inventoryItem?->name ?? ('PO line ' . $poItem->id)
+            );
 
             $data['items'][$index]['inventory_item_id'] = $resolvedInventoryItemId;
             $data['items'][$index]['product_id'] = $this->resolveLedgerProductIdForInventoryItem(
@@ -574,6 +584,13 @@ class GoodsReceiptController extends Controller
                 ]);
             }
 
+            $this->assertPositiveReceiptValuation(
+                unitCost: (float) ($item->unit_cost ?? 0),
+                qtyReceived: (float) ($item->qty_received ?? 0),
+                lineIndex: $index,
+                itemName: (string) ($item->inventoryItem?->name ?? ('PO line ' . $poItem->id))
+            );
+
             $lineTotal = (float) $item->line_total;
             $total += $lineTotal;
             $resolvedProductId = $this->resolveLedgerProductIdForInventoryItem(
@@ -662,6 +679,25 @@ class GoodsReceiptController extends Controller
         );
 
         app(StrictAccountingSyncService::class)->enforceOrFail($event, "GRN {$receipt->grn_no}");
+    }
+
+    private function assertPositiveReceiptValuation(float $unitCost, float $qtyReceived, int $lineIndex, string $itemName): void
+    {
+        if ($qtyReceived <= 0) {
+            return;
+        }
+
+        if ($unitCost <= 0.0001) {
+            throw ValidationException::withMessages([
+                "items.{$lineIndex}.unit_cost" => "Unit cost must be greater than zero for '{$itemName}' before GRN submission/acceptance.",
+            ]);
+        }
+
+        if (($qtyReceived * $unitCost) <= 0.0001) {
+            throw ValidationException::withMessages([
+                "items.{$lineIndex}.unit_cost" => "GRN line value must be greater than zero for '{$itemName}'.",
+            ]);
+        }
     }
 
     private function resolveInventoryItemForPoLine(object $poItem, mixed $payloadInventoryItemId, int $lineIndex): int

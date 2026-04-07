@@ -266,7 +266,7 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                                 <PictureAsPdfOutlinedIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
-                                        {(grn.status === 'pending_acceptance' || grn.status === 'draft') && (Number(grn.verifier_user_id) === Number(authUserId)) && (
+                                        {Boolean(grn.can_accept) && (
                                             <AppLoadingButton
                                                 size="small"
                                                 loading={mutation.isPending(`grn-accept-${grn.id}`)}

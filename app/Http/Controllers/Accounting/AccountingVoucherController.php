@@ -596,7 +596,7 @@ class AccountingVoucherController extends Controller
     public function submit(Request $request, AccountingVoucher $voucher)
     {
         if ($voucher->status !== 'draft') {
-            return redirect()->back()->with('error', 'Only draft vouchers can be submitted.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'Only draft vouchers can be submitted.');
         }
 
         $this->assertBalanced($voucher->lines()->get(['debit', 'credit'])->map(fn ($line) => [
@@ -612,24 +612,24 @@ class AccountingVoucherController extends Controller
 
         $this->logAction($voucher->id, 'submitted', 'Accounting voucher submitted for approval.', $request->user()?->id);
 
-        return redirect()->back()->with('success', 'Voucher submitted for approval.');
+        return redirect()->route('accounting.vouchers.show', $voucher)->with('success', 'Voucher submitted for approval.');
     }
 
     public function approve(Request $request, AccountingVoucher $voucher, AccountingEventDispatcher $dispatcher, StrictAccountingSyncService $strictSync)
     {
         if ($voucher->status !== 'submitted' && !($voucher->status === 'draft' && $this->allowDirectPostFromDraft())) {
-            return redirect()->back()->with('error', 'Voucher cannot be approved in current state.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'Voucher cannot be approved in current state.');
         }
 
         $this->postApprovedVoucher($request, $voucher, $dispatcher, $strictSync);
 
-        return redirect()->back()->with('success', 'Voucher approved and posted.');
+        return redirect()->route('accounting.vouchers.show', $voucher)->with('success', 'Voucher approved and posted.');
     }
 
     public function reject(Request $request, AccountingVoucher $voucher)
     {
         if ($voucher->status !== 'submitted') {
-            return redirect()->back()->with('error', 'Voucher cannot be rejected in current state.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'Voucher cannot be rejected in current state.');
         }
 
         $voucher->update([
@@ -638,13 +638,13 @@ class AccountingVoucherController extends Controller
 
         $this->logAction($voucher->id, 'rejected', 'Accounting voucher sent back to draft.', $request->user()?->id);
 
-        return redirect()->back()->with('success', 'Voucher moved back to draft.');
+        return redirect()->route('accounting.vouchers.show', $voucher)->with('success', 'Voucher moved back to draft.');
     }
 
     public function cancel(Request $request, AccountingVoucher $voucher)
     {
         if (!in_array($voucher->status, ['draft', 'submitted'], true)) {
-            return redirect()->back()->with('error', 'Only draft or submitted vouchers can be cancelled.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'Only draft or submitted vouchers can be cancelled.');
         }
 
         $voucher->update([
@@ -655,7 +655,7 @@ class AccountingVoucherController extends Controller
 
         $this->logAction($voucher->id, 'cancelled', 'Accounting voucher cancelled.', $request->user()?->id);
 
-        return redirect()->back()->with('success', 'Voucher cancelled.');
+        return redirect()->route('accounting.vouchers.show', $voucher)->with('success', 'Voucher cancelled.');
     }
 
     public function removeAttachment(Request $request, AccountingVoucher $voucher, Media $media)
@@ -686,11 +686,11 @@ class AccountingVoucherController extends Controller
     public function reverse(Request $request, AccountingVoucher $voucher, AccountingEventDispatcher $dispatcher, StrictAccountingSyncService $strictSync)
     {
         if ($voucher->status !== 'posted') {
-            return redirect()->back()->with('error', 'Only posted vouchers can be reversed.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'Only posted vouchers can be reversed.');
         }
 
         if ($voucher->reversal_voucher_id) {
-            return redirect()->back()->with('error', 'This voucher is already reversed.');
+            return redirect()->route('accounting.vouchers.show', $voucher)->with('error', 'This voucher is already reversed.');
         }
 
         $data = $request->validate([

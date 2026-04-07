@@ -17,6 +17,13 @@ class ProductVariantValue extends Model
         'is_default',
     ];
 
+    public function ingredients()
+    {
+        return $this->belongsToMany(Ingredient::class, 'product_variant_value_ingredients', 'product_variant_value_id', 'ingredient_id')
+            ->withPivot('quantity_used', 'cost')
+            ->withTimestamps();
+    }
+
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class);

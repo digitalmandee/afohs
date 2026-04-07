@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, router } from '@inertiajs/react';
-import { Button, Chip, Grid, MenuItem, TableCell, TableRow, TextField } from '@mui/material';
+import { Button, Chip, Grid, MenuItem, Stack, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
@@ -97,7 +97,7 @@ export default function Index({ vouchers, summary = {}, tenants = [], filters = 
                         { key: 'posting_date', label: 'Posting Date', minWidth: 130 },
                         { key: 'tenant', label: 'Branch', minWidth: 160 },
                         { key: 'status', label: 'Status', minWidth: 120 },
-                        { key: 'action', label: 'Action', minWidth: 340, align: 'right' },
+                        { key: 'action', label: 'Action', minWidth: 420, align: 'right' },
                     ]}
                     rows={rows}
                     pagination={vouchers}
@@ -114,37 +114,38 @@ export default function Index({ vouchers, summary = {}, tenants = [], filters = 
                                 <Chip size="small" label={row.status} color={row.status === 'posted' ? 'success' : row.status === 'submitted' ? 'warning' : row.status === 'cancelled' ? 'error' : row.status === 'reversed' ? 'secondary' : 'default'} />
                             </TableCell>
                             <TableCell align="right">
-                                <Button size="small" variant="outlined" component={Link} href={route('accounting.vouchers.show', row.id)}>View</Button>
-                                <Button size="small" sx={{ ml: 1 }} variant="outlined" href={route('accounting.vouchers.print', row.id)} target="_blank" rel="noopener noreferrer">Print</Button>
-                                <Button size="small" sx={{ ml: 1 }} variant="outlined" href={route('accounting.vouchers.pdf', row.id)}>PDF</Button>
-                                {row.status === 'draft' ? (
-                                    <>
-                                        <Button size="small" sx={{ ml: 1 }} variant="outlined" component={Link} href={route('accounting.vouchers.edit', row.id)}>Edit</Button>
-                                        <Button size="small" sx={{ ml: 1 }} variant="contained" onClick={() => router.post(route('accounting.vouchers.submit', row.id))}>Submit</Button>
-                                        <Button size="small" sx={{ ml: 1 }} color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', row.id))}>Cancel</Button>
-                                    </>
-                                ) : null}
-                                {row.status === 'submitted' ? (
-                                    <>
-                                        <Button size="small" sx={{ ml: 1 }} color="success" variant="contained" onClick={() => router.post(route('accounting.vouchers.approve', row.id))}>Approve</Button>
-                                        <Button size="small" sx={{ ml: 1 }} color="error" variant="outlined" onClick={() => router.post(route('accounting.vouchers.reject', row.id))}>Reject</Button>
-                                        <Button size="small" sx={{ ml: 1 }} color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', row.id))}>Cancel</Button>
-                                    </>
-                                ) : null}
-                                {row.status === 'posted' ? (
-                                    <Button
-                                        size="small"
-                                        sx={{ ml: 1 }}
-                                        color="error"
-                                        variant="outlined"
-                                        onClick={() => {
-                                            if (!window.confirm('Reverse this posted voucher?')) return;
-                                            router.post(route('accounting.vouchers.reverse', row.id), { reason: 'Manual reversal', reversal_date: row.posting_date || row.voucher_date });
-                                        }}
-                                    >
-                                        Reverse
-                                    </Button>
-                                ) : null}
+                                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="flex-end">
+                                    <Button size="small" variant="outlined" component={Link} href={route('accounting.vouchers.show', row.id)}>View</Button>
+                                    <Button size="small" variant="outlined" href={route('accounting.vouchers.print', row.id)} target="_blank" rel="noopener noreferrer">Print</Button>
+                                    <Button size="small" variant="outlined" href={route('accounting.vouchers.pdf', row.id)}>PDF</Button>
+                                    {row.status === 'draft' ? (
+                                        <>
+                                            <Button size="small" variant="outlined" component={Link} href={route('accounting.vouchers.edit', row.id)}>Edit</Button>
+                                            <Button size="small" variant="contained" onClick={() => router.post(route('accounting.vouchers.submit', row.id))}>Submit</Button>
+                                            <Button size="small" color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', row.id))}>Cancel</Button>
+                                        </>
+                                    ) : null}
+                                    {row.status === 'submitted' ? (
+                                        <>
+                                            <Button size="small" color="success" variant="contained" onClick={() => router.post(route('accounting.vouchers.approve', row.id))}>Approve</Button>
+                                            <Button size="small" color="error" variant="outlined" onClick={() => router.post(route('accounting.vouchers.reject', row.id))}>Reject</Button>
+                                            <Button size="small" color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', row.id))}>Cancel</Button>
+                                        </>
+                                    ) : null}
+                                    {row.status === 'posted' ? (
+                                        <Button
+                                            size="small"
+                                            color="error"
+                                            variant="outlined"
+                                            onClick={() => {
+                                                if (!window.confirm('Reverse this posted voucher?')) return;
+                                                router.post(route('accounting.vouchers.reverse', row.id), { reason: 'Manual reversal', reversal_date: row.posting_date || row.voucher_date });
+                                            }}
+                                        >
+                                            Reverse
+                                        </Button>
+                                    ) : null}
+                                </Stack>
                             </TableCell>
                         </TableRow>
                     )}

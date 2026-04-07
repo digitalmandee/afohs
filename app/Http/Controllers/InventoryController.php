@@ -29,7 +29,7 @@ class InventoryController extends Controller
     {
         $category_id = $request->query('category_id');
 
-        $query = Product::latest()->with(['category', 'variants', 'variants.values', 'ingredients:id,name,inventory_item_id']);
+        $query = Product::latest()->with(['category', 'variants', 'variants.values.ingredients:id,name,inventory_item_id', 'ingredients:id,name,inventory_item_id']);
 
         if ($category_id) {
             $query->where('category_id', $category_id);
@@ -96,7 +96,7 @@ class InventoryController extends Controller
             'current_stock', 'minimal_stock', 'status', 'images',
             'description'
         ])
-            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values', 'ingredients:id,name,inventory_item_id']);
+            ->with(['category:id,name', 'variants:id,product_id,name,type', 'variants.values.ingredients:id,name,inventory_item_id', 'ingredients:id,name,inventory_item_id']);
 
         // Filter by name (case-insensitive)
         if ($request->filled('name')) {
@@ -188,10 +188,18 @@ class InventoryController extends Controller
             'description' => 'nullable|string',
             'images' => 'nullable|array',
             'images.*' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
+            'uses_recipe' => 'nullable|boolean',
+            'recipe_yield_percent' => 'nullable|numeric|min:1|max:100',
             'ingredients' => 'nullable|array',
             'ingredients.*.id' => 'required_with:ingredients|exists:ingredients,id',
             'ingredients.*.quantity_used' => 'required_with:ingredients|numeric|min:0',
             'ingredients.*.cost' => 'nullable|numeric|min:0',
+            'variants' => 'nullable|array',
+            'variants.*.items' => 'nullable|array',
+            'variants.*.items.*.recipe_ingredients' => 'nullable|array',
+            'variants.*.items.*.recipe_ingredients.*.id' => 'required_with:variants.*.items.*.recipe_ingredients|exists:ingredients,id',
+            'variants.*.items.*.recipe_ingredients.*.quantity_used' => 'required_with:variants.*.items.*.recipe_ingredients|numeric|min:0',
+            'variants.*.items.*.recipe_ingredients.*.cost' => 'nullable|numeric|min:0',
             'max_discount' => 'nullable|numeric|min:0',
             'max_discount_type' => 'required_with:max_discount|string|in:percentage,amount',
             'manage_stock' => 'nullable|boolean',
@@ -200,12 +208,6 @@ class InventoryController extends Controller
         if ($request->input('item_type') !== 'finished_product' || $request->boolean('manage_stock')) {
             return back()->withErrors([
                 'inventory_split' => 'Stock-managed materials must be created under Inventory Items. The product form is now only for sellable or manufactured products.',
-            ])->withInput();
-        }
-
-        if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
-            return back()->withErrors([
-                'variants' => 'Warehouse-managed products cannot use variant-level stock yet. Disable stock management or remove configured variants.',
             ])->withInput();
         }
 
@@ -252,6 +254,8 @@ class InventoryController extends Controller
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
             'manage_stock' => false,
+            'uses_recipe' => $request->boolean('uses_recipe'),
+            'recipe_yield_percent' => $request->input('recipe_yield_percent', 100),
         ]);
 
         // Auto-generate item code if not provided
@@ -289,15 +293,9 @@ class InventoryController extends Controller
             }
         }
 
-        // Handle ingredients if provided
-        if ($request->has('ingredients') && is_array($request->input('ingredients'))) {
-            foreach ($request->input('ingredients') as $ingredientData) {
-                $product->ingredients()->attach($ingredientData['id'], [
-                    'quantity_used' => $ingredientData['quantity_used'],
-                    'cost' => $ingredientData['cost'] ?? 0
-                ]);
-            }
-        }
+        $product->load('variants.items');
+        $this->syncProductRecipeIngredients($product, $request->input('ingredients', []));
+        $this->syncVariantRecipeIngredientsFromPayload($product, $request->input('variants', []));
 
         DB::commit();
         return redirect()->back()->with('success', 'Product created.');
@@ -306,7 +304,7 @@ class InventoryController extends Controller
     // Get Single Product
     public function getProduct(Request $request, $id)
     {
-        $product = Product::with(['variants:id,product_id,name', 'variants.values', 'kitchen', 'category', 'ingredients:id,name,inventory_item_id'])
+        $product = Product::with(['variants:id,product_id,name', 'variants.values.ingredients:id,name,inventory_item_id', 'kitchen', 'category', 'ingredients:id,name,inventory_item_id'])
             ->find($id);
         if ($product && $request->routeIs('pos.*')) {
             $this->hydrateAssignedProductBalances(new EloquentCollection([$product]), (int) ($request->session()->get('active_restaurant_id') ?? 0));
@@ -327,7 +325,7 @@ class InventoryController extends Controller
      */
     public function show(Request $request, string $id)
     {
-        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items', 'category', 'kitchen', 'ingredients.inventoryItem'])
+        $product = Product::with(['variants:id,product_id,name,type,active', 'variants.items.ingredients', 'category', 'kitchen', 'ingredients.inventoryItem'])
             ->find($id);
         if ($product) {
             $this->annotateInventoryReadiness(new EloquentCollection([$product]));
@@ -377,10 +375,18 @@ class InventoryController extends Controller
             'images' => 'nullable|array',
             'deleted_images' => 'nullable|array',
             'deleted_images.*' => 'string',
+            'uses_recipe' => 'nullable|boolean',
+            'recipe_yield_percent' => 'nullable|numeric|min:1|max:100',
             'ingredients' => 'nullable|array',
             'ingredients.*.id' => 'required_with:ingredients|exists:ingredients,id',
             'ingredients.*.quantity_used' => 'required_with:ingredients|numeric|min:0',
             'ingredients.*.cost' => 'nullable|numeric|min:0',
+            'variants' => 'nullable|array',
+            'variants.*.items' => 'nullable|array',
+            'variants.*.items.*.recipe_ingredients' => 'nullable|array',
+            'variants.*.items.*.recipe_ingredients.*.id' => 'required_with:variants.*.items.*.recipe_ingredients|exists:ingredients,id',
+            'variants.*.items.*.recipe_ingredients.*.quantity_used' => 'required_with:variants.*.items.*.recipe_ingredients|numeric|min:0',
+            'variants.*.items.*.recipe_ingredients.*.cost' => 'nullable|numeric|min:0',
             'max_discount' => 'nullable|numeric|min:0',
             'max_discount_type' => 'required_with:max_discount|string|in:percentage,amount',
             'manage_stock' => 'nullable|boolean',
@@ -389,12 +395,6 @@ class InventoryController extends Controller
         if ($request->input('item_type') !== 'finished_product' || $request->boolean('manage_stock')) {
             return back()->withErrors([
                 'inventory_split' => 'Stock-managed materials must be managed as Inventory Items. Products no longer create warehouse stock records.',
-            ])->withInput();
-        }
-
-        if ($request->boolean('manage_stock') && $this->hasConfiguredVariants($request->input('variants', []))) {
-            return back()->withErrors([
-                'variants' => 'Warehouse-managed products cannot use variant-level stock yet. Disable stock management or remove configured variants.',
             ])->withInput();
         }
 
@@ -472,6 +472,8 @@ class InventoryController extends Controller
             'max_discount' => $request->input('max_discount'),
             'max_discount_type' => $request->input('max_discount_type', 'percentage'),
             'manage_stock' => false,
+            'uses_recipe' => $request->boolean('uses_recipe'),
+            'recipe_yield_percent' => $request->input('recipe_yield_percent', 100),
         ]);
 
         if ($request->has('variants')) {
@@ -518,19 +520,9 @@ class InventoryController extends Controller
             ProductVariant::where('product_id', $id)->whereNotIn('id', $submittedVariantIds)->orWhereDoesntHave('values')->delete();
         }
 
-        // Handle ingredients update
-        if ($request->has('ingredients')) {
-            // First, detach all existing ingredients
-            $product->ingredients()->detach();
-
-            // Then attach new ingredients with pivot data
-            foreach ($request->input('ingredients') as $ingredientData) {
-                $product->ingredients()->attach($ingredientData['id'], [
-                    'quantity_used' => $ingredientData['quantity_used'],
-                    'cost' => $ingredientData['cost'] ?? 0
-                ]);
-            }
-        }
+        $product->load('variants.items');
+        $this->syncProductRecipeIngredients($product, $request->input('ingredients', []));
+        $this->syncVariantRecipeIngredientsFromPayload($product, $request->input('variants', []));
 
         return redirect()->back()->with('success', 'Product updated.');
     }
@@ -637,28 +629,87 @@ class InventoryController extends Controller
             }
 
             $issues = [];
+            $usesRecipe = (bool) ($product->uses_recipe ?? false);
             $ingredients = collect($product->ingredients ?? []);
             $unlinkedIngredients = $ingredients
                 ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
                 ->values();
+            $variantValues = collect($product->variants ?? [])
+                ->flatMap(fn ($variant) => collect($variant->values ?? $variant->items ?? []));
+            $variantRecipeIngredients = $variantValues
+                ->flatMap(fn ($value) => collect($value->ingredients ?? []))
+                ->values();
+            $variantUnlinkedIngredients = $variantRecipeIngredients
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
+                ->values();
+            $hasBaseRecipe = $ingredients->isNotEmpty();
+            $hasVariantRecipe = $variantValues->contains(fn ($value) => collect($value->ingredients ?? [])->isNotEmpty());
 
-            if ($unlinkedIngredients->isNotEmpty()) {
-                $issues[] = 'Recipe ingredients are missing raw-material links.';
+            if ($usesRecipe) {
+                if (!$hasBaseRecipe && !$hasVariantRecipe) {
+                    $issues[] = 'Recipe is missing.';
+                }
+
+                if ($unlinkedIngredients->isNotEmpty() || $variantUnlinkedIngredients->isNotEmpty()) {
+                    $issues[] = 'Recipe ingredients are missing raw-material links.';
+                }
             }
 
-            $hasConfiguredVariants = collect($product->variants ?? [])
-                ->contains(function ($variant) {
-                    return collect($variant->values ?? $variant->items ?? [])->isNotEmpty();
-                });
-
-            if ($product->manage_stock && $hasConfiguredVariants) {
-                $issues[] = 'Variant-level stock is not warehouse-backed yet.';
-            }
-
-            $product->recipe_unlinked_ingredients_count = $unlinkedIngredients->count();
+            $product->recipe_unlinked_ingredients_count = $unlinkedIngredients->count() + $variantUnlinkedIngredients->count();
             $product->inventory_setup_issues = $issues;
-            $product->inventory_ready_for_pos = empty($issues);
-            $product->variant_stock_supported = !$product->manage_stock || !$hasConfiguredVariants;
+            $product->inventory_ready_for_pos = !$usesRecipe || empty($issues);
+            $product->variant_stock_supported = true;
+            $product->inventory_tracked = $usesRecipe;
+            $product->non_stock_deducting = !$usesRecipe;
+            $product->recipe_tracking_enabled = $usesRecipe;
+        }
+    }
+
+    protected function syncProductRecipeIngredients(Product $product, array $ingredients): void
+    {
+        $syncPayload = collect($ingredients)
+            ->filter(fn ($row) => !empty($row['id']))
+            ->mapWithKeys(fn ($row) => [
+                (int) $row['id'] => [
+                    'quantity_used' => (float) ($row['quantity_used'] ?? 0),
+                    'cost' => (float) ($row['cost'] ?? 0),
+                ],
+            ])
+            ->all();
+
+        $product->ingredients()->sync($syncPayload);
+    }
+
+    protected function syncVariantRecipeIngredientsFromPayload(Product $product, array $variants): void
+    {
+        $variantValues = $product->variants
+            ->flatMap(fn ($variant) => $variant->items)
+            ->keyBy('id');
+
+        foreach ($variants as $variant) {
+            foreach (($variant['items'] ?? []) as $item) {
+                $variantValueId = (int) ($item['id'] ?? 0);
+                if ($variantValueId <= 0) {
+                    continue;
+                }
+
+                $variantValue = $variantValues->get($variantValueId);
+                if (!$variantValue) {
+                    continue;
+                }
+
+                $syncPayload = collect($item['recipe_ingredients'] ?? [])
+                    ->filter(fn ($row) => !empty($row['id']))
+                    ->mapWithKeys(fn ($row) => [
+                        (int) $row['id'] => [
+                            'quantity_used' => (float) ($row['quantity_used'] ?? 0),
+                            'cost' => (float) ($row['cost'] ?? 0),
+                        ],
+                    ])
+                    ->all();
+
+                $variantValue->ingredients()->sync($syncPayload);
+            }
         }
     }
 

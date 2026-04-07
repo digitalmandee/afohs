@@ -1286,13 +1286,9 @@ class OrderController extends Controller
                     $prodId = $itemData['id'] ?? null;
 
                     if ($prodId) {
-                        $prod = Product::with(['ingredients.inventoryItem'])->find($prodId);
+                        $prod = Product::with(['ingredients.inventoryItem', 'variants.values.ingredients.inventoryItem'])->find($prodId);
 
                         if ($prod) {
-                            if ($this->productUsesInventoryTracking($prod) && $this->productUsesUnsupportedVariantStock($prod)) {
-                                throw new \RuntimeException("Inventory-backed product '{$prod->name}' still uses variant stock. Remove variant stock before ordering.");
-                            }
-
                             $this->syncRecipeInventoryForOrderItem(
                                 inventoryMovementService: $inventoryMovementService,
                                 product: $prod,
@@ -1303,6 +1299,7 @@ class OrderController extends Controller
                                 transactionDate: $orderData['start_date'],
                                 direction: 'in',
                                 createdBy: $request->user()?->id,
+                                selectedVariants: is_array($itemData['variants'] ?? null) ? $itemData['variants'] : [],
                             );
                         }
                     }
@@ -1378,12 +1375,8 @@ class OrderController extends Controller
                 }
 
                 $productQty = $item['quantity'] ?? 1;
-                $product = Product::with(['ingredients.inventoryItem'])->find($productId);
+                $product = Product::with(['ingredients.inventoryItem', 'variants.values.ingredients.inventoryItem'])->find($productId);
                 $resolvedKitchenId = isset($item['kitchen_id']) && $item['kitchen_id'] ? (int) $item['kitchen_id'] : null;
-
-                if ($product && $this->productUsesInventoryTracking($product) && $this->productUsesUnsupportedVariantStock($product)) {
-                    throw new \RuntimeException("Inventory-backed product '{$product->name}' still uses variant stock. Remove variant stock before ordering.");
-                }
 
                 if ($product) {
                     $this->syncRecipeInventoryForOrderItem(
@@ -1396,14 +1389,11 @@ class OrderController extends Controller
                         transactionDate: $orderData['start_date'],
                         direction: 'out',
                         createdBy: $request->user()?->id,
+                        selectedVariants: is_array($item['variants'] ?? null) ? $item['variants'] : [],
                     );
                 }
 
                 if (!empty($item['variants'])) {
-                    if ($product && $this->productUsesInventoryTracking($product)) {
-                        throw new \RuntimeException("Inventory-backed product '{$product->name}' cannot use variant-level stock yet.");
-                    }
-
                     foreach ($item['variants'] as $variant) {
                         $variantId = $variant['id'] ?? null;
                         if (!$variantId) {
@@ -1417,7 +1407,7 @@ class OrderController extends Controller
                         }
 
                         // Only check and decrement stock if management is enabled
-                        if ($product && $this->productUsesInventoryTracking($product)) {
+                        if ($product && $product->manage_stock) {
                             if ($variantValue->stock < 0) {
                                 throw new \Exception('Insufficient stock for variant: ' . ($variantValue->name ?? 'Unknown'));
                             }
@@ -1479,20 +1469,15 @@ class OrderController extends Controller
                             $productQty = $item['quantity'] ?? 1;
 
                             if ($productId) {
-                                $product = Product::with(['ingredients.inventoryItem'])->find($productId);
-                                if ($product && $this->productUsesInventoryTracking($product) && $this->productUsesUnsupportedVariantStock($product)) {
-                                    throw new \RuntimeException("Inventory-backed product '{$product->name}' still uses variant stock. Remove variant stock before ordering.");
-                                }
+                                $product = Product::with(['ingredients.inventoryItem', 'variants.values.ingredients.inventoryItem'])->find($productId);
 
                                 if (!empty($item['variants'])) {
-                                    if ($product && $this->productUsesInventoryTracking($product)) {
-                                        throw new \RuntimeException("Inventory-backed product '{$product->name}' cannot use variant-level stock yet.");
-                                    }
-
                                     foreach ($item['variants'] as $variant) {
                                         $vId = $variant['id'] ?? null;
                                         if ($vId) {
-                                            ProductVariantValue::where('id', $vId)->decrement('stock', 1);
+                                            if ($product && $product->manage_stock) {
+                                                ProductVariantValue::where('id', $vId)->decrement('stock', 1);
+                                            }
                                         }
                                     }
                                 }
@@ -1508,6 +1493,7 @@ class OrderController extends Controller
                                         transactionDate: $orderData['start_date'],
                                         direction: 'out',
                                         createdBy: $request->user()?->id,
+                                        selectedVariants: is_array($item['variants'] ?? null) ? $item['variants'] : [],
                                     );
                                 }
                             }
@@ -1702,19 +1688,33 @@ class OrderController extends Controller
         string $transactionDate,
         string $direction,
         ?int $createdBy = null,
+        array $selectedVariants = [],
     ): void {
+        if (!$this->productUsesInventoryTracking($product)) {
+            return;
+        }
+
         if (!$product->relationLoaded('ingredients')) {
             $product->load('ingredients.inventoryItem');
         }
 
-        foreach ($product->ingredients as $ingredient) {
+        if (!$product->relationLoaded('variants')) {
+            $product->load('variants.values.ingredients.inventoryItem');
+        }
+
+        $yieldPercent = max(1.0, (float) ($product->recipe_yield_percent ?? 100));
+        $yieldFactor = $yieldPercent / 100;
+        $requirements = $this->resolveRecipeRequirements($product, $selectedVariants);
+
+        foreach ($requirements as $requirement) {
+            $ingredient = $requirement['ingredient'];
             $inventoryItem = $ingredient->inventoryItem;
 
             if (!$inventoryItem) {
                 throw new \RuntimeException("Ingredient '{$ingredient->name}' is not linked to an inventory item.");
             }
 
-            $requiredQuantity = round((float) $ingredient->pivot->quantity_used * $quantity, 3);
+            $requiredQuantity = round(((float) $requirement['quantity_used'] * $quantity) / $yieldFactor, 3);
 
             if ($requiredQuantity <= 0) {
                 continue;
@@ -1745,6 +1745,48 @@ class OrderController extends Controller
                 createdBy: $createdBy,
             );
         }
+    }
+
+    private function resolveRecipeRequirements(Product $product, array $selectedVariants = []): array
+    {
+        $requirements = [];
+        $appendRequirement = function ($ingredient, float $quantityUsed) use (&$requirements) {
+            $ingredientId = (int) ($ingredient->id ?? 0);
+            if ($ingredientId <= 0 || $quantityUsed <= 0) {
+                return;
+            }
+
+            if (!isset($requirements[$ingredientId])) {
+                $requirements[$ingredientId] = [
+                    'ingredient' => $ingredient,
+                    'quantity_used' => 0.0,
+                ];
+            }
+
+            $requirements[$ingredientId]['quantity_used'] += $quantityUsed;
+        };
+
+        foreach ($product->ingredients as $ingredient) {
+            $appendRequirement($ingredient, (float) ($ingredient->pivot->quantity_used ?? 0));
+        }
+
+        $selectedVariantIds = collect($selectedVariants)
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        foreach (collect($product->variants ?? [])->flatMap(fn ($variant) => collect($variant->values ?? [])) as $variantValue) {
+            if (!in_array((int) $variantValue->id, $selectedVariantIds, true)) {
+                continue;
+            }
+
+            foreach ($variantValue->ingredients ?? [] as $ingredient) {
+                $appendRequirement($ingredient, (float) ($ingredient->pivot->quantity_used ?? 0));
+            }
+        }
+
+        return array_values($requirements);
     }
 
     private function normalizeAdjustmentType(?string $status, ?string $adjustmentType = null, ?string $cancelType = null): ?string
@@ -1785,7 +1827,7 @@ class OrderController extends Controller
             ->values();
 
         $products = Product::query()
-            ->with('ingredients.inventoryItem')
+            ->with(['ingredients.inventoryItem', 'variants.values.ingredients.inventoryItem'])
             ->whereIn('id', $productIds)
             ->get()
             ->keyBy('id');
@@ -1824,17 +1866,22 @@ class OrderController extends Controller
                 continue;
             }
 
-            if ($this->productUsesInventoryTracking($product) && $this->productUsesUnsupportedVariantStock($product)) {
-                throw new \RuntimeException("Inventory-backed product '{$product->name}' still uses variant stock. Remove variant stock before ordering.");
+            if (!$this->productUsesInventoryTracking($product)) {
+                continue;
             }
 
-            foreach ($product->ingredients as $ingredient) {
+            $yieldPercent = max(1.0, (float) ($product->recipe_yield_percent ?? 100));
+            $yieldFactor = $yieldPercent / 100;
+            $requirements = $this->resolveRecipeRequirements($product, is_array($payload['variants'] ?? null) ? $payload['variants'] : []);
+
+            foreach ($requirements as $requirement) {
+                $ingredient = $requirement['ingredient'];
                 $inventoryItem = $ingredient->inventoryItem;
                 if (!$inventoryItem) {
                     throw new \RuntimeException("Ingredient '{$ingredient->name}' is not linked to an inventory item.");
                 }
 
-                $requiredQuantity = round((float) $ingredient->pivot->quantity_used * $quantity, 3);
+                $requiredQuantity = round(((float) $requirement['quantity_used'] * $quantity) / $yieldFactor, 3);
                 if ($requiredQuantity <= 0) {
                     continue;
                 }
@@ -2804,7 +2851,7 @@ class OrderController extends Controller
 
         $productsQuery = Product::query()
             ->posMenuEligible()
-            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'ingredients:id,name,inventory_item_id'])
+            ->with(['variants:id,product_id,name', 'variants.values.ingredients:id,name,inventory_item_id', 'category', 'ingredients:id,name,inventory_item_id'])
             ->where('category_id', $category_id);
         if (!$request->routeIs('pos.*')) {
             $restaurantId = session('active_restaurant_id') ?? tenant('id');
@@ -2881,7 +2928,7 @@ class OrderController extends Controller
         // Search products across all restaurants by ID or name
         $productsQuery = Product::query()
             ->posMenuEligible()
-            ->with(['variants:id,product_id,name', 'variants.values', 'category', 'tenant:id,name', 'ingredients:id,name,inventory_item_id'])
+            ->with(['variants:id,product_id,name', 'variants.values.ingredients:id,name,inventory_item_id', 'category', 'tenant:id,name', 'ingredients:id,name,inventory_item_id'])
             ->where(function ($query) use ($searchTerm) {
                 $query
                     ->where('id', 'like', "%{$searchTerm}%")
@@ -2948,11 +2995,11 @@ class OrderController extends Controller
                 return floor($available / $required);
             })->filter(fn ($value) => $value !== null);
 
-            $product->inventory_tracked = $ingredients->isNotEmpty();
+            $product->inventory_tracked = (bool) ($product->uses_recipe ?? false);
             $product->inventory_available_quantity = $availableServings->isEmpty() ? 0.0 : (float) max(0, $availableServings->min());
             $product->current_stock = $product->inventory_available_quantity;
             $product->minimal_stock = 0;
-            $product->manage_stock = $product->inventory_tracked;
+            $product->manage_stock = false;
         }
     }
 
@@ -2968,14 +3015,23 @@ class OrderController extends Controller
             $unlinkedIngredients = $ingredients
                 ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
                 ->values();
-            $tracked = $ingredients->isNotEmpty();
+            $variantValues = collect($product->variants ?? [])
+                ->flatMap(fn ($variant) => collect($variant->values ?? []));
+            $variantRecipeIngredients = $variantValues
+                ->flatMap(fn ($value) => collect($value->ingredients ?? []))
+                ->values();
+            $variantUnlinkedIngredients = $variantRecipeIngredients
+                ->filter(fn ($ingredient) => empty($ingredient->inventory_item_id))
+                ->values();
+            $tracked = (bool) ($product->uses_recipe ?? false);
+            $hasVariantRecipe = $variantValues->contains(fn ($value) => collect($value->ingredients ?? [])->isNotEmpty());
 
-            if ($unlinkedIngredients->isNotEmpty()) {
-                $issues[] = 'Recipe ingredients are missing inventory links.';
+            if ($tracked && $ingredients->isEmpty() && !$hasVariantRecipe) {
+                $issues[] = 'Recipe is missing.';
             }
 
-            if ($tracked && $this->productUsesUnsupportedVariantStock($product)) {
-                $issues[] = 'Variant-level stock is not warehouse-backed yet.';
+            if ($tracked && ($unlinkedIngredients->isNotEmpty() || $variantUnlinkedIngredients->isNotEmpty())) {
+                $issues[] = 'Recipe ingredients are missing inventory links.';
             }
 
             if ($tracked && $unlinkedIngredients->isEmpty() && (float) ($product->inventory_available_quantity ?? 0) <= 0) {
@@ -2985,20 +3041,19 @@ class OrderController extends Controller
             $product->inventory_setup_issues = $issues;
             $product->inventory_tracked = $tracked;
             $product->inventory_ready_for_pos = empty($issues);
-            $product->variant_stock_supported = !$tracked || !$this->productUsesUnsupportedVariantStock($product);
+            $product->variant_stock_supported = true;
+            $product->non_stock_deducting = !$tracked;
         }
     }
 
     private function productUsesUnsupportedVariantStock(Product $product): bool
     {
-        return collect($product->variants ?? [])->contains(function ($variant) {
-            return collect($variant->values ?? [])->isNotEmpty();
-        });
+        return false;
     }
 
     private function productUsesInventoryTracking(Product $product): bool
     {
-        return collect($product->ingredients ?? [])->isNotEmpty();
+        return (bool) ($product->uses_recipe ?? false);
     }
 
     /**

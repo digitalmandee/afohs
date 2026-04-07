@@ -19,7 +19,7 @@ class ProductVariant extends Model
     public function values(): HasMany
     {
         return $this->hasMany(ProductVariantValue::class)
-            ->select('product_variant_id', 'name', 'additional_price', 'stock', 'is_default');
+            ->select('id', 'product_variant_id', 'name', 'additional_price', 'stock', 'is_default');
     }
     public function items(): HasMany
     {

@@ -39,6 +39,8 @@ class Product extends BaseModel
         'max_discount',
         'max_discount_type',
         'manage_stock',
+        'uses_recipe',
+        'recipe_yield_percent',
     ];
 
     protected $casts = [
@@ -49,6 +51,8 @@ class Product extends BaseModel
         'is_returnable' => 'boolean',
         'is_taxable' => 'boolean',
         'max_discount' => 'float',
+        'uses_recipe' => 'boolean',
+        'recipe_yield_percent' => 'decimal:2',
     ];
 
     public function variants()

@@ -14,6 +14,34 @@ import POSLayout from "@/components/POSLayout";
 
 const AddProduct = ({ product, id }) => {
     const [open, setOpen] = useState(true);
+    const normalizeVariantItems = (items = []) =>
+        (items || []).map((item, itemIndex) => ({
+            ...item,
+            temp_key: item.temp_key || `variant-item-${item.id || itemIndex}-${item.name || 'new'}`,
+            recipe_ingredients: Array.isArray(item.recipe_ingredients)
+                ? item.recipe_ingredients
+                : Array.isArray(item.ingredients)
+                  ? item.ingredients.map((ingredient) => ({
+                        id: ingredient.id,
+                        name: ingredient.name,
+                        unit: ingredient.unit,
+                        remaining_quantity: ingredient.remaining_quantity,
+                        cost: ingredient.pivot?.cost || ingredient.cost_per_unit || 0,
+                        quantity_used: ingredient.pivot?.quantity_used || 0,
+                        balance_source: ingredient.balance_source || (ingredient.inventory_item_id ? 'warehouse' : 'legacy'),
+                    }))
+                  : [],
+        }));
+
+    const normalizeVariants = (variants = []) =>
+        (variants || []).map((variant, variantIndex) => ({
+            ...variant,
+            temp_key: variant.temp_key || `variant-${variant.id || variantIndex}-${variant.name || 'new'}`,
+            active: typeof variant.active === 'boolean' ? variant.active : true,
+            items: normalizeVariantItems(variant.items || variant.values || []),
+            newItem: variant.newItem || { name: '', additional_price: '', stock: '', recipe_ingredients: [] },
+        }));
+
     const { data, setData, submit, processing, errors, reset, transform } = useForm(
         id
             ? {
@@ -38,10 +66,12 @@ const AddProduct = ({ product, id }) => {
                   cost_of_goods_sold: product.cost_of_goods_sold || '',
                   base_price: product.base_price || '',
                   profit: product.profit || '0.00',
+                  uses_recipe: product.uses_recipe ?? false,
+                  recipe_yield_percent: product.recipe_yield_percent || 100,
                   is_discountable: product.is_discountable ?? true,
                   max_discount: product.max_discount || '',
                   max_discount_type: product.max_discount_type || 'percentage',
-                  variants: product.variants || [],
+                  variants: normalizeVariants(product.variants || []),
                   description: product.description || '',
                   images: product.images || [],
               }
@@ -65,22 +95,24 @@ const AddProduct = ({ product, id }) => {
                   cost_of_goods_sold: '',
                   base_price: '',
                   profit: '0.00',
+                  uses_recipe: false,
+                  recipe_yield_percent: 100,
                   is_discountable: true,
                   max_discount: '',
                   max_discount_type: 'percentage',
-                  variants: [
+                  variants: normalizeVariants([
                       {
                           name: 'Size',
                           active: false,
                           type: 'multiple',
                           items: [
-                              { name: 'Small', additional_price: 0, stock: 0 },
-                              { name: 'Medium', additional_price: 0, stock: 0 },
-                              { name: 'Large', additional_price: 0, stock: 0 },
+                              { name: 'Small', additional_price: 0, stock: 0, recipe_ingredients: [] },
+                              { name: 'Medium', additional_price: 0, stock: 0, recipe_ingredients: [] },
+                              { name: 'Large', additional_price: 0, stock: 0, recipe_ingredients: [] },
                           ],
-                          newItem: { name: '', additional_price: '', stock: '' },
+                          newItem: { name: '', additional_price: '', stock: '', recipe_ingredients: [] },
                       },
-                  ],
+                  ]),
                   description: '',
                   images: [],
               },
@@ -265,9 +297,11 @@ const AddProduct = ({ product, id }) => {
                     name: newItem.name,
                     additional_price: parseFloat(newItem.additional_price) || 0,
                     stock: parseInt(newItem.stock) || 0,
+                    recipe_ingredients: newItem.recipe_ingredients || [],
+                    temp_key: newItem.temp_key || `variant-item-new-${Date.now()}`,
                 },
             ];
-            variants[variantIndex].newItem = { name: '', additional_price: '', stock: '' };
+            variants[variantIndex].newItem = { name: '', additional_price: '', stock: '', recipe_ingredients: [] };
             return { ...prev, variants };
         });
     };
@@ -290,10 +324,57 @@ const AddProduct = ({ product, id }) => {
                     type: 'multiple',
                     active: true,
                     items: [],
-                    newItem: { name: '', additional_price: '', stock: '' },
+                    newItem: { name: '', additional_price: '', stock: '', recipe_ingredients: [] },
                 },
             ],
         }));
+    };
+
+    const addVariantRecipeIngredient = (variantIndex, itemIndex, ingredient) => {
+        setData((prev) => {
+            const variants = [...prev.variants];
+            const item = { ...variants[variantIndex].items[itemIndex] };
+            const currentIngredients = Array.isArray(item.recipe_ingredients) ? [...item.recipe_ingredients] : [];
+            if (currentIngredients.some((row) => row.id === ingredient.id)) {
+                return prev;
+            }
+            item.recipe_ingredients = [
+                ...currentIngredients,
+                {
+                    id: ingredient.id,
+                    name: ingredient.name,
+                    unit: ingredient.unit,
+                    remaining_quantity: ingredient.remaining_quantity,
+                    quantity_used: 0,
+                    cost: ingredient.cost_per_unit || 0,
+                    balance_source: ingredient.balance_source || (ingredient.inventory_item_id ? 'warehouse' : 'legacy'),
+                },
+            ];
+            variants[variantIndex].items[itemIndex] = item;
+            return { ...prev, variants };
+        });
+    };
+
+    const updateVariantRecipeIngredient = (variantIndex, itemIndex, ingredientId, field, value) => {
+        setData((prev) => {
+            const variants = [...prev.variants];
+            const item = { ...variants[variantIndex].items[itemIndex] };
+            item.recipe_ingredients = (item.recipe_ingredients || []).map((row) =>
+                row.id === ingredientId ? { ...row, [field]: parseFloat(value) || 0 } : row,
+            );
+            variants[variantIndex].items[itemIndex] = item;
+            return { ...prev, variants };
+        });
+    };
+
+    const removeVariantRecipeIngredient = (variantIndex, itemIndex, ingredientId) => {
+        setData((prev) => {
+            const variants = [...prev.variants];
+            const item = { ...variants[variantIndex].items[itemIndex] };
+            item.recipe_ingredients = (item.recipe_ingredients || []).filter((row) => row.id !== ingredientId);
+            variants[variantIndex].items[itemIndex] = item;
+            return { ...prev, variants };
+        });
     };
 
     // Handle image upload
@@ -390,6 +471,19 @@ const AddProduct = ({ product, id }) => {
                 id: ing.id,
                 quantity_used: ing.quantity_used,
                 cost: ing.cost,
+            })),
+            uses_recipe: !!data.uses_recipe,
+            recipe_yield_percent: data.recipe_yield_percent || 100,
+            variants: (data.variants || []).map((variant) => ({
+                ...variant,
+                items: (variant.items || []).map((item) => ({
+                    ...item,
+                    recipe_ingredients: (item.recipe_ingredients || []).map((ingredient) => ({
+                        id: ingredient.id,
+                        quantity_used: ingredient.quantity_used,
+                        cost: ingredient.cost,
+                    })),
+                })),
             })),
         }));
         const isEdit = Boolean(id);
@@ -530,6 +624,20 @@ const AddProduct = ({ product, id }) => {
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                             Use this screen for sellable or manufactured products. Stockable materials now live under Inventory Items and feed products through ingredients.
                         </Typography>
+                        {id && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                                <Chip
+                                    size="small"
+                                    color={product?.uses_recipe ? 'info' : 'default'}
+                                    label={product?.uses_recipe ? 'Recipe Tracking On' : 'Non-stock-deducting'}
+                                />
+                                <Chip
+                                    size="small"
+                                    color={product?.inventory_ready_for_pos === false ? 'warning' : 'success'}
+                                    label={product?.inventory_ready_for_pos === false ? 'Recipe Setup Incomplete' : 'POS Ready'}
+                                />
+                            </Box>
+                        )}
                     </Box>
                 </Box>
                 <Box
@@ -754,6 +862,45 @@ const AddProduct = ({ product, id }) => {
                                         >
                                             Inventory, purchasing, warehouse balances, and reorder levels are now handled in Inventory Items, not the product builder.
                                         </Alert>
+                                    </Grid>
+                                    <Grid item xs={12}>
+                                        <Box
+                                            sx={{
+                                                p: 2,
+                                                border: '1px solid #063455',
+                                                borderRadius: 1,
+                                                backgroundColor: '#E8F2FA',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Box>
+                                                <Typography variant="body1" sx={{ fontWeight: 600, color: '#121212' }}>
+                                                    Uses Recipe / Track Ingredients
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Turn this on when POS sales should deduct warehouse ingredient stock. Turn it off for sellable items that should not affect inventory.
+                                                </Typography>
+                                            </Box>
+                                            <Switch checked={!!data.uses_recipe} onChange={(e) => setData('uses_recipe', e.target.checked)} color="primary" />
+                                        </Box>
+                                    </Grid>
+                                    <Grid item xs={12} md={4}>
+                                        <Typography variant="body1" sx={{ mb: 1, color: '#121212', fontSize: '14px' }}>
+                                            Recipe Yield %
+                                        </Typography>
+                                        <TextField
+                                            fullWidth
+                                            size="small"
+                                            type="number"
+                                            name="recipe_yield_percent"
+                                            value={data.recipe_yield_percent}
+                                            onChange={handleInputChange}
+                                            inputProps={{ min: 1, max: 100, step: 0.01 }}
+                                            helperText="100% means direct usage. Lower yield increases raw-material consumption."
+                                            disabled={!data.uses_recipe}
+                                        />
                                     </Grid>
                                     <Grid item xs={12} container spacing={2}>
                                         {[
@@ -1118,107 +1265,144 @@ const AddProduct = ({ product, id }) => {
                                     Ingredients Management
                                 </Typography>
 
-                                {/* Header */}
-                                <Box sx={{ mb: 2 }}>
-                                    <Typography variant="body1" sx={{ color: '#121212', fontSize: '14px' }}>
-                                        Select recipe ingredients. Linked ingredients deduct warehouse-managed raw-material stock during POS orders.
-                                    </Typography>
-                                </Box>
+                                {!data.uses_recipe ? (
+                                    <Alert severity="info">
+                                        Recipe tracking is off for this product. POS can still sell it, but no warehouse inventory will be deducted until recipe tracking is enabled and ingredients are configured.
+                                    </Alert>
+                                ) : (
+                                    <>
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="body1" sx={{ color: '#121212', fontSize: '14px' }}>
+                                                Base recipe ingredients deduct warehouse-managed raw-material stock during POS orders. Selected variant items can add their own extra ingredient lines below.
+                                            </Typography>
+                                        </Box>
 
-                                {/* Add Ingredient */}
-                                <Box sx={{ mb: 3 }}>
-                                    <Autocomplete
-                                        options={ingredients.filter((ing) => !selectedIngredients.find((sel) => sel.id === ing.id))}
-                                        getOptionLabel={(option) => `${option.name} (${option.remaining_quantity} ${option.unit}, ${option.balance_source === 'warehouse' ? 'warehouse' : 'legacy'}) - Rs ${option.cost_per_unit || 0}`}
-                                        onChange={(event, newValue) => {
-                                            if (newValue) {
-                                                addIngredient(newValue);
-                                            }
-                                        }}
-                                        renderInput={(params) => <TextField {...params} label="Add Ingredient" placeholder="Search and select ingredients..." size="small" />}
-                                    />
-                                </Box>
+                                        <Box sx={{ mb: 3 }}>
+                                            <Autocomplete
+                                                options={ingredients.filter((ing) => !selectedIngredients.find((sel) => sel.id === ing.id))}
+                                                getOptionLabel={(option) => `${option.name} (${option.remaining_quantity} ${option.unit}, ${option.balance_source === 'warehouse' ? 'warehouse' : 'legacy'}) - Rs ${option.cost_per_unit || 0}`}
+                                                onChange={(event, newValue) => {
+                                                    if (newValue) {
+                                                        addIngredient(newValue);
+                                                    }
+                                                }}
+                                                renderInput={(params) => <TextField {...params} label="Add Base Recipe Ingredient" placeholder="Search and select ingredients..." size="small" />}
+                                            />
+                                        </Box>
 
-                                {/* Selected Ingredients Table */}
-                                {selectedIngredients.length > 0 && (
-                                    <TableContainer component={Paper} sx={{ mb: 2 }}>
-                                        <Table size="small">
-                                            <TableHead>
-                                                <TableRow>
-                                                    <TableCell>
-                                                        <strong>Ingredient</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Available</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Quantity Used</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Cost (PKR)</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Quantity Per Unit</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Actions</strong>
-                                                    </TableCell>
-                                                </TableRow>
-                                            </TableHead>
-                                            <TableBody>
-                                                {selectedIngredients.map((ingredient) => {
-                                                    return (
-                                                        <TableRow key={ingredient.id}>
-                                                            <TableCell>
-                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                                    <span>{ingredient.name}</span>
-                                                                    <Chip
-                                                                        size="small"
-                                                                        label={ingredient.balance_source === 'warehouse' ? 'Warehouse' : 'Legacy'}
-                                                                        color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'}
-                                                                    />
-                                                                </Box>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {ingredient.remaining_quantity} {ingredient.unit}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <TextField size="small" type="number" value={ingredient.quantity_used} onChange={(e) => updateIngredientQuantity(ingredient.id, 'quantity_used', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
-                                                                <Typography variant="caption" sx={{ ml: 1 }}>
-                                                                    {ingredient.unit}
-                                                                </Typography>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <TextField size="small" type="number" value={ingredient.cost} onChange={(e) => updateIngredientQuantity(ingredient.id, 'cost', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <Typography variant="body2">
-                                                                    {ingredient.quantity_used} {ingredient.unit}
-                                                                </Typography>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <IconButton size="small" color="error" onClick={() => removeIngredient(ingredient.id)}>
-                                                                    <DeleteIcon />
-                                                                </IconButton>
-                                                            </TableCell>
+                                        {selectedIngredients.length > 0 && (
+                                            <TableContainer component={Paper} sx={{ mb: 3 }}>
+                                                <Table size="small">
+                                                    <TableHead>
+                                                        <TableRow>
+                                                            <TableCell><strong>Ingredient</strong></TableCell>
+                                                            <TableCell><strong>Available</strong></TableCell>
+                                                            <TableCell><strong>Qty per Sale</strong></TableCell>
+                                                            <TableCell><strong>Cost (PKR)</strong></TableCell>
+                                                            <TableCell><strong>Unit</strong></TableCell>
+                                                            <TableCell><strong>Actions</strong></TableCell>
                                                         </TableRow>
-                                                    );
-                                                })}
-                                                <TableRow>
-                                                    <TableCell colSpan={3}>
-                                                        <strong>Total Ingredient Cost:</strong>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <strong>Rs {(calculateTotalIngredientCost() || 0).toFixed(2)}</strong>
-                                                    </TableCell>
-                                                    <TableCell colSpan={2}></TableCell>
-                                                </TableRow>
-                                            </TableBody>
-                                        </Table>
-                                    </TableContainer>
-                                )}
+                                                    </TableHead>
+                                                    <TableBody>
+                                                        {selectedIngredients.map((ingredient) => (
+                                                            <TableRow key={ingredient.id}>
+                                                                <TableCell>
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                        <span>{ingredient.name}</span>
+                                                                        <Chip size="small" label={ingredient.balance_source === 'warehouse' ? 'Warehouse' : 'Legacy'} color={ingredient.balance_source === 'warehouse' ? 'info' : 'default'} />
+                                                                    </Box>
+                                                                </TableCell>
+                                                                <TableCell>{ingredient.remaining_quantity} {ingredient.unit}</TableCell>
+                                                                <TableCell>
+                                                                    <TextField size="small" type="number" value={ingredient.quantity_used} onChange={(e) => updateIngredientQuantity(ingredient.id, 'quantity_used', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    <TextField size="small" type="number" value={ingredient.cost} onChange={(e) => updateIngredientQuantity(ingredient.id, 'cost', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
+                                                                </TableCell>
+                                                                <TableCell>{ingredient.unit}</TableCell>
+                                                                <TableCell>
+                                                                    <IconButton size="small" color="error" onClick={() => removeIngredient(ingredient.id)}>
+                                                                        <DeleteIcon />
+                                                                    </IconButton>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                        <TableRow>
+                                                            <TableCell colSpan={3}><strong>Total Base Recipe Cost:</strong></TableCell>
+                                                            <TableCell><strong>Rs {(calculateTotalIngredientCost() || 0).toFixed(2)}</strong></TableCell>
+                                                            <TableCell colSpan={2}></TableCell>
+                                                        </TableRow>
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        )}
 
-                                {selectedIngredients.length === 0 && <Alert severity="info">No ingredients selected. Add ingredients to track usage and costs.</Alert>}
+                                        {selectedIngredients.length === 0 && <Alert severity="warning" sx={{ mb: 3 }}>No base recipe ingredients selected yet. Product will stay blocked for stock deduction until a recipe is configured.</Alert>}
+
+                                        <Typography variant="h6" sx={{ mb: 2, color: '#121212' }}>
+                                            Variant Recipe Add-ons
+                                        </Typography>
+                                        {(data.variants || []).filter((variant) => variant.active).map((variant, variantIndex) => (
+                                            <Box key={variant.temp_key || variantIndex} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, p: 2, mb: 2 }}>
+                                                <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>{variant.name}</Typography>
+                                                {(variant.items || []).filter((item) => item.name).map((item, itemIndex) => (
+                                                    <Box key={item.temp_key || `${variantIndex}-${itemIndex}`} sx={{ border: '1px dashed #c7d2df', borderRadius: 2, p: 2, mb: 2 }}>
+                                                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                                                            {item.name} recipe additions
+                                                        </Typography>
+                                                        <Autocomplete
+                                                            sx={{ mb: 2 }}
+                                                            options={ingredients.filter((ing) => !(item.recipe_ingredients || []).find((sel) => sel.id === ing.id))}
+                                                            getOptionLabel={(option) => `${option.name} (${option.remaining_quantity} ${option.unit}, ${option.balance_source === 'warehouse' ? 'warehouse' : 'legacy'})`}
+                                                            onChange={(event, newValue) => {
+                                                                if (newValue) {
+                                                                    addVariantRecipeIngredient(variantIndex, itemIndex, newValue);
+                                                                }
+                                                            }}
+                                                            renderInput={(params) => <TextField {...params} label={`Add ingredient for ${item.name}`} placeholder="Search and select ingredient..." size="small" />}
+                                                        />
+                                                        {(item.recipe_ingredients || []).length > 0 ? (
+                                                            <TableContainer component={Paper}>
+                                                                <Table size="small">
+                                                                    <TableHead>
+                                                                        <TableRow>
+                                                                            <TableCell><strong>Ingredient</strong></TableCell>
+                                                                            <TableCell><strong>Available</strong></TableCell>
+                                                                            <TableCell><strong>Qty Added</strong></TableCell>
+                                                                            <TableCell><strong>Cost</strong></TableCell>
+                                                                            <TableCell><strong>Actions</strong></TableCell>
+                                                                        </TableRow>
+                                                                    </TableHead>
+                                                                    <TableBody>
+                                                                        {(item.recipe_ingredients || []).map((ingredient) => (
+                                                                            <TableRow key={ingredient.id}>
+                                                                                <TableCell>{ingredient.name}</TableCell>
+                                                                                <TableCell>{ingredient.remaining_quantity} {ingredient.unit}</TableCell>
+                                                                                <TableCell>
+                                                                                    <TextField size="small" type="number" value={ingredient.quantity_used} onChange={(e) => updateVariantRecipeIngredient(variantIndex, itemIndex, ingredient.id, 'quantity_used', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
+                                                                                </TableCell>
+                                                                                <TableCell>
+                                                                                    <TextField size="small" type="number" value={ingredient.cost} onChange={(e) => updateVariantRecipeIngredient(variantIndex, itemIndex, ingredient.id, 'cost', e.target.value)} inputProps={{ min: 0, step: 0.01 }} sx={{ width: '100px' }} />
+                                                                                </TableCell>
+                                                                                <TableCell>
+                                                                                    <IconButton size="small" color="error" onClick={() => removeVariantRecipeIngredient(variantIndex, itemIndex, ingredient.id)}>
+                                                                                        <DeleteIcon />
+                                                                                    </IconButton>
+                                                                                </TableCell>
+                                                                            </TableRow>
+                                                                        ))}
+                                                                    </TableBody>
+                                                                </Table>
+                                                            </TableContainer>
+                                                        ) : (
+                                                            <Alert severity="info">No variant-specific ingredient additions for {item.name}. Base recipe will apply on its own.</Alert>
+                                                        )}
+                                                    </Box>
+                                                ))}
+                                            </Box>
+                                        ))}
+                                    </>
+                                )}
                             </Box>
                         )}
 

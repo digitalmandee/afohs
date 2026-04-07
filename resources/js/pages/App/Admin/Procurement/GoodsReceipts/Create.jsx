@@ -69,6 +69,7 @@ const defaultItems = selectedOrder?.items?.map((item) => ({
     0
   );
   const unresolvedLines = data.items.filter((item) => !item.inventory_item_id || item.mapping_issue);
+  const zeroCostLines = data.items.filter((item) => Number(item.qty_received || 0) > 0 && Number(item.unit_cost || 0) <= 0);
 
   React.useEffect(() => {
     if (prefillError) {
@@ -124,6 +125,11 @@ const defaultItems = selectedOrder?.items?.map((item) => ({
             {unresolvedLines.length > 0 ? (
               <Alert severity="error" sx={{ mb: 2 }}>
                 {unresolvedLines.length} PO line(s) have invalid inventory mapping. Fix mapping before GRN submission.
+              </Alert>
+            ) : null}
+            {zeroCostLines.length > 0 ? (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {zeroCostLines.length} GRN line(s) have zero unit cost. Enter a positive unit cost before submission so inventory valuation and GL posting can complete.
               </Alert>
             ) : null}
             <Grid container spacing={2}>
@@ -277,7 +283,7 @@ const defaultItems = selectedOrder?.items?.map((item) => ({
                       value={item.unit_cost}
                       onChange={(e) => updateItem(index, 'unit_cost', e.target.value)}
                       error={!!errors[`items.${index}.unit_cost`]}
-                      helperText={errors[`items.${index}.unit_cost`]}
+                      helperText={errors[`items.${index}.unit_cost`] || (Number(item.qty_received || 0) > 0 && Number(item.unit_cost || 0) <= 0 ? 'Required for inventory valuation and GL posting.' : '')}
                       fullWidth
                     />
                   </Grid>
@@ -305,7 +311,7 @@ const defaultItems = selectedOrder?.items?.map((item) => ({
                 variant="contained"
                 loading={processing || mutation.isPending('grn-create')}
                 loadingLabel="Submitting..."
-                disabled={!data.purchase_order_id || data.items.length === 0 || unresolvedLines.length > 0}
+                disabled={!data.purchase_order_id || data.items.length === 0 || unresolvedLines.length > 0 || zeroCostLines.length > 0}
               >
                 Submit GRN
               </AppLoadingButton>
