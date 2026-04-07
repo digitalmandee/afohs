@@ -24,6 +24,7 @@ class GoodsReceipt extends Model
         'accepted_by',
         'posted_by',
         'posted_at',
+        'journal_entry_id',
     ];
 
     protected $casts = [
@@ -81,5 +82,10 @@ class GoodsReceipt extends Model
     public function postedBy()
     {
         return $this->belongsTo(User::class, 'posted_by');
+    }
+
+    public function journalEntry()
+    {
+        return $this->belongsTo(JournalEntry::class, 'journal_entry_id');
     }
 }

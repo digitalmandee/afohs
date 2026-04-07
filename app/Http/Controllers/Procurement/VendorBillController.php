@@ -9,6 +9,7 @@ use App\Models\ApprovalAction;
 use App\Models\GoodsReceipt;
 use App\Models\GoodsReceiptItem;
 use App\Models\JournalEntry;
+use App\Models\OperationalAuditLog;
 use App\Models\SupplierAdvance;
 use App\Models\Tenant;
 use App\Models\Vendor;
@@ -302,13 +303,19 @@ class VendorBillController extends Controller
             $totals = $this->syncBillLinesAndCharges($vendorBill, $data);
             $vendorBill->update($totals);
 
-            ApprovalAction::create([
-                'document_type' => 'vendor_bill',
-                'document_id' => $vendorBill->id,
-                'action' => 'updated',
-                'remarks' => 'Vendor bill updated.',
-                'action_by' => $request->user()?->id,
-            ]);
+            $this->recordOperationalEvent(
+                'vendor_bill',
+                (int) $vendorBill->id,
+                'procurement.vendor_bill.updated',
+                'Vendor bill updated.',
+                $request->user()?->id,
+                [
+                    'display_action' => 'updated',
+                    'bill_no' => (string) $vendorBill->bill_no,
+                    'vendor_id' => (int) $vendorBill->vendor_id,
+                    'goods_receipt_id' => $vendorBill->goods_receipt_id ? (int) $vendorBill->goods_receipt_id : null,
+                ]
+            );
         });
 
         return redirect()->route('procurement.vendor-bills.index')->with('success', 'Vendor bill updated.');
@@ -703,6 +710,30 @@ class VendorBillController extends Controller
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function recordOperationalEvent(
+        string $entityType,
+        int $entityId,
+        string $action,
+        string $message,
+        ?int $userId,
+        array $context = []
+    ): void {
+        OperationalAuditLog::query()->create([
+            'correlation_id' => (string) (request()?->headers->get('X-Correlation-ID') ?: request()?->attributes->get('correlation_id') ?: ''),
+            'module' => 'procurement',
+            'entity_type' => $entityType,
+            'entity_id' => (string) $entityId,
+            'action' => $action,
+            'status' => 'completed',
+            'severity' => 'info',
+            'message' => $message,
+            'context_json' => $context,
+            'actor_id' => $userId,
+            'request_path' => request()?->path(),
+            'ip' => request()?->ip(),
+        ]);
     }
 
     private function buildVendorBillDocumentPayload(VendorBill $vendorBill, bool $autoPrint): array

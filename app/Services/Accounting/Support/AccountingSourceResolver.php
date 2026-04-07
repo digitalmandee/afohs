@@ -52,7 +52,7 @@ class AccountingSourceResolver
                 ?? ($invoice->invoiceable_type === \App\Models\EventBooking::class ? $invoice->invoiceable_id : 0));
             if ($bookingId > 0) {
                 $sourceId = $bookingId;
-                $documentUrl = $this->safeRoute('events.booking.invoice', $bookingId);
+                $documentUrl = $this->safeRoute('events.booking.edit', $bookingId);
             }
         }
 

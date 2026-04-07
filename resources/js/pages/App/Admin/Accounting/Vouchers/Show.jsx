@@ -4,6 +4,8 @@ import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, S
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
+import useMutationAction from '@/hooks/useMutationAction';
 import { formatAmount } from '@/lib/formatting';
 
 export default function Show({ voucher, approvalTrail = [], allocations = [], recentOperationalLogs = [], auditEvents = [] }) {
@@ -12,12 +14,17 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
     const operationalLogs = Array.isArray(recentOperationalLogs) ? recentOperationalLogs : [];
     const auditTrail = Array.isArray(auditEvents) ? auditEvents : [];
     const mediaFiles = Array.isArray(voucher?.media) ? voucher.media : [];
+    const tenant = voucher?.tenant || null;
+    const department = voucher?.department || null;
+    const paymentAccount = voucher?.paymentAccount || voucher?.payment_account || null;
+    const reversalVoucher = voucher?.reversalVoucher || voucher?.reversal_voucher || null;
     const totalDebit = lines.reduce((sum, line) => sum + Number(line?.debit || 0), 0);
     const totalCredit = lines.reduce((sum, line) => sum + Number(line?.credit || 0), 0);
     const modeLabel = String(voucher?.entry_mode || '').toLowerCase() === 'manual' ? 'Manual' : 'Smart';
     const [reverseOpen, setReverseOpen] = React.useState(false);
     const [reverseReason, setReverseReason] = React.useState('');
     const [reverseDate, setReverseDate] = React.useState(voucher?.posting_date || voucher?.voucher_date || '');
+    const mutation = useMutationAction();
     const reversalEvent = operationalLogs.find((log) => log?.action === 'accounting.voucher.reversed');
     const reversalReason = reversalEvent?.context_json?.reason || '-';
     const paymentForLabel = ['CPV', 'BPV'].includes(voucher?.voucher_type) ? (voucher?.party_type === 'vendor' ? 'Vendor Payment' : 'Expense') : '-';
@@ -60,9 +67,9 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     <Chip label={`Date: ${voucher?.voucher_date || '-'}`} />
                     <Chip label={`Posting Date: ${voucher?.posting_date || '-'}`} />
                     <Chip label={`Status: ${voucher?.status || '-'}`} color={voucher?.status === 'posted' ? 'success' : voucher?.status === 'submitted' ? 'warning' : 'default'} />
-                    <Chip label={`Branch: ${voucher?.tenant?.name || '-'}`} />
-                    <Chip label={`Cost Center: ${voucher?.department?.name || '-'}`} />
-                    <Chip label={`Payment Account: ${voucher?.payment_account?.name || '-'}`} />
+                    <Chip label={`Branch: ${tenant?.name || '-'}`} />
+                    <Chip label={`Cost Center: ${department?.name || '-'}`} />
+                    <Chip label={`Payment Account: ${paymentAccount?.name || '-'}`} />
                     <Chip label={`Currency: ${voucher?.currency_code || 'PKR'}`} />
                     <Chip label={`Exchange Rate: ${voucher?.exchange_rate || '1.000000'}`} />
                     <Chip label={`Payment For: ${paymentForLabel}`} />
@@ -70,7 +77,7 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     <Chip label={`Reference: ${voucher?.reference_no || '-'}`} />
                     <Chip label={`Amount: ${formatAmount(voucher?.amount || 0)}`} />
                     <Chip label={`Approval Ref: ${voucher?.approval_reference || '-'}`} />
-                    <Chip label={`Reversal Voucher: ${voucher?.reversal_voucher?.voucher_no || '-'}`} />
+                    <Chip label={`Reversal Voucher: ${reversalVoucher?.voucher_no || '-'}`} />
                 </Box>
                 <Box sx={{ mt: 1.25 }}>
                     {voucher?.remarks || '-'}
@@ -199,7 +206,25 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     <Button variant="outlined" component={Link} href={route('accounting.vouchers.edit', voucher.id)}>
                         Edit
                     </Button>
-                    <Button variant="contained" onClick={() => router.post(route('accounting.vouchers.submit', voucher.id))}>
+                    <Button
+                        variant="contained"
+                        onClick={() => mutation.runRouterAction({
+                            key: `voucher-submit-${voucher.id}`,
+                            method: 'post',
+                            url: route('accounting.vouchers.submit', voucher.id),
+                            options: {
+                                onSuccess: () => router.visit(route('accounting.vouchers.show', voucher.id)),
+                            },
+                            successMessage: 'Voucher submitted for approval.',
+                            errorMessage: 'Failed to submit voucher.',
+                            confirmConfig: {
+                                title: 'Submit for Approval',
+                                message: 'This will move the voucher to submitted status and send it into the approval workflow. No general ledger posting will happen yet.',
+                                confirmLabel: 'Submit for Approval',
+                                severity: 'warning',
+                            },
+                        })}
+                    >
                         Submit
                     </Button>
                 </Box>
@@ -207,13 +232,70 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
 
             {voucher?.status === 'submitted' ? (
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                    <Button color="error" variant="outlined" onClick={() => router.post(route('accounting.vouchers.reject', voucher.id))}>
+                    <Button
+                        color="error"
+                        variant="outlined"
+                        onClick={() => mutation.runRouterAction({
+                            key: `voucher-reject-${voucher.id}`,
+                            method: 'post',
+                            url: route('accounting.vouchers.reject', voucher.id),
+                            options: {
+                                onSuccess: () => router.visit(route('accounting.vouchers.show', voucher.id)),
+                            },
+                            successMessage: 'Voucher moved back to draft.',
+                            errorMessage: 'Failed to reject voucher.',
+                            confirmConfig: {
+                                title: 'Reject Voucher',
+                                message: 'Send this voucher back to draft?',
+                                confirmLabel: 'Reject',
+                                severity: 'danger',
+                            },
+                        })}
+                    >
                         Reject
                     </Button>
-                    <Button color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', voucher.id))}>
+                    <Button
+                        color="warning"
+                        variant="outlined"
+                        onClick={() => mutation.runRouterAction({
+                            key: `voucher-cancel-${voucher.id}`,
+                            method: 'post',
+                            url: route('accounting.vouchers.cancel', voucher.id),
+                            options: {
+                                onSuccess: () => router.visit(route('accounting.vouchers.show', voucher.id)),
+                            },
+                            successMessage: 'Voucher cancelled.',
+                            errorMessage: 'Failed to cancel voucher.',
+                            confirmConfig: {
+                                title: 'Cancel Voucher',
+                                message: 'Cancel this voucher? This will stop it from moving further in workflow.',
+                                confirmLabel: 'Cancel Voucher',
+                                severity: 'warning',
+                            },
+                        })}
+                    >
                         Cancel
                     </Button>
-                    <Button color="success" variant="contained" onClick={() => router.post(route('accounting.vouchers.approve', voucher.id))}>
+                    <Button
+                        color="success"
+                        variant="contained"
+                        onClick={() => mutation.runRouterAction({
+                            key: `voucher-approve-${voucher.id}`,
+                            method: 'post',
+                            url: route('accounting.vouchers.approve', voucher.id),
+                            options: {
+                                onSuccess: () => router.visit(route('accounting.vouchers.show', voucher.id)),
+                            },
+                            successMessage: 'Voucher approved and posted.',
+                            errorMessage: 'Failed to approve voucher.',
+                            confirmConfig: {
+                                title: 'Approve/Post Voucher',
+                                message: 'Approve this voucher and post it to the general ledger?',
+                                confirmLabel: 'Approve/Post',
+                                severity: 'critical',
+                            },
+                        })}
+                    >
                         Approve/Post
                     </Button>
                 </Box>
@@ -264,6 +346,8 @@ export default function Show({ voucher, approvalTrail = [], allocations = [], re
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <ConfirmActionDialog {...mutation.confirmDialogProps} />
         </AppPage>
     );
 }

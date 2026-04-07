@@ -5,6 +5,7 @@ import debounce from 'lodash.debounce';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import AppPage from '@/components/App/ui/AppPage';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
@@ -227,7 +228,9 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                     />
                                 </TableCell>
                                 <TableCell>
-                                    <Typography sx={{ fontWeight: 700, color: 'text.primary' }}>{String(grn.accounting_status || (grn.gl_posted ? 'posted' : 'pending')).replaceAll('_', ' ')}</Typography>
+                                    <Typography sx={{ fontWeight: 700, color: 'text.primary', textTransform: 'capitalize' }}>
+                                        {String(grn.accounting_status || 'pending').replaceAll('_', ' ')}
+                                    </Typography>
                                     {grn.accounting_failure_reason ? (
                                         <>
                                             <Typography variant="body2" color="error.main">{grn.accounting_failure_reason}</Typography>
@@ -238,12 +241,19 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                             ) : null}
                                         </>
                                     ) : (
-                                        <Chip
-                                            size="small"
-                                            label={grn.gl_posted ? 'Posted' : 'Pending'}
-                                            color={grn.gl_posted ? 'success' : 'warning'}
-                                            variant={grn.gl_posted ? 'filled' : 'outlined'}
-                                        />
+                                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                                            <Chip
+                                                size="small"
+                                                label={grn.gl_posted ? 'Journal linked' : 'Awaiting GL'}
+                                                color={grn.gl_posted ? 'success' : 'warning'}
+                                                variant={grn.gl_posted ? 'filled' : 'outlined'}
+                                            />
+                                            {grn.journal_entry_id ? (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Journal #{grn.journal_entry_id}
+                                                </Typography>
+                                            ) : null}
+                                        </Stack>
                                     )}
                                 </TableCell>
                                 <TableCell align="right">
@@ -266,6 +276,17 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                                 <PictureAsPdfOutlinedIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
+                                        {grn.journal_entry_id ? (
+                                            <Tooltip title="Open journal">
+                                                <IconButton
+                                                    size="small"
+                                                    component={Link}
+                                                    href={route('accounting.journals.show', grn.journal_entry_id)}
+                                                >
+                                                    <ReceiptLongOutlinedIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        ) : null}
                                         {Boolean(grn.can_accept) && (
                                             <AppLoadingButton
                                                 size="small"
@@ -275,7 +296,7 @@ export default function Index({ receipts, filters, summary = {}, vendors = [], w
                                                     key: `grn-accept-${grn.id}`,
                                                     method: 'post',
                                                     url: route('procurement.goods-receipts.accept', grn.id),
-                                                    successMessage: 'GRN accepted and posted.',
+                                                    successMessage: 'GRN accepted, inventory posted, and GL synced.',
                                                     errorMessage: 'Failed to accept GRN.',
                                                     confirmConfig: {
                                                         title: 'Accept GRN',

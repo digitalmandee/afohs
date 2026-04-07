@@ -861,6 +861,11 @@ class AccountingVoucherController extends Controller
     {
         $this->autoAssignVendorDefaultMappings();
 
+        $defaultReceivableAccountId = $this->mappingResolver->resolveDefaultRoleAccountId('receivable');
+        $defaultReceivableAccount = $defaultReceivableAccountId > 0
+            ? CoaAccount::query()->whereKey($defaultReceivableAccountId)->first(['id', 'full_code', 'name'])
+            : null;
+
         if ($voucher) {
             $voucher->setAttribute('entry_mode', $this->normalizeEntryMode((string) $voucher->entry_mode));
         }
@@ -913,6 +918,14 @@ class AccountingVoucherController extends Controller
             'partyTypes' => self::PARTY_TYPES,
             'canSetPaymentAccountDefault' => $this->canSetPaymentAccountDefault(auth()->user()),
             'canSetVendorCounterpartyDefault' => $this->canSetVendorCounterpartyDefault(auth()->user()),
+            'mappingReadiness' => [
+                'default_receivable_ready' => $defaultReceivableAccountId > 0,
+                'default_receivable_account' => $defaultReceivableAccount ? [
+                    'id' => (int) $defaultReceivableAccount->id,
+                    'full_code' => (string) $defaultReceivableAccount->full_code,
+                    'name' => (string) $defaultReceivableAccount->name,
+                ] : null,
+            ],
             'baseCurrency' => 'PKR',
         ];
     }

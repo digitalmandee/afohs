@@ -86,12 +86,13 @@ class GoodsReceiptController extends Controller
         ];
 
         $receipts = $query->orderByDesc('received_date')->paginate($perPage)->withQueryString();
-        $postedIds = JournalEntry::query()
+        $journalLookup = JournalEntry::query()
             ->where('module_type', 'goods_receipt')
             ->whereIn('module_id', $receipts->getCollection()->pluck('id'))
-            ->pluck('module_id')
-            ->all();
-        $postedLookup = array_fill_keys($postedIds, true);
+            ->orderByDesc('id')
+            ->get()
+            ->unique('module_id')
+            ->keyBy('module_id');
         $eventLookup = AccountingEventQueue::query()
             ->where('source_type', GoodsReceipt::class)
             ->whereIn('source_id', $receipts->getCollection()->pluck('id'))
@@ -100,12 +101,12 @@ class GoodsReceiptController extends Controller
             ->unique('source_id')
             ->keyBy('source_id');
         $currentUser = $request->user();
-        $receipts->getCollection()->transform(function ($receipt) use ($postedLookup, $eventLookup, $currentUser) {
-            $event = $eventLookup->get($receipt->id);
-            $receipt->gl_posted = (bool) ($postedLookup[$receipt->id] ?? false);
-            $receipt->accounting_status = $event?->status ?? ($receipt->gl_posted ? 'posted' : 'pending');
-            $receipt->accounting_failure_reason = $event?->error_message;
-            $receipt->accounting_correlation_id = (string) ($event?->payload['correlation_id'] ?? '');
+        $receipts->getCollection()->transform(function ($receipt) use ($journalLookup, $eventLookup, $currentUser) {
+            $this->hydrateReceiptAccountingState(
+                $receipt,
+                $eventLookup->get($receipt->id),
+                $journalLookup->get($receipt->id)
+            );
             $receipt->can_accept = in_array((string) $receipt->status, ['pending_acceptance', 'draft'], true)
                 && $this->canAcceptReceipt($currentUser, $receipt);
             return $receipt;
@@ -457,7 +458,7 @@ class GoodsReceiptController extends Controller
             $this->postReceiptIntoInventory($receipt, $request->user()?->id, $inventoryMovementService, true);
         });
 
-        return redirect()->back()->with('success', 'GRN accepted and inventory posted.');
+        return redirect()->back()->with('success', 'GRN accepted, inventory posted, and GL synced.');
     }
 
     private function assertPurchasePricePolicy(
@@ -679,6 +680,8 @@ class GoodsReceiptController extends Controller
         );
 
         app(StrictAccountingSyncService::class)->enforceOrFail($event, "GRN {$receipt->grn_no}");
+
+        $this->persistReceiptJournalLink($receipt, $event);
     }
 
     private function assertPositiveReceiptValuation(float $unitCost, float $qtyReceived, int $lineIndex, string $itemName): void
@@ -966,7 +969,23 @@ class GoodsReceiptController extends Controller
             'verifier:id,name',
             'acceptedBy:id,name',
             'postedBy:id,name',
+            'journalEntry:id,entry_no,status',
         ]);
+
+        $accountingEvent = AccountingEventQueue::query()
+            ->where('source_type', GoodsReceipt::class)
+            ->where('source_id', $goodsReceipt->id)
+            ->latest('id')
+            ->first();
+
+        $resolvedJournal = $goodsReceipt->journalEntry
+            ?: JournalEntry::query()
+                ->where('module_type', 'goods_receipt')
+                ->where('module_id', $goodsReceipt->id)
+                ->latest('id')
+                ->first();
+
+        $this->hydrateReceiptAccountingState($goodsReceipt, $accountingEvent, $resolvedJournal);
 
         $lineItems = $goodsReceipt->items->map(function ($item) {
             $qty = (float) ($item->qty_received ?? 0);
@@ -1031,6 +1050,14 @@ class GoodsReceiptController extends Controller
                 'restaurant' => $tenantName,
                 'remarks' => $goodsReceipt->remarks ?: '-',
             ],
+            'accounting' => [
+                'status' => strtoupper(str_replace('_', ' ', (string) ($goodsReceipt->accounting_status ?: 'pending'))),
+                'failure_reason' => $goodsReceipt->accounting_failure_reason ?: null,
+                'journal_entry_id' => $goodsReceipt->journal_entry_id ?: null,
+                'journal_entry_no' => $resolvedJournal?->entry_no ?: ($goodsReceipt->journal_entry_id ? ('Journal #' . $goodsReceipt->journal_entry_id) : '-'),
+                'journal_url' => $goodsReceipt->journal_url ?: null,
+                'correlation_id' => $goodsReceipt->accounting_correlation_id ?: null,
+            ],
             'vendor' => [
                 'name' => $goodsReceipt->vendor?->name ?: '-',
                 'code' => $goodsReceipt->vendor?->code ?: '-',
@@ -1076,5 +1103,72 @@ class GoodsReceiptController extends Controller
             'name' => $name,
             'at' => optional($action->created_at)->format('d/m/Y h:i A') ?: 'N/A',
         ];
+    }
+
+    private function hydrateReceiptAccountingState(
+        GoodsReceipt $receipt,
+        ?AccountingEventQueue $event = null,
+        ?JournalEntry $journal = null
+    ): GoodsReceipt {
+        $linkedJournalId = (int) ($receipt->journal_entry_id ?? 0);
+        $resolvedJournal = $journal;
+
+        if (!$resolvedJournal && $linkedJournalId > 0) {
+            $resolvedJournal = JournalEntry::query()->find($linkedJournalId);
+        }
+
+        if (!$resolvedJournal && $event?->journal_entry_id) {
+            $resolvedJournal = JournalEntry::query()->find((int) $event->journal_entry_id);
+        }
+
+        if (!$resolvedJournal) {
+            $resolvedJournal = JournalEntry::query()
+                ->where('module_type', 'goods_receipt')
+                ->where('module_id', $receipt->id)
+                ->latest('id')
+                ->first();
+        }
+
+        if ($resolvedJournal) {
+            $this->persistReceiptJournalLink($receipt, $event, $resolvedJournal);
+        }
+
+        $hasLinkedJournal = (int) ($receipt->journal_entry_id ?? 0) > 0 || (bool) $resolvedJournal;
+        $accountingStatus = 'pending';
+        if ($event && $event->status === 'failed') {
+            $accountingStatus = 'failed';
+        } elseif ($event && $event->status === 'posted') {
+            $accountingStatus = 'posted';
+        } elseif ($hasLinkedJournal) {
+            $accountingStatus = 'posted';
+        }
+
+        $journalEntryId = (int) ($receipt->journal_entry_id ?: ($resolvedJournal?->id ?? $event?->journal_entry_id ?? 0));
+        $receipt->journal_entry_id = $journalEntryId > 0 ? $journalEntryId : null;
+        $receipt->gl_posted = $hasLinkedJournal;
+        $receipt->accounting_status = $accountingStatus;
+        $receipt->accounting_failure_reason = $event?->error_message;
+        $receipt->accounting_correlation_id = (string) ($event?->payload['correlation_id'] ?? '');
+        $receipt->journal_url = $journalEntryId > 0 ? route('accounting.journals.show', $journalEntryId) : null;
+
+        return $receipt;
+    }
+
+    private function persistReceiptJournalLink(
+        GoodsReceipt $receipt,
+        ?AccountingEventQueue $event = null,
+        ?JournalEntry $journal = null
+    ): void {
+        if (!Schema::hasColumn('goods_receipts', 'journal_entry_id')) {
+            return;
+        }
+
+        $resolvedJournalId = (int) ($journal?->id ?? $event?->journal_entry_id ?? 0);
+        if ($resolvedJournalId <= 0 || (int) ($receipt->journal_entry_id ?? 0) === $resolvedJournalId) {
+            return;
+        }
+
+        $receipt->journal_entry_id = $resolvedJournalId;
+        $receipt->saveQuietly();
     }
 }

@@ -1019,8 +1019,12 @@ class EventBookingController extends Controller
     /**
      * Show event booking invoice
      */
-    public function showInvoice($id)
+    public function showInvoice(Request $request, $id)
     {
+        if ($request->header('X-Inertia')) {
+            return redirect()->route('events.booking.edit', ['id' => $id]);
+        }
+
         $booking = EventBooking::with([
             'customer',
             'member:id,membership_no,full_name,personal_email',

@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\Member;
 use App\Models\Setting;
 use App\Models\Vendor;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -18,7 +19,7 @@ use Inertia\Inertia;
 
 class AccountingVoucherMappingController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $this->autoAssignVendorDefaults();
 
@@ -44,113 +45,35 @@ class AccountingVoucherMappingController extends Controller
             ->get(['id', 'entity_type', 'entity_id', 'role', 'account_id'])
             ->keyBy(fn ($row) => "{$row->entity_type}:{$row->entity_id}:{$row->role}");
 
-        $memberNameColumn = $this->firstExistingColumn('members', ['name', 'full_name', 'first_name']);
-        $corporateMemberNameColumn = $this->firstExistingColumn('corporate_members', ['name', 'full_name', 'first_name']);
+        $entityType = (string) $request->input('entity_type', 'vendor');
+        if (!in_array($entityType, ['vendor', 'customer', 'member', 'corporate_member'], true)) {
+            $entityType = 'vendor';
+        }
+        $mapFilter = (string) $request->input('map_filter', 'all');
+        if (!in_array($mapFilter, ['all', 'mapped', 'unmapped'], true)) {
+            $mapFilter = 'all';
+        }
+        $search = trim((string) $request->input('search', ''));
+        $perPage = (int) $request->integer('per_page', 50);
+        if (!in_array($perPage, [25, 50, 100], true)) {
+            $perPage = 50;
+        }
 
-        $entityCandidates = collect()
-            ->concat(
-                Vendor::query()
-                    ->orderBy('name')
-                    ->get(['id', 'code', 'name', 'status', 'payable_account_id', 'advance_account_id'])
-                    ->flatMap(function ($vendor) use ($mappingIndex) {
-                        $payableMapping = $mappingIndex->get("vendor:{$vendor->id}:payable");
-                        $advanceMapping = $mappingIndex->get("vendor:{$vendor->id}:advance");
-                        $payableAccountId = $payableMapping?->account_id ?: $vendor->payable_account_id;
-                        $advanceAccountId = $advanceMapping?->account_id ?: $vendor->advance_account_id;
+        $entityCandidates = $this->buildEntityCandidatesPaginator(
+            entityType: $entityType,
+            mappingIndex: $mappingIndex,
+            mapFilter: $mapFilter,
+            search: $search,
+            perPage: $perPage,
+            page: max(1, (int) $request->integer('page', 1)),
+        );
 
-                        return [
-                            [
-                                'entity_type' => 'vendor',
-                                'entity_id' => (int) $vendor->id,
-                                'entity_code' => (string) ($vendor->code ?: ''),
-                                'entity_name' => (string) $vendor->name,
-                                'status' => (string) ($vendor->status ?: 'active'),
-                                'role' => 'payable',
-                                'mapping_id' => $payableMapping?->id,
-                                'account_id' => $payableAccountId ? (int) $payableAccountId : null,
-                                'is_mapped' => (bool) ($payableAccountId),
-                                'mapping_source' => $payableMapping ? 'entity_mapping' : ($vendor->payable_account_id ? 'vendor_default' : null),
-                            ],
-                            [
-                                'entity_type' => 'vendor',
-                                'entity_id' => (int) $vendor->id,
-                                'entity_code' => (string) ($vendor->code ?: ''),
-                                'entity_name' => (string) $vendor->name,
-                                'status' => (string) ($vendor->status ?: 'active'),
-                                'role' => 'advance',
-                                'mapping_id' => $advanceMapping?->id,
-                                'account_id' => $advanceAccountId ? (int) $advanceAccountId : null,
-                                'is_mapped' => (bool) ($advanceAccountId),
-                                'mapping_source' => $advanceMapping ? 'entity_mapping' : ($vendor->advance_account_id ? 'vendor_default' : null),
-                            ],
-                        ];
-                    })
-            )
-            ->concat(
-                Customer::query()->orderBy('name')->get(['id', 'name'])->map(function ($customer) use ($mappingIndex) {
-                    $mapping = $mappingIndex->get("customer:{$customer->id}:receivable");
-                    return [
-                        'entity_type' => 'customer',
-                        'entity_id' => (int) $customer->id,
-                        'entity_code' => '',
-                        'entity_name' => (string) $customer->name,
-                        'status' => 'active',
-                        'role' => 'receivable',
-                        'mapping_id' => $mapping?->id,
-                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
-                        'is_mapped' => (bool) ($mapping?->account_id),
-                        'mapping_source' => $mapping ? 'entity_mapping' : null,
-                    ];
-                })
-            )
-            ->concat(
-                Member::query()
-                    ->orderBy($memberNameColumn ?: 'id')
-                    ->get(array_values(array_unique(['id', $memberNameColumn ?: 'id'])))
-                    ->map(function ($member) use ($mappingIndex, $memberNameColumn) {
-                    $mapping = $mappingIndex->get("member:{$member->id}:receivable");
-                    $memberName = $memberNameColumn ? data_get($member, $memberNameColumn) : "Member #{$member->id}";
-                    return [
-                        'entity_type' => 'member',
-                        'entity_id' => (int) $member->id,
-                        'entity_code' => '',
-                        'entity_name' => (string) ($memberName ?: "Member #{$member->id}"),
-                        'status' => 'active',
-                        'role' => 'receivable',
-                        'mapping_id' => $mapping?->id,
-                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
-                        'is_mapped' => (bool) ($mapping?->account_id),
-                        'mapping_source' => $mapping ? 'entity_mapping' : null,
-                    ];
-                })
-            )
-            ->concat(
-                CorporateMember::query()
-                    ->orderBy($corporateMemberNameColumn ?: 'id')
-                    ->get(array_values(array_unique(['id', $corporateMemberNameColumn ?: 'id'])))
-                    ->map(function ($corp) use ($mappingIndex, $corporateMemberNameColumn) {
-                    $mapping = $mappingIndex->get("corporate_member:{$corp->id}:receivable");
-                    $corpName = $corporateMemberNameColumn ? data_get($corp, $corporateMemberNameColumn) : "Corporate Member #{$corp->id}";
-                    return [
-                        'entity_type' => 'corporate_member',
-                        'entity_id' => (int) $corp->id,
-                        'entity_code' => '',
-                        'entity_name' => (string) ($corpName ?: "Corporate Member #{$corp->id}"),
-                        'status' => 'active',
-                        'role' => 'receivable',
-                        'mapping_id' => $mapping?->id,
-                        'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
-                        'is_mapped' => (bool) ($mapping?->account_id),
-                        'mapping_source' => $mapping ? 'entity_mapping' : null,
-                    ];
-                })
-            )
-            ->sortBy([
-                ['entity_type', 'asc'],
-                ['entity_name', 'asc'],
-                ['role', 'asc'],
-            ])
-            ->values();
+        $entitySummary = [
+            'vendor' => (int) (Vendor::query()->count() * 2),
+            'customer' => (int) Customer::query()->count(),
+            'member' => (int) Member::query()->count(),
+            'corporate_member' => (int) CorporateMember::query()->count(),
+        ];
 
         $expenseTypes = AccountingExpenseType::query()
             ->with('expenseAccount:id,full_code,name,is_active,is_postable')
@@ -176,6 +99,7 @@ class AccountingVoucherMappingController extends Controller
             'accounts' => $accounts,
             'mappings' => $mappings,
             'entityCandidates' => $entityCandidates,
+            'entitySummary' => $entitySummary,
             'expenseTypes' => $expenseTypes,
             'defaults' => [
                 'default_payable_account_id' => $payableDefault > 0 ? $payableDefault : '',
@@ -184,6 +108,12 @@ class AccountingVoucherMappingController extends Controller
                 'default_receivable_account_id' => $receivableDefault > 0 ? $receivableDefault : '',
             ],
             'health' => $health,
+            'filters' => [
+                'entity_type' => $entityType,
+                'map_filter' => $mapFilter,
+                'search' => $search,
+                'per_page' => $perPage,
+            ],
         ]);
     }
 
@@ -334,5 +264,169 @@ class AccountingVoucherMappingController extends Controller
             ->where('is_active', true)
             ->where('is_postable', true)
             ->exists();
+    }
+
+    private function buildEntityCandidatesPaginator(
+        string $entityType,
+        $mappingIndex,
+        string $mapFilter,
+        string $search,
+        int $perPage,
+        int $page
+    ): LengthAwarePaginator {
+        $items = match ($entityType) {
+            'vendor' => $this->vendorEntityRows($mappingIndex, $search),
+            'customer' => $this->customerEntityRows($mappingIndex, $search),
+            'member' => $this->memberEntityRows($mappingIndex, $search),
+            'corporate_member' => $this->corporateMemberEntityRows($mappingIndex, $search),
+        };
+
+        if ($mapFilter === 'mapped') {
+            $items = $items->filter(fn ($row) => $row['is_mapped']);
+        } elseif ($mapFilter === 'unmapped') {
+            $items = $items->filter(fn ($row) => !$row['is_mapped']);
+        }
+
+        $items = $items->values();
+        $total = $items->count();
+        $offset = max(0, ($page - 1) * $perPage);
+
+        return new LengthAwarePaginator(
+            $items->slice($offset, $perPage)->values()->all(),
+            $total,
+            $perPage,
+            $page,
+            [
+                'path' => route('accounting.vouchers.mappings.index'),
+                'query' => request()->query(),
+            ]
+        );
+    }
+
+    private function vendorEntityRows($mappingIndex, string $search)
+    {
+        $query = Vendor::query()->orderBy('name');
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%");
+            });
+        }
+
+        return $query
+            ->get(['id', 'code', 'name', 'status', 'payable_account_id', 'advance_account_id'])
+            ->flatMap(function ($vendor) use ($mappingIndex) {
+                $payableMapping = $mappingIndex->get("vendor:{$vendor->id}:payable");
+                $advanceMapping = $mappingIndex->get("vendor:{$vendor->id}:advance");
+                $payableAccountId = $payableMapping?->account_id ?: $vendor->payable_account_id;
+                $advanceAccountId = $advanceMapping?->account_id ?: $vendor->advance_account_id;
+
+                return [
+                    [
+                        'entity_type' => 'vendor',
+                        'entity_id' => (int) $vendor->id,
+                        'entity_code' => (string) ($vendor->code ?: ''),
+                        'entity_name' => (string) $vendor->name,
+                        'status' => (string) ($vendor->status ?: 'active'),
+                        'role' => 'payable',
+                        'mapping_id' => $payableMapping?->id,
+                        'account_id' => $payableAccountId ? (int) $payableAccountId : null,
+                        'is_mapped' => (bool) ($payableAccountId),
+                        'mapping_source' => $payableMapping ? 'entity_mapping' : ($vendor->payable_account_id ? 'vendor_default' : null),
+                    ],
+                    [
+                        'entity_type' => 'vendor',
+                        'entity_id' => (int) $vendor->id,
+                        'entity_code' => (string) ($vendor->code ?: ''),
+                        'entity_name' => (string) $vendor->name,
+                        'status' => (string) ($vendor->status ?: 'active'),
+                        'role' => 'advance',
+                        'mapping_id' => $advanceMapping?->id,
+                        'account_id' => $advanceAccountId ? (int) $advanceAccountId : null,
+                        'is_mapped' => (bool) ($advanceAccountId),
+                        'mapping_source' => $advanceMapping ? 'entity_mapping' : ($vendor->advance_account_id ? 'vendor_default' : null),
+                    ],
+                ];
+            });
+    }
+
+    private function customerEntityRows($mappingIndex, string $search)
+    {
+        $query = Customer::query()->orderBy('name');
+        if ($search !== '') {
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        return $query->get(['id', 'name'])->map(function ($customer) use ($mappingIndex) {
+            $mapping = $mappingIndex->get("customer:{$customer->id}:receivable");
+            return [
+                'entity_type' => 'customer',
+                'entity_id' => (int) $customer->id,
+                'entity_code' => '',
+                'entity_name' => (string) $customer->name,
+                'status' => 'active',
+                'role' => 'receivable',
+                'mapping_id' => $mapping?->id,
+                'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                'is_mapped' => (bool) ($mapping?->account_id),
+                'mapping_source' => $mapping ? 'entity_mapping' : null,
+            ];
+        });
+    }
+
+    private function memberEntityRows($mappingIndex, string $search)
+    {
+        $memberNameColumn = $this->firstExistingColumn('members', ['name', 'full_name', 'first_name']);
+        $query = Member::query()->orderBy($memberNameColumn ?: 'id');
+        if ($search !== '' && $memberNameColumn) {
+            $query->where($memberNameColumn, 'like', "%{$search}%");
+        }
+
+        return $query
+            ->get(array_values(array_unique(['id', $memberNameColumn ?: 'id'])))
+            ->map(function ($member) use ($mappingIndex, $memberNameColumn) {
+                $mapping = $mappingIndex->get("member:{$member->id}:receivable");
+                $memberName = $memberNameColumn ? data_get($member, $memberNameColumn) : "Member #{$member->id}";
+                return [
+                    'entity_type' => 'member',
+                    'entity_id' => (int) $member->id,
+                    'entity_code' => '',
+                    'entity_name' => (string) ($memberName ?: "Member #{$member->id}"),
+                    'status' => 'active',
+                    'role' => 'receivable',
+                    'mapping_id' => $mapping?->id,
+                    'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                    'is_mapped' => (bool) ($mapping?->account_id),
+                    'mapping_source' => $mapping ? 'entity_mapping' : null,
+                ];
+            });
+    }
+
+    private function corporateMemberEntityRows($mappingIndex, string $search)
+    {
+        $nameColumn = $this->firstExistingColumn('corporate_members', ['name', 'full_name', 'first_name']);
+        $query = CorporateMember::query()->orderBy($nameColumn ?: 'id');
+        if ($search !== '' && $nameColumn) {
+            $query->where($nameColumn, 'like', "%{$search}%");
+        }
+
+        return $query
+            ->get(array_values(array_unique(['id', $nameColumn ?: 'id'])))
+            ->map(function ($corp) use ($mappingIndex, $nameColumn) {
+                $mapping = $mappingIndex->get("corporate_member:{$corp->id}:receivable");
+                $corpName = $nameColumn ? data_get($corp, $nameColumn) : "Corporate Member #{$corp->id}";
+                return [
+                    'entity_type' => 'corporate_member',
+                    'entity_id' => (int) $corp->id,
+                    'entity_code' => '',
+                    'entity_name' => (string) ($corpName ?: "Corporate Member #{$corp->id}"),
+                    'status' => 'active',
+                    'role' => 'receivable',
+                    'mapping_id' => $mapping?->id,
+                    'account_id' => $mapping?->account_id ? (int) $mapping->account_id : null,
+                    'is_mapped' => (bool) ($mapping?->account_id),
+                    'mapping_source' => $mapping ? 'entity_mapping' : null,
+                ];
+            });
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountingEventQueue;
 use App\Models\ApprovalAction;
 use App\Models\JournalEntry;
+use App\Models\OperationalAuditLog;
 use App\Models\PaymentAccount;
 use App\Models\Tenant;
 use App\Models\Vendor;
@@ -323,13 +324,19 @@ class VendorPaymentController extends Controller
             'remarks' => $data['remarks'] ?? null,
         ]);
 
-        ApprovalAction::create([
-            'document_type' => 'vendor_payment',
-            'document_id' => $vendorPayment->id,
-            'action' => 'updated',
-            'remarks' => 'Vendor payment updated.',
-            'action_by' => $request->user()?->id,
-        ]);
+        $this->recordOperationalEvent(
+            'vendor_payment',
+            (int) $vendorPayment->id,
+            'procurement.vendor_payment.updated',
+            'Vendor payment updated.',
+            $request->user()?->id,
+            [
+                'display_action' => 'updated',
+                'payment_no' => (string) $vendorPayment->payment_no,
+                'vendor_id' => (int) $vendorPayment->vendor_id,
+                'payment_account_id' => $vendorPayment->payment_account_id ? (int) $vendorPayment->payment_account_id : null,
+            ]
+        );
 
         return redirect()->route('procurement.vendor-payments.index')->with('success', 'Vendor payment updated.');
     }
@@ -439,5 +446,29 @@ class VendorPaymentController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Vendor payment rejected.');
+    }
+
+    private function recordOperationalEvent(
+        string $entityType,
+        int $entityId,
+        string $action,
+        string $message,
+        ?int $userId,
+        array $context = []
+    ): void {
+        OperationalAuditLog::query()->create([
+            'correlation_id' => (string) (request()?->headers->get('X-Correlation-ID') ?: request()?->attributes->get('correlation_id') ?: ''),
+            'module' => 'procurement',
+            'entity_type' => $entityType,
+            'entity_id' => (string) $entityId,
+            'action' => $action,
+            'status' => 'completed',
+            'severity' => 'info',
+            'message' => $message,
+            'context_json' => $context,
+            'actor_id' => $userId,
+            'request_path' => request()?->path(),
+            'ip' => request()?->ip(),
+        ]);
     }
 }

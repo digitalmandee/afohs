@@ -151,6 +151,19 @@
             </tr>
         </table>
 
+        <div class="panel">
+            <div class="panel-title">Accounting Status</div>
+            <table class="grid">
+                <tr><td>GL Status</td><td>{{ $accounting['status'] ?? 'PENDING' }}</td></tr>
+                <tr><td>Journal Entry</td><td>{{ $accounting['journal_entry_no'] ?? '-' }}</td></tr>
+                <tr><td>Journal Link</td><td>{{ $accounting['journal_url'] ?? '-' }}</td></tr>
+                <tr><td>Correlation ID</td><td>{{ $accounting['correlation_id'] ?? '-' }}</td></tr>
+                @if(!empty($accounting['failure_reason']))
+                    <tr><td>Failure Reason</td><td style="color:#b42318;">{{ $accounting['failure_reason'] }}</td></tr>
+                @endif
+            </table>
+        </div>
+
         <table class="report">
             <thead>
                 <tr>

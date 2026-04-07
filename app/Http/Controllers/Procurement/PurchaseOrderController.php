@@ -9,6 +9,7 @@ use App\Models\ApprovalWorkflow;
 use App\Models\Ingredient;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
+use App\Models\OperationalAuditLog;
 use App\Models\PurchaseOrderRevision;
 use App\Models\PurchaseOrder;
 use App\Models\Tenant;
@@ -488,13 +489,19 @@ class PurchaseOrderController extends Controller
                 'grand_total' => $subTotal,
             ]);
 
-            ApprovalAction::create([
-                'document_type' => 'purchase_order',
-                'document_id' => $purchaseOrder->id,
-                'action' => 'updated',
-                'remarks' => 'PO updated from edit screen.',
-                'action_by' => $request->user()?->id,
-            ]);
+            $this->recordOperationalEvent(
+                'purchase_order',
+                (int) $purchaseOrder->id,
+                'procurement.purchase_order.updated',
+                'Purchase order updated from edit screen.',
+                $request->user()?->id,
+                [
+                    'display_action' => 'updated',
+                    'po_no' => (string) $purchaseOrder->po_no,
+                    'vendor_id' => (int) $purchaseOrder->vendor_id,
+                    'warehouse_id' => (int) $purchaseOrder->warehouse_id,
+                ]
+            );
         });
 
         return redirect()->route('procurement.purchase-orders.index')->with('success', 'Purchase order updated.');
@@ -902,5 +909,29 @@ class PurchaseOrderController extends Controller
         }
 
         return 0;
+    }
+
+    private function recordOperationalEvent(
+        string $entityType,
+        int $entityId,
+        string $action,
+        string $message,
+        ?int $userId,
+        array $context = []
+    ): void {
+        OperationalAuditLog::query()->create([
+            'correlation_id' => (string) (request()?->headers->get('X-Correlation-ID') ?: request()?->attributes->get('correlation_id') ?: ''),
+            'module' => 'procurement',
+            'entity_type' => $entityType,
+            'entity_id' => (string) $entityId,
+            'action' => $action,
+            'status' => 'completed',
+            'severity' => 'info',
+            'message' => $message,
+            'context_json' => $context,
+            'actor_id' => $userId,
+            'request_path' => request()?->path(),
+            'ip' => request()?->ip(),
+        ]);
     }
 }

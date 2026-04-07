@@ -74,6 +74,7 @@ export default function VoucherForm({
     members = [],
     corporateMembers = [],
     expenseAccounts = [],
+    mappingReadiness = {},
     entryModes = ['smart', 'manual'],
     canSetPaymentAccountDefault = false,
     canSetVendorCounterpartyDefault = false,
@@ -577,7 +578,16 @@ export default function VoucherForm({
         return acc;
     }, { debit: 0, credit: 0 }));
     const difference = Math.abs(totals.debit - totals.credit);
-    const lineWarnings = buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount: effectivePaymentAccount, isManualEntry });
+    const lineWarnings = buildWarnings({
+        data,
+        selectedInvoice,
+        difference,
+        baseCurrency,
+        selectedPaymentAccount: effectivePaymentAccount,
+        isManualEntry,
+        isReceiptVoucher,
+        mappingReadiness,
+    });
 
     const canPost = (() => {
         if (!data.voucher_date || !data.posting_date || !data.tenant_id) return false;
@@ -683,7 +693,8 @@ export default function VoucherForm({
         const method = mode === 'edit' ? put : post;
         method(url, {
             forceFormData: true,
-            onFinish: () => setConfirmState({ open: false, intent: 'draft' }),
+            onSuccess: () => setConfirmState({ open: false, intent: 'draft' }),
+            onError: () => setConfirmState((current) => ({ ...current, open: false })),
         });
     };
 
@@ -715,7 +726,7 @@ export default function VoucherForm({
                 <AppLoadingButton
                     variant="outlined"
                     loading={processing && intentRef.current === 'submit'}
-                    onClick={() => submitForm('submit')}
+                    onClick={() => setConfirmState({ open: true, intent: 'submit' })}
                     disabled={!canPost}
                     sx={{
                         '&.Mui-disabled': {
@@ -1443,17 +1454,31 @@ export default function VoucherForm({
 
             <ConfirmActionDialog
                 open={confirmState.open}
-                title={confirmState.intent === 'post' ? 'Post voucher?' : 'Cancel voucher?'}
+                title={confirmState.intent === 'post'
+                    ? 'Post voucher?'
+                    : confirmState.intent === 'submit'
+                        ? 'Submit voucher for approval?'
+                        : 'Cancel voucher?'}
                 message={confirmState.intent === 'post'
                     ? 'This will lock the voucher and create financial impact in the general ledger.'
-                    : 'This will move the voucher to cancelled status and prevent reuse.'}
-                confirmLabel={confirmState.intent === 'post' ? 'Post Voucher' : 'Cancel Voucher'}
-                severity={confirmState.intent === 'post' ? 'critical' : 'danger'}
+                    : confirmState.intent === 'submit'
+                        ? 'This will move the voucher to submitted status and send it into the approval workflow. No general ledger posting will happen yet.'
+                        : 'This will move the voucher to cancelled status and prevent reuse.'}
+                confirmLabel={confirmState.intent === 'post'
+                    ? 'Post Voucher'
+                    : confirmState.intent === 'submit'
+                        ? 'Submit for Approval'
+                        : 'Cancel Voucher'}
+                severity={confirmState.intent === 'post' ? 'critical' : confirmState.intent === 'submit' ? 'warning' : 'danger'}
                 loading={processing}
                 onClose={() => setConfirmState({ open: false, intent: 'draft' })}
                 onConfirm={() => {
                     if (confirmState.intent === 'post') {
                         submitForm('post');
+                        return;
+                    }
+                    if (confirmState.intent === 'submit') {
+                        submitForm('submit');
                         return;
                     }
                     post(route('accounting.vouchers.cancel', voucher.id));
@@ -1561,7 +1586,7 @@ function accountLabel(accounts, accountId) {
     return `${account.full_code} - ${account.name}`;
 }
 
-function buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount, isManualEntry }) {
+function buildWarnings({ data, selectedInvoice, difference, baseCurrency, selectedPaymentAccount, isManualEntry, isReceiptVoucher, mappingReadiness }) {
     const warnings = [];
     if (data.posting_date && data.voucher_date && data.posting_date < data.voucher_date) {
         warnings.push('Posting date is earlier than voucher date.');
@@ -1574,6 +1599,9 @@ function buildWarnings({ data, selectedInvoice, difference, baseCurrency, select
     }
     if (selectedInvoice && Number(data.amount || 0) > Number(selectedInvoice.outstanding || 0)) {
         warnings.push('Entered amount exceeds selected invoice outstanding.');
+    }
+    if (isReceiptVoucher && data.party_type !== 'none' && data.party_id && !mappingReadiness?.default_receivable_ready) {
+        warnings.push('Default receivable account is not configured in Voucher Mappings. Unmapped customers or members will be blocked until finance sets it.');
     }
     if (isManualEntry && difference > 0.0001) {
         warnings.push('Voucher is currently unbalanced.');

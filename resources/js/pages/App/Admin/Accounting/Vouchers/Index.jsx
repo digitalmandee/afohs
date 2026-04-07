@@ -6,6 +6,7 @@ import FilterToolbar from '@/components/App/ui/FilterToolbar';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import StatCard from '@/components/App/ui/StatCard';
+import ConfirmActionDialog from '@/components/App/ui/ConfirmActionDialog';
 import { formatCount } from '@/lib/formatting';
 
 export default function Index({ vouchers, summary = {}, tenants = [], filters = {} }) {
@@ -19,6 +20,7 @@ export default function Index({ vouchers, summary = {}, tenants = [], filters = 
         to: filters.to || '',
         per_page: filters.per_page || vouchers?.per_page || 25,
     });
+    const [confirmSubmit, setConfirmSubmit] = React.useState({ open: false, voucherId: null });
 
     const apply = () => {
         router.get(route('accounting.vouchers.index'), local, { preserveState: true, preserveScroll: true, replace: true });
@@ -121,7 +123,7 @@ export default function Index({ vouchers, summary = {}, tenants = [], filters = 
                                     {row.status === 'draft' ? (
                                         <>
                                             <Button size="small" variant="outlined" component={Link} href={route('accounting.vouchers.edit', row.id)}>Edit</Button>
-                                            <Button size="small" variant="contained" onClick={() => router.post(route('accounting.vouchers.submit', row.id))}>Submit</Button>
+                                            <Button size="small" variant="contained" onClick={() => setConfirmSubmit({ open: true, voucherId: row.id })}>Submit</Button>
                                             <Button size="small" color="warning" variant="outlined" onClick={() => router.post(route('accounting.vouchers.cancel', row.id))}>Cancel</Button>
                                         </>
                                     ) : null}
@@ -151,6 +153,21 @@ export default function Index({ vouchers, summary = {}, tenants = [], filters = 
                     )}
                 />
             </SurfaceCard>
+
+            <ConfirmActionDialog
+                open={confirmSubmit.open}
+                title="Submit voucher for approval?"
+                message="This will move the voucher to submitted status and send it into the approval workflow. No general ledger posting will happen yet."
+                confirmLabel="Submit for Approval"
+                severity="warning"
+                onClose={() => setConfirmSubmit({ open: false, voucherId: null })}
+                onConfirm={() => {
+                    if (!confirmSubmit.voucherId) return;
+                    router.post(route('accounting.vouchers.submit', confirmSubmit.voucherId), {}, {
+                        onFinish: () => setConfirmSubmit({ open: false, voucherId: null }),
+                    });
+                }}
+            />
         </AppPage>
     );
 }

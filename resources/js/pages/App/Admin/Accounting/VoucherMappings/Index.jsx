@@ -1,12 +1,22 @@
 import React from 'react';
 import { router, useForm } from '@inertiajs/react';
+import debounce from 'lodash.debounce';
 import { Chip, Grid, MenuItem, Stack, TableCell, TableRow, TextField } from '@mui/material';
 import AppPage from '@/components/App/ui/AppPage';
 import SurfaceCard from '@/components/App/ui/SurfaceCard';
 import AdminDataTable from '@/components/App/ui/AdminDataTable';
 import AppLoadingButton from '@/components/App/ui/AppLoadingButton';
 
-export default function VoucherMappingsIndex({ accounts = [], mappings = [], entityCandidates = [], expenseTypes = [], defaults = {}, health = {} }) {
+export default function VoucherMappingsIndex({
+    accounts = [],
+    mappings = [],
+    entityCandidates = { data: [] },
+    entitySummary = {},
+    expenseTypes = [],
+    defaults = {},
+    health = {},
+    filters = {},
+}) {
     const defaultForm = useForm({
         default_payable_account_id: String(defaults.default_payable_account_id || ''),
         default_advance_account_id: String(defaults.default_advance_account_id || ''),
@@ -21,39 +31,85 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], ent
         is_active: true,
     });
     const [entityAccountSelection, setEntityAccountSelection] = React.useState({});
-    const [mapFilter, setMapFilter] = React.useState('all');
-    const [entityTypeFilter, setEntityTypeFilter] = React.useState('all');
+    const [localFilters, setLocalFilters] = React.useState({
+        map_filter: filters?.map_filter || 'all',
+        entity_type: filters?.entity_type || 'vendor',
+        search: filters?.search || '',
+        per_page: entityCandidates?.per_page || filters?.per_page || 50,
+        page: 1,
+    });
+    const filtersRef = React.useRef(localFilters);
     const [savingEntityKey, setSavingEntityKey] = React.useState('');
 
     React.useEffect(() => {
         const entries = {};
-        (entityCandidates || []).forEach((row) => {
+        (entityCandidates?.data || []).forEach((row) => {
             entries[`${row.entity_type}:${row.entity_id}:${row.role}`] = row.account_id ? String(row.account_id) : '';
         });
         setEntityAccountSelection(entries);
     }, [entityCandidates]);
+
+    React.useEffect(() => {
+        const next = {
+            map_filter: filters?.map_filter || 'all',
+            entity_type: filters?.entity_type || 'vendor',
+            search: filters?.search || '',
+            per_page: entityCandidates?.per_page || filters?.per_page || 50,
+            page: 1,
+        };
+        filtersRef.current = next;
+        setLocalFilters(next);
+    }, [entityCandidates?.per_page, filters?.entity_type, filters?.map_filter, filters?.per_page, filters?.search]);
+
+    const submitFilters = React.useCallback((nextFilters) => {
+        const payload = {};
+        if (nextFilters.map_filter && nextFilters.map_filter !== 'all') payload.map_filter = nextFilters.map_filter;
+        if (nextFilters.entity_type && nextFilters.entity_type !== 'vendor') payload.entity_type = nextFilters.entity_type;
+        if (nextFilters.search?.trim()) payload.search = nextFilters.search.trim();
+        payload.per_page = nextFilters.per_page || entityCandidates?.per_page || 50;
+        if (Number(nextFilters.page) > 1) payload.page = Number(nextFilters.page);
+
+        router.get(route('accounting.vouchers.mappings.index'), payload, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }, [entityCandidates?.per_page]);
+
+    const debouncedSubmit = React.useMemo(() => debounce((next) => submitFilters(next), 300), [submitFilters]);
+    React.useEffect(() => () => debouncedSubmit.cancel(), [debouncedSubmit]);
+
+    const updateFilters = React.useCallback((partial, { immediate = false } = {}) => {
+        const next = { ...filtersRef.current, ...partial };
+        if (!Object.prototype.hasOwnProperty.call(partial, 'page')) {
+            next.page = 1;
+        }
+        filtersRef.current = next;
+        setLocalFilters(next);
+
+        if (immediate) {
+            debouncedSubmit.cancel();
+            submitFilters(next);
+            return;
+        }
+
+        debouncedSubmit(next);
+    }, [debouncedSubmit, submitFilters]);
 
     const accountLabel = (id) => {
         const account = accounts.find((row) => String(row.id) === String(id));
         return account ? `${account.full_code} - ${account.name}` : '-';
     };
 
-    const filteredEntityCandidates = (entityCandidates || []).filter((row) => {
-        if (mapFilter === 'mapped' && !row.is_mapped) {
-            return false;
-        }
-        if (mapFilter === 'unmapped' && row.is_mapped) {
-            return false;
-        }
-        if (entityTypeFilter !== 'all' && row.entity_type !== entityTypeFilter) {
-            return false;
-        }
-        return true;
-    });
-
-    const mappedCount = (entityCandidates || []).filter((row) => row.is_mapped).length;
-    const unmappedCount = (entityCandidates || []).filter((row) => !row.is_mapped).length;
-    const entityTypeOptions = Array.from(new Set((entityCandidates || []).map((row) => row.entity_type)));
+    const rows = entityCandidates?.data || [];
+    const mappedCount = rows.filter((row) => row.is_mapped).length;
+    const unmappedCount = rows.filter((row) => !row.is_mapped).length;
+    const entityTypeOptions = [
+        { value: 'vendor', label: `Vendor (${entitySummary?.vendor || 0})` },
+        { value: 'customer', label: `Customer (${entitySummary?.customer || 0})` },
+        { value: 'member', label: `Member (${entitySummary?.member || 0})` },
+        { value: 'corporate_member', label: `Corporate (${entitySummary?.corporate_member || 0})` },
+    ];
 
     return (
         <AppPage
@@ -155,35 +211,41 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], ent
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5 }} flexWrap="wrap" useFlexGap>
                     <Chip
                         size="small"
-                        color={mapFilter === 'all' ? 'primary' : 'default'}
-                        label={`All: ${(entityCandidates || []).length}`}
-                        onClick={() => setMapFilter('all')}
+                        color={localFilters.map_filter === 'all' ? 'primary' : 'default'}
+                        label={`Page Rows: ${rows.length}`}
+                        onClick={() => updateFilters({ map_filter: 'all' }, { immediate: true })}
                     />
                     <Chip
                         size="small"
-                        color={mapFilter === 'unmapped' ? 'warning' : 'default'}
+                        color={localFilters.map_filter === 'unmapped' ? 'warning' : 'default'}
                         label={`Unmapped: ${unmappedCount}`}
-                        onClick={() => setMapFilter('unmapped')}
+                        onClick={() => updateFilters({ map_filter: 'unmapped' }, { immediate: true })}
                     />
                     <Chip
                         size="small"
-                        color={mapFilter === 'mapped' ? 'success' : 'default'}
+                        color={localFilters.map_filter === 'mapped' ? 'success' : 'default'}
                         label={`Mapped: ${mappedCount}`}
-                        onClick={() => setMapFilter('mapped')}
+                        onClick={() => updateFilters({ map_filter: 'mapped' }, { immediate: true })}
                     />
                     <TextField
                         select
                         size="small"
                         label="Entity Type"
-                        value={entityTypeFilter}
-                        onChange={(event) => setEntityTypeFilter(event.target.value)}
+                        value={localFilters.entity_type}
+                        onChange={(event) => updateFilters({ entity_type: event.target.value }, { immediate: true })}
                         sx={{ minWidth: 190 }}
                     >
-                        <MenuItem value="all">All Types</MenuItem>
                         {entityTypeOptions.map((type) => (
-                            <MenuItem key={type} value={type}>{type}</MenuItem>
+                            <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
                         ))}
                     </TextField>
+                    <TextField
+                        size="small"
+                        label="Search entity"
+                        value={localFilters.search}
+                        onChange={(event) => updateFilters({ search: event.target.value })}
+                        sx={{ minWidth: 240 }}
+                    />
                 </Stack>
                 <AdminDataTable
                     columns={[
@@ -193,8 +255,8 @@ export default function VoucherMappingsIndex({ accounts = [], mappings = [], ent
                         { key: 'account', label: 'GL Account', minWidth: 360 },
                         { key: 'actions', label: 'Actions', minWidth: 140, align: 'right' },
                     ]}
-                    rows={filteredEntityCandidates}
-                    pagination={null}
+                    rows={rows}
+                    pagination={entityCandidates}
                     emptyMessage="No entities found."
                     renderRow={(row) => {
                         const rowKey = `${row.entity_type}:${row.entity_id}:${row.role}`;
